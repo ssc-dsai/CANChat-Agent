@@ -10,6 +10,7 @@ import type {
 export type SidebarCommand =
   | { type: 'user_message'; text: string }
   | { type: 'stop_task' }
+  | { type: 'clear_conversation' }
   | { type: 'pause_agent' }
   | { type: 'resume_agent' }
   | { type: 'approval_response'; requestId: string; approved: boolean }

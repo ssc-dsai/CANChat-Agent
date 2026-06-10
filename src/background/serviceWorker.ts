@@ -32,6 +32,9 @@ chrome.runtime.onConnect.addListener((port) => {
       case 'stop_task':
         runtime.stop();
         break;
+      case 'clear_conversation':
+        runtime.clearConversation();
+        break;
       case 'pause_agent':
         runtime.pause();
         break;

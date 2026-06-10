@@ -96,8 +96,12 @@ body {
   font-size: 15px;
   padding: 2px 6px;
 }
-.icon-btn:hover {
+.icon-btn:hover:not(:disabled) {
   color: var(--text);
+}
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .link-btn {
@@ -331,6 +335,26 @@ body {
 }
 .md img {
   max-width: 100%;
+}
+
+.msg-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.copy-btn:hover {
+  color: var(--text);
+  background: var(--bg-input);
 }
 
 .msg-notice {

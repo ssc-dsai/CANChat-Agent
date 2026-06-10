@@ -23,7 +23,14 @@ export function ChatPanel({
   disabled,
 }: Props) {
   const [input, setInput] = useState('');
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  const copyMessage = async (index: number, text: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex((c) => (c === index ? null : c)), 1500);
+  };
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -55,7 +62,22 @@ export function ChatPanel({
         )}
         {messages.map((m, i) => (
           <div key={i} class={`msg msg-${m.role}`}>
-            {m.role === 'assistant' ? <Markdown text={m.text} /> : m.text}
+            {m.role === 'assistant' ? (
+              <>
+                <Markdown text={m.text} />
+                <div class="msg-actions">
+                  <button
+                    class="copy-btn"
+                    title="Copy to clipboard"
+                    onClick={() => copyMessage(i, m.text)}
+                  >
+                    {copiedIndex === i ? '✓ Copied' : '⧉ Copy'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              m.text
+            )}
           </div>
         ))}
 

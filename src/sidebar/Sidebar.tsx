@@ -125,6 +125,14 @@ export function Sidebar() {
       <header class="header">
         <span class="title">CANAgent</span>
         <span class={`status status-${status}`}>{STATUS_LABELS[status]}</span>
+        <button
+          class="icon-btn"
+          title="Clear conversation"
+          onClick={() => send({ type: 'clear_conversation' })}
+          disabled={messages.length === 0}
+        >
+          🗑
+        </button>
         <button class="icon-btn" title="Settings" onClick={() => setShowSettings(true)}>
           ⚙
         </button>

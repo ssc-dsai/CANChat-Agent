@@ -195,6 +195,15 @@ export class AgentRuntime {
     }
   }
 
+  clearConversation(): void {
+    this.stop();
+    this.conversation = [];
+    this.messages = [];
+    this.activities = [];
+    this.setStatus('idle');
+    this.emit(this.fullState());
+  }
+
   pause(): void {
     if (this.running) this.pauseRequested = true;
   }
@@ -281,6 +290,7 @@ export class AgentRuntime {
 
       this.setStatus('thinking');
       const reply = await complete(settings, this.conversation, TOOL_DEFINITIONS);
+      if (this.stopRequested) return;
 
       if (!reply.tool_calls || reply.tool_calls.length === 0) {
         const text = reply.content ?? '(no response)';
