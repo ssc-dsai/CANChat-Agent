@@ -19,8 +19,25 @@ interface Props {
   approval: { requestId: string; description: string } | null;
   authNotice: { origin: string; message: string } | null;
   permissionNotice: { origin: string; message: string } | null;
+  pendingSnapshots: string[];
   send: (command: SidebarCommand) => void;
   disabled: boolean;
+}
+
+function MessageImages({ images }: { images: string[] }) {
+  return (
+    <div class="msg-images">
+      {images.map((src, i) => (
+        <img
+          key={i}
+          src={src}
+          class="msg-image"
+          alt={`Snapshot ${i + 1}`}
+          onClick={() => void chrome.tabs.create({ url: src })}
+        />
+      ))}
+    </div>
+  );
 }
 
 export function ChatPanel({
@@ -29,6 +46,7 @@ export function ChatPanel({
   approval,
   authNotice,
   permissionNotice,
+  pendingSnapshots,
   send,
   disabled,
 }: Props) {
@@ -95,6 +113,7 @@ export function ChatPanel({
           const { body, sources } = m.role === 'assistant' ? splitSources(m.text) : { body: m.text, sources: null };
           return (
           <div key={i} class={`msg msg-${m.role}`}>
+            {m.images && m.images.length > 0 && <MessageImages images={m.images} />}
             {m.role === 'assistant' ? (
               <>
                 <Markdown text={body} />
@@ -179,6 +198,23 @@ export function ChatPanel({
       </div>
 
       <div class="chat-input-row">
+        {pendingSnapshots.length > 0 && (
+          <div class="snapshot-pending">
+            {pendingSnapshots.map((src, i) => (
+              <img key={i} src={src} class="snapshot-thumb" alt={`Pending snapshot ${i + 1}`} />
+            ))}
+            <span class="snapshot-label">
+              {pendingSnapshots.length} snapshot{pendingSnapshots.length > 1 ? 's' : ''} attached
+            </span>
+            <button
+              class="icon-btn"
+              title="Discard snapshots"
+              onClick={() => send({ type: 'discard_snapshots' })}
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {matchingSkills.length > 0 && (
           <div class="skill-hints">
             {matchingSkills.map((s) => (

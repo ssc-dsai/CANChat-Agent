@@ -17,6 +17,8 @@ export type SidebarCommand =
   | { type: 'include_active_tab' }
   | { type: 'include_all_tabs' }
   | { type: 'refresh_context' }
+  | { type: 'attach_snapshot'; dataUrl: string; title: string; url: string }
+  | { type: 'discard_snapshots' }
   | { type: 'get_state' }
   | { type: 'ping' };
 
@@ -29,6 +31,7 @@ export type BackgroundEvent =
   | { type: 'auth_required'; origin: string; message: string }
   | { type: 'permission_required'; origin: string; message: string }
   | { type: 'context_update'; summary: TabContextSummary | null }
+  | { type: 'pending_snapshots'; thumbs: string[] }
   | { type: 'error'; message: string }
   | {
       type: 'full_state';
@@ -39,6 +42,7 @@ export type BackgroundEvent =
       pendingApproval: { requestId: string; description: string } | null;
       authNotice: { origin: string; message: string } | null;
       permissionNotice: { origin: string; message: string } | null;
+      pendingSnapshots: string[];
     };
 
 /** One-shot messages handled by chrome.runtime.onMessage. */

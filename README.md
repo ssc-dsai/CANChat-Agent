@@ -96,6 +96,7 @@ The row of buttons under the header controls what page content is handed to the 
 
 - **Use current tab** — snapshots the active tab's content into context.
 - **Use all tabs** — snapshots every open tab (you'll be asked to approve all-tab reads during tasks).
+- **Snapshot** — captures the **visible part of the current tab as an image** and attaches it to your next message. This is the tool for content that text extraction can't see: PowerBI reports, canvas-rendered dashboards and spreadsheets, Figma, embedded PDFs, charts. The image appears in the thread immediately (with a pending chip above the input — ✕ discards it) and is sent with whatever you ask next. **Requires a vision-capable model** (e.g. GPT-4o-class, llava/qwen-vl locally). Captures only the visible viewport — scroll to what matters before snapping; take multiple snapshots if needed.
 - **Refresh** — re-extracts whatever is currently in context.
 
 Each tab in context is listed with a status dot — green (readable), amber (login required), red (blocked or unreadable, e.g. `chrome://` pages) — and a **stale** tag once a snapshot is older than 5 minutes. Stale context isn't deleted; the agent is told it may be out of date and re-fetches when freshness matters.
@@ -355,6 +356,7 @@ The mechanics:
 | Agent answers without using the browser when it should | Say so explicitly ("check my open tabs", "search the web for…"), add the site to Known Sites, or write a skill that names the tools to use. |
 | Long task dies when the sidebar closes | The background service worker is kept alive by the open sidebar. Keep the panel open during long tasks. |
 | Skill didn't auto-trigger | Sharpen its description (see [§6.3](#63-two-ways-to-trigger-a-skill)) or force it with `/name`. |
+| Error right after sending a snapshot | Your endpoint/model isn't vision-capable — it rejected the image content. Switch to a multimodal model or discard the snapshot. |
 
 ## 9. Development
 

@@ -31,6 +31,7 @@ export function Sidebar() {
   const [approval, setApproval] = useState<{ requestId: string; description: string } | null>(null);
   const [authNotice, setAuthNotice] = useState<{ origin: string; message: string } | null>(null);
   const [permissionNotice, setPermissionNotice] = useState<{ origin: string; message: string } | null>(null);
+  const [pendingSnapshots, setPendingSnapshots] = useState<string[]>([]);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -64,6 +65,7 @@ export function Sidebar() {
             setApproval(event.pendingApproval);
             setAuthNotice(event.authNotice);
             setPermissionNotice(event.permissionNotice);
+            setPendingSnapshots(event.pendingSnapshots);
             break;
           case 'chat_message':
             setMessages((m) => [...m, event.message]);
@@ -98,6 +100,9 @@ export function Sidebar() {
             break;
           case 'context_update':
             setContext(event.summary);
+            break;
+          case 'pending_snapshots':
+            setPendingSnapshots(event.thumbs);
             break;
           case 'error':
             setErrorBanner(event.message);
@@ -165,6 +170,7 @@ export function Sidebar() {
         approval={approval}
         authNotice={authNotice}
         permissionNotice={permissionNotice}
+        pendingSnapshots={pendingSnapshots}
         send={send}
         disabled={configured === false}
       />

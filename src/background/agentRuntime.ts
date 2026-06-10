@@ -9,7 +9,7 @@ import type {
 } from '../shared/types';
 import type { MemoryEntry, SiteEntry, Skill } from '../shared/types';
 import * as browser from './browserToolAdapter';
-import { complete, type LlmMessage, type LlmToolCall } from './llmProvider';
+import { complete, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import {
   getMemories,
   getMemoryEnabled,
@@ -47,6 +47,7 @@ Working method:
 - Use search_web for web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
 - Before clicking, filling, or submitting anything, call get_element_map and act on refIds. State-changing actions require user approval; the runtime handles asking.
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
+- The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 
 Answer format:
@@ -150,6 +151,7 @@ export class AgentRuntime {
   private authWait: AuthWait | null = null;
   private permissionWait: PermissionWait | null = null;
   private abortController: AbortController | null = null;
+  private pendingSnapshots: Array<{ dataUrl: string; title: string; url: string }> = [];
   private activityCounter = 0;
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
@@ -170,7 +172,26 @@ export class AgentRuntime {
       permissionNotice: this.permissionWait
         ? { origin: this.permissionWait.origin, message: this.permissionWait.message }
         : null,
+      pendingSnapshots: this.pendingSnapshots.map((s) => s.dataUrl),
     };
+  }
+
+  attachSnapshot(dataUrl: string, title: string, url: string): void {
+    this.pendingSnapshots.push({ dataUrl, title, url });
+    this.emit({ type: 'pending_snapshots', thumbs: this.pendingSnapshots.map((s) => s.dataUrl) });
+    this.pushChat({
+      role: 'notice',
+      text: `Snapshot of "${title}" attached — it will be sent with your next message.`,
+      timestamp: new Date().toISOString(),
+      images: [dataUrl],
+    });
+  }
+
+  discardSnapshots(): void {
+    if (this.pendingSnapshots.length === 0) return;
+    this.pendingSnapshots = [];
+    this.emit({ type: 'pending_snapshots', thumbs: [] });
+    this.notice('Snapshots discarded.');
   }
 
   // ----- sidebar commands -----
@@ -208,14 +229,25 @@ export class AgentRuntime {
         `User input: ${slash[2].trim() || '(none)'}`;
     }
 
-    this.pushChat({ role: 'user', text, timestamp: new Date().toISOString() });
+    // Consume any pending snapshots: shown on the user's message and sent
+    // to the model as image content parts.
+    const snapshots = this.pendingSnapshots;
+    this.pendingSnapshots = [];
+    if (snapshots.length > 0) this.emit({ type: 'pending_snapshots', thumbs: [] });
+
+    this.pushChat({
+      role: 'user',
+      text,
+      timestamp: new Date().toISOString(),
+      images: snapshots.length > 0 ? snapshots.map((s) => s.dataUrl) : undefined,
+    });
     this.running = true;
     this.stopRequested = false;
     this.pauseRequested = false;
     this.abortController = new AbortController();
 
     try {
-      await this.runLoop(taskText);
+      await this.runLoop(taskText, snapshots);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError' && this.stopRequested) {
         // User stopped or cleared the task; the abort is expected.
@@ -267,6 +299,7 @@ export class AgentRuntime {
     this.conversation = [];
     this.messages = [];
     this.activities = [];
+    this.pendingSnapshots = [];
     this.setStatus('idle');
     this.emit(this.fullState());
   }
@@ -327,7 +360,10 @@ export class AgentRuntime {
 
   // ----- agent loop -----
 
-  private async runLoop(userText: string): Promise<void> {
+  private async runLoop(
+    userText: string,
+    snapshots: Array<{ dataUrl: string; title: string; url: string }> = [],
+  ): Promise<void> {
     const settings = (await getSettings())!;
 
     // (Re)build the system message each task so directory/skill/memory edits apply immediately.
@@ -348,10 +384,23 @@ export class AgentRuntime {
     }
 
     const contextBlock = this.buildContextBlock();
-    this.conversation.push({
-      role: 'user',
-      content: contextBlock ? `${contextBlock}\n\n${userText}` : userText,
-    });
+    let textContent = contextBlock ? `${contextBlock}\n\n${userText}` : userText;
+    if (snapshots.length === 0) {
+      this.conversation.push({ role: 'user', content: textContent });
+    } else {
+      textContent +=
+        '\n\n' +
+        snapshots
+          .map((s, i) => `Attached snapshot ${i + 1}: "${s.title}" — ${s.url}`)
+          .join('\n');
+      const parts: ContentPart[] = [
+        { type: 'text', text: textContent },
+        ...snapshots.map(
+          (s): ContentPart => ({ type: 'image_url', image_url: { url: s.dataUrl } }),
+        ),
+      ];
+      this.conversation.push({ role: 'user', content: parts });
+    }
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       if (this.stopRequested) {

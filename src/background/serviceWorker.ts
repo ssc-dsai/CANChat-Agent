@@ -58,6 +58,12 @@ chrome.runtime.onConnect.addListener((port) => {
       case 'refresh_context':
         void runtime.refreshContext();
         break;
+      case 'attach_snapshot':
+        runtime.attachSnapshot(command.dataUrl, command.title, command.url);
+        break;
+      case 'discard_snapshots':
+        runtime.discardSnapshots();
+        break;
       case 'get_state':
         port.postMessage(runtime.fullState());
         break;

@@ -129,6 +129,8 @@ export interface ChatMessageView {
   role: 'user' | 'assistant' | 'notice';
   text: string;
   timestamp: string;
+  /** Data URLs of attached snapshot images, for thumbnail rendering. */
+  images?: string[];
 }
 
 export type ContextScope = 'active' | 'selected' | 'all';
