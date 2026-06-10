@@ -43,10 +43,10 @@ Working method:
 
 Answer format:
 - Format answers in Markdown (headings, lists, tables, links) — the sidebar renders it.
-- Be concise. When your answer draws on tabs, end with a "Source tabs:" list, e.g.:
+- Be concise. When your answer draws on tabs or pages, end with a source list in exactly this form, one markdown link per line with the full URL:
 Source tabs:
-[1] Jira - Project Board
-[2] Example News Site - Article title
+[1] [Jira - Project Board](https://jira.example.com/board)
+[2] [Example News Site - Article title](https://news.example.com/article)
 - For multi-tab summaries, distinguish findings common across tabs, findings unique to single tabs, and tabs that were inaccessible or blocked by authentication.`;
 
 function formatSite(s: SiteEntry): string {

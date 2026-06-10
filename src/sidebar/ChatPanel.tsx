@@ -3,6 +3,16 @@ import type { SidebarCommand } from '../shared/messages';
 import type { AgentStatus, ChatMessageView } from '../shared/types';
 import { Markdown } from './Markdown';
 
+/** Split a trailing "Source tabs:" / "Sources:" block off the answer body. */
+function splitSources(text: string): { body: string; sources: string | null } {
+  const match = /(?:^|\n)(Source tabs?:|Sources:)\s*\n/i.exec(text);
+  if (!match) return { body: text, sources: null };
+  return {
+    body: text.slice(0, match.index).trimEnd(),
+    sources: text.slice(match.index).trim(),
+  };
+}
+
 interface Props {
   messages: ChatMessageView[];
   status: AgentStatus;
@@ -60,11 +70,18 @@ export function ChatPanel({
             context above, or just ask — the agent will use the browser when it needs to.
           </div>
         )}
-        {messages.map((m, i) => (
+        {messages.map((m, i) => {
+          const { body, sources } = m.role === 'assistant' ? splitSources(m.text) : { body: m.text, sources: null };
+          return (
           <div key={i} class={`msg msg-${m.role}`}>
             {m.role === 'assistant' ? (
               <>
-                <Markdown text={m.text} />
+                <Markdown text={body} />
+                {sources && (
+                  <div class="citations">
+                    <Markdown text={sources} />
+                  </div>
+                )}
                 <div class="msg-actions">
                   <button
                     class="copy-btn"
@@ -79,7 +96,8 @@ export function ChatPanel({
               m.text
             )}
           </div>
-        ))}
+          );
+        })}
 
         {authNotice && (
           <div class="prompt-card">
