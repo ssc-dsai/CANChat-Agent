@@ -1,0 +1,21 @@
+{
+  "name": "browser-agent-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build && vite build --config vite.content.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.9",
+    "marked": "^18.0.5",
+    "preact": "^10.24.3"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.1",
+    "@types/chrome": "^0.0.287",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

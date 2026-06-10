@@ -1,0 +1,14 @@
+[tools]
+node = "26"
+
+[tasks.install]
+description = "Install npm dependencies"
+run = "npm install"
+
+[tasks.build]
+description = "Build the extension into dist/"
+run = "npm run build"
+
+[tasks.typecheck]
+description = "Type-check the project"
+run = "npm run typecheck"

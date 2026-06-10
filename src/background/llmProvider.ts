@@ -1,0 +1,95 @@
+import type { Settings } from '../shared/types';
+
+// OpenAI-compatible chat completions adapter. The user supplies the endpoint,
+// key, and model through the settings screen; nothing ships configured.
+
+export interface LlmToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+export interface LlmMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | null;
+  tool_calls?: LlmToolCall[];
+  tool_call_id?: string;
+}
+
+export interface ToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface LlmResponseMessage {
+  role: 'assistant';
+  content: string | null;
+  tool_calls?: LlmToolCall[];
+}
+
+export class LlmError extends Error {}
+
+function endpoint(settings: Settings): string {
+  return settings.baseUrl.replace(/\/+$/, '') + '/chat/completions';
+}
+
+export async function complete(
+  settings: Settings,
+  messages: LlmMessage[],
+  tools?: ToolDefinition[],
+  signal?: AbortSignal,
+): Promise<LlmResponseMessage> {
+  const body: Record<string, unknown> = {
+    model: settings.model,
+    messages,
+  };
+  if (tools && tools.length > 0) body.tools = tools;
+  if (settings.temperature !== undefined) body.temperature = settings.temperature;
+  if (settings.maxTokens !== undefined) body.max_tokens = settings.maxTokens;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint(settings), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${settings.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    throw new LlmError(
+      `Could not reach the model endpoint (${settings.baseUrl}). ` +
+        `If the endpoint blocks cross-origin requests, re-save settings to grant the extension access to it. (${String(err)})`,
+    );
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new LlmError(`Model endpoint returned ${response.status}: ${text.slice(0, 500)}`);
+  }
+
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: LlmResponseMessage }>;
+  };
+  const message = data.choices?.[0]?.message;
+  if (!message) throw new LlmError('Model endpoint returned no message.');
+  return message;
+}
+
+export async function testConnection(settings: Settings): Promise<{ ok: boolean; detail: string }> {
+  try {
+    const message = await complete(settings, [
+      { role: 'user', content: 'Reply with the single word: ok' },
+    ]);
+    return { ok: true, detail: `Connected. Model replied: ${(message.content ?? '').slice(0, 100)}` };
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+}
