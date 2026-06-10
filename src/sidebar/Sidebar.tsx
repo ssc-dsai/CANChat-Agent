@@ -56,6 +56,7 @@ export function Sidebar() {
       port.onMessage.addListener((event: BackgroundEvent) => {
         switch (event.type) {
           case 'full_state':
+            setErrorBanner(null);
             setStatus(event.status);
             setMessages(event.messages);
             setActivities(event.activities);

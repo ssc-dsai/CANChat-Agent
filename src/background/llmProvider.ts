@@ -63,7 +63,9 @@ export async function complete(
       signal,
     });
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
+      throw err;
+    }
     throw new LlmError(
       `Could not reach the model endpoint (${settings.baseUrl}). ` +
         `If the endpoint blocks cross-origin requests, re-save settings to grant the extension access to it. (${String(err)})`,

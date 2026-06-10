@@ -15,6 +15,7 @@ import * as tabContext from './tabContextManager';
 
 const MAX_ITERATIONS = 16;
 const SITES_PROMPT_LIMIT = 25;
+const LLM_TIMEOUT_MS = 120000;
 const SINGLE_TAB_CHARS = 12000;
 const MULTI_TAB_CHARS = 5000;
 
@@ -116,6 +117,7 @@ export class AgentRuntime {
   private pendingApproval: PendingApproval | null = null;
   private authWait: AuthWait | null = null;
   private permissionWait: PermissionWait | null = null;
+  private abortController: AbortController | null = null;
   private activityCounter = 0;
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
@@ -159,13 +161,25 @@ export class AgentRuntime {
     this.running = true;
     this.stopRequested = false;
     this.pauseRequested = false;
+    this.abortController = new AbortController();
 
     try {
       await this.runLoop(text);
     } catch (err) {
-      this.setStatus('error', err instanceof Error ? err.message : String(err));
-      this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+      if (err instanceof DOMException && err.name === 'AbortError' && this.stopRequested) {
+        // User stopped or cleared the task; the abort is expected.
+      } else {
+        const message =
+          err instanceof DOMException && err.name === 'TimeoutError'
+            ? `Model request timed out after ${LLM_TIMEOUT_MS / 1000}s.`
+            : err instanceof Error
+              ? err.message
+              : String(err);
+        this.setStatus('error', message);
+        this.emit({ type: 'error', message });
+      }
     } finally {
+      this.abortController = null;
       this.running = false;
       if (this.status !== 'error') this.setStatus('idle');
     }
@@ -173,6 +187,8 @@ export class AgentRuntime {
 
   stop(): void {
     this.stopRequested = true;
+    // Cancel any in-flight model request so the loop exits its await promptly.
+    this.abortController?.abort();
     if (this.pendingApproval) {
       const pending = this.pendingApproval;
       this.pendingApproval = null;
@@ -289,7 +305,11 @@ export class AgentRuntime {
       if (this.stopRequested) return;
 
       this.setStatus('thinking');
-      const reply = await complete(settings, this.conversation, TOOL_DEFINITIONS);
+      const taskSignal = this.abortController?.signal;
+      const signal = taskSignal
+        ? AbortSignal.any([taskSignal, AbortSignal.timeout(LLM_TIMEOUT_MS)])
+        : AbortSignal.timeout(LLM_TIMEOUT_MS);
+      const reply = await complete(settings, this.conversation, TOOL_DEFINITIONS, signal);
       if (this.stopRequested) return;
 
       if (!reply.tool_calls || reply.tool_calls.length === 0) {
