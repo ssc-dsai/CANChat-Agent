@@ -58,6 +58,45 @@ Bulk-load via **Import JSON**:
 
 Small directories (≤25 entries) are injected directly into the agent's instructions; larger ones are exposed through a `search_known_sites` lookup tool.
 
+### Example data sources
+
+The agent reaches everything through the browser, so any site with a usable web UI — including API explorers and map services — can be registered as a data source. Some useful entries:
+
+**Microsoft Graph** — the agent can't call the Graph REST API directly (no OAuth client), but it can drive [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer), Microsoft's browser UI for the API. Sign in once with your Microsoft 365 account; afterwards the agent can read query results (your mail, calendar, Teams, OneDrive metadata) from the page. If Graph Explorer asks you to sign in mid-task, the agent pauses and waits for you to authenticate, then resumes.
+
+**OpenStreetMap** — the map site and its [Nominatim](https://nominatim.openstreetmap.org) geocoder both have search URLs the agent can deep-link into for place lookups, addresses, and points of interest. [Overpass Turbo](https://overpass-turbo.eu) is useful for structured queries ("all pharmacies in this area") if you're comfortable letting the agent compose Overpass QL.
+
+Import-ready JSON:
+
+```json
+[
+  {
+    "name": "Microsoft Graph Explorer",
+    "url": "https://developer.microsoft.com/en-us/graph/graph-explorer",
+    "description": "Browser UI for the Microsoft Graph API: Microsoft 365 mail, calendar, contacts, Teams, OneDrive. Requires signing in with a Microsoft account; compose REST queries like /me/messages or /me/events in the request field and read the JSON response from the page."
+  },
+  {
+    "name": "OpenStreetMap",
+    "url": "https://www.openstreetmap.org",
+    "description": "Worldwide map data: places, addresses, roads, points of interest.",
+    "searchUrlTemplate": "https://www.openstreetmap.org/search?query={query}"
+  },
+  {
+    "name": "Nominatim (OSM geocoder)",
+    "url": "https://nominatim.openstreetmap.org",
+    "description": "OpenStreetMap geocoding: resolve place names and addresses to locations, with structured detail pages.",
+    "searchUrlTemplate": "https://nominatim.openstreetmap.org/ui/search.html?q={query}"
+  },
+  {
+    "name": "Overpass Turbo",
+    "url": "https://overpass-turbo.eu",
+    "description": "Run structured Overpass QL queries against OpenStreetMap data, e.g. find all features of a type within an area. Results render on a map and as raw data."
+  }
+]
+```
+
+The same pattern works for any browser-accessible source: internal dashboards, wikis, ticketing systems, government open-data portals, package registries. Describe *what data lives there* in the description — that's what the agent matches against when planning.
+
 ## Using it
 
 - **Use current tab** — adds the active tab's content to the agent's context.
