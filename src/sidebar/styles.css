@@ -474,6 +474,27 @@ body {
   font-size: 12px;
 }
 
+/* Memory section */
+.memory-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.memory-toggle input {
+  accent-color: var(--accent);
+}
+
+.memory-disabled {
+  opacity: 0.5;
+}
+
+.memory-text {
+  white-space: normal;
+  color: var(--text);
+}
+
 /* Buttons */
 .btn {
   background: var(--bg-input);

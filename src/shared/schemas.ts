@@ -4,6 +4,55 @@ const tabIdParam = {
   tabId: { type: 'number', description: 'The id of the target tab.' },
 };
 
+/** Only offered to the model when the user has enabled persistent memory. */
+export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'save_memory',
+      description:
+        'Save one durable fact about the user (their work, projects, interests, preferences, ongoing activities) to persistent memory. One fact per call. Never save secrets, credentials, or sensitive page content.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'The fact, plainly stated in third person.' },
+        },
+        required: ['text'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_memory',
+      description: 'Revise an existing memory entry when a fact has changed or needs correction.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The id of the memory entry to update.' },
+          text: { type: 'string', description: 'The corrected fact.' },
+        },
+        required: ['id', 'text'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_memory',
+      description:
+        'Delete a memory entry. Use immediately when the user asks you to forget something, or when an entry is obsolete.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The id of the memory entry to delete.' },
+        },
+        required: ['id'],
+      },
+    },
+  },
+];
+
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',

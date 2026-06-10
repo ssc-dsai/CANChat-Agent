@@ -91,6 +91,14 @@ export interface Skill {
   body: string;
 }
 
+/** One durable fact about the user, kept only when memory is enabled. */
+export interface MemoryEntry {
+  id: string;
+  text: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Settings {
   baseUrl: string;
   apiKey: string;

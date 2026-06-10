@@ -554,7 +554,7 @@ The first version should not attempt to:
 ### MVP Exclusions
 
 - Complex form automation
-- Persistent memory across sessions
+- Persistent memory across sessions (later added post-MVP as an opt-in, off-by-default feature with local-only storage)
 - Enterprise policy management
 - WebMCP discovery or invocation
 - Fine-grained semantic indexing of browsing history

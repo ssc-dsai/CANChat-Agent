@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
 import { KnownSitesSection } from './KnownSitesSection';
+import { MemorySection } from './MemorySection';
 import { SkillsSection } from './SkillsSection';
 
 interface Props {
@@ -152,6 +153,10 @@ export function SettingsScreen({ onClose }: Props) {
         <hr class="settings-divider" />
 
         <SkillsSection />
+
+        <hr class="settings-divider" />
+
+        <MemorySection />
       </div>
     </div>
   );

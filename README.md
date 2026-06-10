@@ -307,6 +307,25 @@ Note how `research` step 1 reaches into the **Known Sites directory** — skills
 
 Deleting the seeded examples is fine — they won't come back (seeding only happens when no skills key exists at all).
 
+## 6½. Memory — what the agent remembers about you
+
+Off by default. When enabled (**Settings → Memory → "Remember things about me"**), the agent keeps a local list of durable facts about you — your work, your interests, what you're doing — and uses them to tailor answers across sessions and across conversations.
+
+**How facts get in:**
+
+- **Automatically** — when a task reveals something durable ("I'm preparing a talk on browser agents"), the agent saves it with its `save_memory` tool. Every save is visible in the tool activity log, so nothing happens silently.
+- **Explicitly** — say "remember that I prefer metric units" and it's saved on the spot.
+- **Manually** — add, edit, or delete entries in Settings, with JSON import/export.
+
+**How facts get out:** say "forget the one about the talk" (the agent calls `delete_memory`), correct it ("I changed teams" → `update_memory`), edit/delete entries in Settings, or **Clear all**.
+
+The mechanics:
+
+- Memory holds at most **100 entries**; past that the agent is told to consolidate before saving more.
+- When the toggle is **off**, the agent doesn't see the entries *and* loses the memory tools entirely — it cannot read or write memory. Existing entries stay stored (grayed out in Settings) until you delete them.
+- The agent is instructed never to store secrets, credentials, or sensitive page content. Since every entry is plain text in Settings, you can audit exactly what it knows at any time.
+- Toggle changes apply from the next task.
+
 ## 7. Permissions and safety
 
 **Host access is granted at install.** The manifest requests `<all_urls>`, so the agent never stalls mid-task on a browser permission prompt. The trade-off is deliberate: enforcement moved from the browser's permission layer to the **application layer**, where it's visible and per-action:
@@ -322,7 +341,7 @@ Deleting the seeded examples is fine — they won't come back (seeding only happ
 |---|---|
 | Model settings (key never synced) | Page content (snapshots live in memory for the session only) |
 | Known Sites and Skills | Conversation history across browser restarts |
-| — | Anything on a server: there is no backend; the only network traffic is to your model endpoint |
+| Memory entries — only if you enable Memory ([§6½](#6½-memory--what-the-agent-remembers-about-you)) | Anything on a server: there is no backend; the only network traffic is to your model endpoint |
 
 ## 8. Troubleshooting
 

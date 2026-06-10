@@ -1,8 +1,12 @@
-import type { Settings, SiteEntry, Skill } from '../shared/types';
+import type { MemoryEntry, Settings, SiteEntry, Skill } from '../shared/types';
 
 const SETTINGS_KEY = 'ba_settings';
 const SITES_KEY = 'ba_sites';
 const SKILLS_KEY = 'ba_skills';
+const MEMORY_KEY = 'ba_memory';
+const MEMORY_ENABLED_KEY = 'ba_memory_enabled';
+
+export const MEMORY_MAX_ENTRIES = 100;
 
 // chrome.storage.local only — the API key must never sync across devices.
 export async function getSettings(): Promise<Settings | null> {
@@ -34,6 +38,25 @@ export async function getSkills(): Promise<Skill[]> {
 
 export async function saveSkills(skills: Skill[]): Promise<void> {
   await chrome.storage.local.set({ [SKILLS_KEY]: skills });
+}
+
+export async function getMemoryEnabled(): Promise<boolean> {
+  const result = await chrome.storage.local.get(MEMORY_ENABLED_KEY);
+  return result[MEMORY_ENABLED_KEY] === true; // off by default
+}
+
+export async function setMemoryEnabled(enabled: boolean): Promise<void> {
+  await chrome.storage.local.set({ [MEMORY_ENABLED_KEY]: enabled });
+}
+
+export async function getMemories(): Promise<MemoryEntry[]> {
+  const result = await chrome.storage.local.get(MEMORY_KEY);
+  const entries = result[MEMORY_KEY];
+  return Array.isArray(entries) ? (entries as MemoryEntry[]) : [];
+}
+
+export async function saveMemories(entries: MemoryEntry[]): Promise<void> {
+  await chrome.storage.local.set({ [MEMORY_KEY]: entries });
 }
 
 /** Seed example skills on first install only (key unset). */

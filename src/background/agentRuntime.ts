@@ -1,5 +1,5 @@
 import type { BackgroundEvent } from '../shared/messages';
-import { TOOL_DEFINITIONS } from '../shared/schemas';
+import { MEMORY_TOOL_DEFINITIONS, TOOL_DEFINITIONS } from '../shared/schemas';
 import type {
   AgentStatus,
   AuthState,
@@ -7,10 +7,18 @@ import type {
   PageContent,
   ToolActivity,
 } from '../shared/types';
-import type { SiteEntry, Skill } from '../shared/types';
+import type { MemoryEntry, SiteEntry, Skill } from '../shared/types';
 import * as browser from './browserToolAdapter';
 import { complete, type LlmMessage, type LlmToolCall } from './llmProvider';
-import { getSettings, getSites, getSkills } from './storage';
+import {
+  getMemories,
+  getMemoryEnabled,
+  getSettings,
+  getSites,
+  getSkills,
+  MEMORY_MAX_ENTRIES,
+  saveMemories,
+} from './storage';
 import * as tabContext from './tabContextManager';
 
 const MAX_ITERATIONS = 16;
@@ -72,6 +80,22 @@ function skillsPromptBlock(skills: Skill[]): string {
   return (
     `\n\nSkills — reusable procedures the user has saved. When a task matches a skill's description, call use_skill with its name and follow the returned instructions. The user can also force one by typing /name:\n` +
     skills.map((s) => `- ${s.name} — ${s.description}`).join('\n')
+  );
+}
+
+function memoryPromptBlock(entries: MemoryEntry[]): string {
+  const guidance =
+    `\n\nMemory — the user has enabled persistent memory on this device. ` +
+    `Save genuinely durable facts about the user (their role, projects, interests, preferences, ongoing work) with save_memory as you learn them — one fact per call. ` +
+    `Never save secrets, credentials, or sensitive page content. ` +
+    `Use update_memory/delete_memory to keep entries current, and honor "forget ..." requests immediately with delete_memory.`;
+  if (entries.length === 0) {
+    return guidance + `\nMemory is currently empty.`;
+  }
+  return (
+    guidance +
+    `\nKnown facts (use them naturally to tailor answers; reference by id when updating):\n` +
+    entries.map((e) => `- [${e.id}] ${e.text}`).join('\n')
   );
 }
 
@@ -306,11 +330,16 @@ export class AgentRuntime {
   private async runLoop(userText: string): Promise<void> {
     const settings = (await getSettings())!;
 
-    // (Re)build the system message each task so directory/skill edits apply immediately.
+    // (Re)build the system message each task so directory/skill/memory edits apply immediately.
+    const memoryEnabled = await getMemoryEnabled();
+    const tools = memoryEnabled ? [...TOOL_DEFINITIONS, ...MEMORY_TOOL_DEFINITIONS] : TOOL_DEFINITIONS;
     const systemMessage: LlmMessage = {
       role: 'system',
       content:
-        SYSTEM_PROMPT + sitesPromptBlock(await getSites()) + skillsPromptBlock(await getSkills()),
+        SYSTEM_PROMPT +
+        sitesPromptBlock(await getSites()) +
+        skillsPromptBlock(await getSkills()) +
+        (memoryEnabled ? memoryPromptBlock(await getMemories()) : ''),
     };
     if (this.conversation.length === 0) {
       this.conversation.push(systemMessage);
@@ -337,7 +366,7 @@ export class AgentRuntime {
       const signal = taskSignal
         ? AbortSignal.any([taskSignal, AbortSignal.timeout(LLM_TIMEOUT_MS)])
         : AbortSignal.timeout(LLM_TIMEOUT_MS);
-      const reply = await complete(settings, this.conversation, TOOL_DEFINITIONS, signal);
+      const reply = await complete(settings, this.conversation, tools, signal);
       if (this.stopRequested) return;
 
       if (!reply.tool_calls || reply.tool_calls.length === 0) {
@@ -432,6 +461,38 @@ export class AgentRuntime {
         return JSON.stringify(await browser.searchWeb(String(args.query)));
       case 'search_known_sites':
         return searchKnownSites(await getSites(), String(args.query));
+      case 'save_memory': {
+        const entries = await getMemories();
+        if (entries.length >= MEMORY_MAX_ENTRIES) {
+          return `Error: memory is full (${MEMORY_MAX_ENTRIES} entries). Consolidate or delete entries before saving more.`;
+        }
+        const now = new Date().toISOString();
+        const entry: MemoryEntry = {
+          id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          text: String(args.text).trim(),
+          createdAt: now,
+          updatedAt: now,
+        };
+        await saveMemories([...entries, entry]);
+        return `Saved memory [${entry.id}]: ${entry.text}`;
+      }
+      case 'update_memory': {
+        const entries = await getMemories();
+        const id = String(args.id);
+        const entry = entries.find((e) => e.id === id);
+        if (!entry) return `Error: no memory entry with id ${id}.`;
+        entry.text = String(args.text).trim();
+        entry.updatedAt = new Date().toISOString();
+        await saveMemories(entries);
+        return `Updated memory [${id}]: ${entry.text}`;
+      }
+      case 'delete_memory': {
+        const entries = await getMemories();
+        const id = String(args.id);
+        if (!entries.some((e) => e.id === id)) return `Error: no memory entry with id ${id}.`;
+        await saveMemories(entries.filter((e) => e.id !== id));
+        return `Deleted memory [${id}].`;
+      }
       case 'use_skill': {
         const skills = await getSkills();
         const wanted = String(args.name).toLowerCase().replace(/^\//, '');
