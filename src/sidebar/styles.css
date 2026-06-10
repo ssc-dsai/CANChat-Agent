@@ -58,33 +58,40 @@ body {
 .header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 10px;
+  padding: 12px;
   border-bottom: 1px solid var(--border);
 }
 
 .title {
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 16px;
   flex: 1;
 }
 
 .status {
-  font-size: 12px;
-  color: var(--text-dim);
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--bg-panel);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: var(--bg-input);
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .status-thinking,
 .status-acting {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
 }
+.status-paused,
 .status-auth_required,
 .status-awaiting_approval {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
   color: var(--warn);
 }
 .status-error {
+  background: color-mix(in srgb, var(--error) 18%, transparent);
   color: var(--error);
 }
 
@@ -93,8 +100,9 @@ body {
   border: none;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 15px;
-  padding: 2px 6px;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 6px;
 }
 .icon-btn:hover:not(:disabled) {
   color: var(--text);
