@@ -8,17 +8,32 @@ interface Props {
   status: AgentStatus;
   approval: { requestId: string; description: string } | null;
   authNotice: { origin: string; message: string } | null;
+  permissionNotice: { origin: string; message: string } | null;
   send: (command: SidebarCommand) => void;
   disabled: boolean;
 }
 
-export function ChatPanel({ messages, status, approval, authNotice, send, disabled }: Props) {
+export function ChatPanel({
+  messages,
+  status,
+  approval,
+  authNotice,
+  permissionNotice,
+  send,
+  disabled,
+}: Props) {
   const [input, setInput] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, approval, authNotice]);
+  }, [messages, approval, authNotice, permissionNotice]);
+
+  // Permission requests must run in a user-gesture handler in an extension page.
+  const grant = async (origins: string[]) => {
+    const granted = await chrome.permissions.request({ origins });
+    if (granted) send({ type: 'resume_agent' });
+  };
 
   const busy = status === 'thinking' || status === 'acting' || status === 'awaiting_approval' || status === 'auth_required';
 
@@ -50,6 +65,26 @@ export function ChatPanel({ messages, status, approval, authNotice, send, disabl
             <div class="prompt-actions">
               <button class="btn btn-primary" onClick={() => send({ type: 'resume_agent' })}>
                 Resume
+              </button>
+              <button class="btn" onClick={() => send({ type: 'stop_task' })}>
+                Stop task
+              </button>
+            </div>
+          </div>
+        )}
+
+        {permissionNotice && (
+          <div class="prompt-card">
+            <div>{permissionNotice.message}</div>
+            <div class="prompt-actions">
+              <button
+                class="btn btn-primary"
+                onClick={() => grant([permissionNotice.origin + '/*'])}
+              >
+                Allow this site
+              </button>
+              <button class="btn" onClick={() => grant(['<all_urls>'])}>
+                Allow all sites
               </button>
               <button class="btn" onClick={() => send({ type: 'stop_task' })}>
                 Stop task

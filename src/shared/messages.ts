@@ -26,6 +26,7 @@ export type BackgroundEvent =
   | { type: 'tool_activity'; activity: ToolActivity }
   | { type: 'approval_request'; requestId: string; description: string }
   | { type: 'auth_required'; origin: string; message: string }
+  | { type: 'permission_required'; origin: string; message: string }
   | { type: 'context_update'; summary: TabContextSummary | null }
   | { type: 'error'; message: string }
   | {
@@ -36,6 +37,7 @@ export type BackgroundEvent =
       context: TabContextSummary | null;
       pendingApproval: { requestId: string; description: string } | null;
       authNotice: { origin: string; message: string } | null;
+      permissionNotice: { origin: string; message: string } | null;
     };
 
 /** One-shot messages handled by chrome.runtime.onMessage. */

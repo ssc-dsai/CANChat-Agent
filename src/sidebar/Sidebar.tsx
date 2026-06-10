@@ -30,6 +30,7 @@ export function Sidebar() {
   const [context, setContext] = useState<TabContextSummary | null>(null);
   const [approval, setApproval] = useState<{ requestId: string; description: string } | null>(null);
   const [authNotice, setAuthNotice] = useState<{ origin: string; message: string } | null>(null);
+  const [permissionNotice, setPermissionNotice] = useState<{ origin: string; message: string } | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -61,6 +62,7 @@ export function Sidebar() {
             setContext(event.context);
             setApproval(event.pendingApproval);
             setAuthNotice(event.authNotice);
+            setPermissionNotice(event.permissionNotice);
             break;
           case 'chat_message':
             setMessages((m) => [...m, event.message]);
@@ -68,7 +70,10 @@ export function Sidebar() {
           case 'status':
             setStatus(event.status);
             if (event.status !== 'auth_required') setAuthNotice(null);
-            if (event.status !== 'awaiting_approval') setApproval(null);
+            if (event.status !== 'awaiting_approval') {
+              setApproval(null);
+              setPermissionNotice(null);
+            }
             break;
           case 'tool_activity':
             setActivities((a) => {
@@ -86,6 +91,9 @@ export function Sidebar() {
             break;
           case 'auth_required':
             setAuthNotice(event.origin ? { origin: event.origin, message: event.message } : null);
+            break;
+          case 'permission_required':
+            setPermissionNotice(event.origin ? { origin: event.origin, message: event.message } : null);
             break;
           case 'context_update':
             setContext(event.summary);
@@ -147,6 +155,7 @@ export function Sidebar() {
         status={status}
         approval={approval}
         authNotice={authNotice}
+        permissionNotice={permissionNotice}
         send={send}
         disabled={configured === false}
       />

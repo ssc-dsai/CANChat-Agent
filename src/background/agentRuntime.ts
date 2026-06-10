@@ -98,6 +98,12 @@ interface AuthWait {
   resolve: () => void;
 }
 
+interface PermissionWait {
+  origin: string;
+  message: string;
+  resolve: () => void;
+}
+
 export class AgentRuntime {
   private conversation: LlmMessage[] = [];
   private messages: ChatMessageView[] = [];
@@ -109,6 +115,7 @@ export class AgentRuntime {
   private pauseWaiter: (() => void) | null = null;
   private pendingApproval: PendingApproval | null = null;
   private authWait: AuthWait | null = null;
+  private permissionWait: PermissionWait | null = null;
   private activityCounter = 0;
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
@@ -126,6 +133,9 @@ export class AgentRuntime {
         ? { requestId: this.pendingApproval.requestId, description: this.pendingApproval.description }
         : null,
       authNotice: this.authWait ? { origin: this.authWait.origin, message: this.authWait.message } : null,
+      permissionNotice: this.permissionWait
+        ? { origin: this.permissionWait.origin, message: this.permissionWait.message }
+        : null,
     };
   }
 
@@ -173,6 +183,11 @@ export class AgentRuntime {
       this.authWait = null;
       wait.resolve();
     }
+    if (this.permissionWait) {
+      const wait = this.permissionWait;
+      this.permissionWait = null;
+      wait.resolve();
+    }
     if (this.pauseWaiter) {
       const w = this.pauseWaiter;
       this.pauseWaiter = null;
@@ -190,6 +205,13 @@ export class AgentRuntime {
       const wait = this.authWait;
       this.authWait = null;
       this.emit({ type: 'auth_required', origin: '', message: '' });
+      wait.resolve();
+      return;
+    }
+    if (this.permissionWait) {
+      const wait = this.permissionWait;
+      this.permissionWait = null;
+      this.emit({ type: 'permission_required', origin: '', message: '' });
       wait.resolve();
       return;
     }
@@ -333,7 +355,12 @@ export class AgentRuntime {
       case 'get_active_tab':
         return JSON.stringify(await browser.getActiveTab());
       case 'get_tab_content': {
-        const content = await browser.getTabContent(tabId);
+        let content = await browser.getTabContent(tabId);
+        if (content.extractionStatus === 'blocked' && content.metadata['ba:origin']) {
+          // Pause so the user can grant access from the sidebar, then retry once.
+          await this.pauseForPermission(content.metadata['ba:origin']);
+          if (!this.stopRequested) content = await browser.getTabContent(tabId);
+        }
         await this.pauseIfAuthRequired(content);
         return this.serializeContent(content, SINGLE_TAB_CHARS);
       }
@@ -396,6 +423,21 @@ export class AgentRuntime {
     });
     if (!this.stopRequested) {
       this.notice('Resumed. Re-checking the page…');
+      this.setStatus('acting');
+    }
+  }
+
+  private async pauseForPermission(origin: string): Promise<void> {
+    if (this.stopRequested) return;
+    const message = `CANAgent needs access to ${origin.replace(/^https?:\/\//, '')} to read this page. Allow it to continue.`;
+    this.setStatus('awaiting_approval', message);
+    this.emit({ type: 'permission_required', origin, message });
+    this.notice(message);
+    await new Promise<void>((resolve) => {
+      this.permissionWait = { origin, message, resolve };
+    });
+    if (!this.stopRequested) {
+      this.notice('Access granted. Retrying…');
       this.setStatus('acting');
     }
   }

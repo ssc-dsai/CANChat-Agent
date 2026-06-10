@@ -104,6 +104,7 @@ The same pattern works for any browser-accessible source: internal dashboards, w
 - **Refresh** — re-extracts the current context; tabs older than 5 minutes are marked stale.
 - Ask anything in the chat. The agent decides whether to answer from knowledge or use browser tools (search, navigate, read tabs), and shows each tool call in the **Tool activity** log.
 - If a task hits a login wall, the agent pauses with a notice; sign in in the browser and click **Resume**.
+- If the agent opens a page it doesn't have permission to read (e.g. search results), it pauses and the sidebar offers **Allow this site** / **Allow all sites** inline; granting resumes the task automatically.
 - Clicks, form fills, submissions, and all-tab reads require your approval in the sidebar before they run.
 
 ## Architecture

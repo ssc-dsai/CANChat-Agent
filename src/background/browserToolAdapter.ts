@@ -99,7 +99,7 @@ export async function getTabContent(tabId: number): Promise<PageContent> {
     const status = /Cannot access|cannot be scripted|permission/i.test(message)
       ? 'blocked'
       : 'unsupported';
-    return emptyContent(
+    const content = emptyContent(
       tabId,
       url,
       title,
@@ -108,6 +108,15 @@ export async function getTabContent(tabId: number): Promise<PageContent> {
         ? 'No permission to read this tab. The user can grant access with "Use all tabs" or "Allow this site".'
         : `Extraction failed: ${message}`,
     );
+    if (status === 'blocked') {
+      // Lets the runtime pause and ask the user to grant this origin inline.
+      try {
+        content.metadata['ba:origin'] = new URL(url).origin;
+      } catch {
+        // No usable origin; the model gets the blocked note as-is.
+      }
+    }
+    return content;
   }
 }
 
