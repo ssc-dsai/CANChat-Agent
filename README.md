@@ -1,10 +1,43 @@
-# CANAgent — Chromium Browser Agent Extension
+# CANAgent — User Manual
 
-A Manifest V3 Chrome extension that runs an agent loop inside the browser. The agent uses the browser as its tool environment: it reads the current page, synthesizes across open tabs, searches and navigates with the browser's default search engine, detects login walls and pauses until you authenticate, and gates every state-changing action behind explicit approval.
+CANAgent is a Chromium extension that puts an AI agent in your browser's side panel and gives it **the browser itself as its toolset**. Instead of calling external APIs, the agent does what you would do: it opens tabs, runs searches through your default search engine, reads pages (including pages behind your existing logins), and synthesizes answers — pausing for your approval before anything state-changing, and pausing for you whenever a site wants a login.
 
-Built per [browser_agent_extension_spec.md](browser_agent_extension_spec.md) with TypeScript, Preact, and Vite.
+You bring your own model: any OpenAI-compatible endpoint works, from OpenAI's API to a local Ollama instance. Nothing ships preconfigured and your API key never leaves your machine.
 
-## Build
+---
+
+## Table of contents
+
+1. [How it works](#1-how-it-works)
+2. [Installation](#2-installation)
+3. [Connecting a model](#3-connecting-a-model)
+4. [A tour of the sidebar](#4-a-tour-of-the-sidebar)
+5. [Known Sites — the agent's address book](#5-known-sites--the-agents-address-book)
+6. [Skills — reusable procedures](#6-skills--reusable-procedures)
+7. [Permissions and safety](#7-permissions-and-safety)
+8. [Troubleshooting](#8-troubleshooting)
+9. [Development](#9-development)
+
+---
+
+## 1. How it works
+
+When you send a message, the agent runs a loop of up to 16 steps:
+
+1. **Classify** — can this be answered from model knowledge alone, or does it need the browser? General, stable questions get direct answers. Anything about *your* pages, tabs, recent events, or specific sites triggers browser use.
+2. **Act** — the agent picks from 14 browser tools (listed in [§4.5](#45-the-tool-activity-log)): listing tabs, reading page content, navigating, searching, checking login state, and so on.
+3. **Observe** — tool results (extracted page text, tab lists, navigation outcomes) feed back into the loop.
+4. **Repeat** until it has enough to answer, then it replies in the chat with markdown formatting and a **source citation list** linking every page it drew on.
+
+Three principles shape the design:
+
+- **Browser-first.** If the browser can do it, the agent does it through the browser — searches use your default search engine in a real tab, not a search API; site data comes from the rendered page, not a scraper. This means the agent sees exactly what you would see, with your sessions and your cookies.
+- **Read-only by default.** Reading pages is free; *changing* anything (clicking buttons, filling forms, submitting) always stops and asks you first. So does reading all your tabs at once.
+- **Pause, don't fail.** When a task hits a login wall or a missing permission, the agent doesn't abandon the task — it pauses, tells you what it needs, and resumes where it left off once you've acted.
+
+If a question refers to "the page" or "this article" without saying which, the agent assumes you mean the currently active tab.
+
+## 2. Installation
 
 Toolchain is managed with [mise](https://mise.jdx.dev) (Node is pinned in `mise.toml`):
 
@@ -16,64 +49,155 @@ mise run build     # outputs to dist/
 
 Plain `npm install && npm run build` also works if you already have Node 26.
 
-## Load in Chrome
+Then load it in Chrome (or any Chromium browser):
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode** (top right).
 3. Click **Load unpacked** and select the `dist/` folder.
-4. Click the extension's toolbar icon to open the side panel.
+4. Click the CANAgent toolbar icon to open the side panel.
 
-## Configure a model
+After any rebuild, click the reload icon on the extension card in `chrome://extensions`.
 
-The extension ships with no provider or key. Click the gear icon in the sidebar and enter:
+## 3. Connecting a model
 
-- **Endpoint base URL** — any OpenAI-compatible endpoint, e.g. `https://api.openai.com/v1`, a local server (`http://localhost:11434/v1` for Ollama), or an enterprise gateway.
-- **API key** — stored in `chrome.storage.local` only; never synced.
-- **Model** — the model name the endpoint expects.
+CANAgent ships with no provider, no key, and no model. Until you configure one, the sidebar shows a "No model configured" banner and the agent refuses to run.
 
-Use **Test connection** before saving. Saving also asks for host permission on the endpoint origin so background requests aren't blocked by CORS.
+Click the **⚙ gear icon** in the sidebar header and fill in:
 
-## Known sites
+| Field | What it is | Examples |
+|---|---|---|
+| **Endpoint base URL** | Any OpenAI-compatible `/v1` base | `https://api.openai.com/v1` · `http://localhost:11434/v1` (Ollama) · `http://localhost:1234/v1` (LM Studio) · an enterprise gateway |
+| **API key** | Bearer token for the endpoint | Local servers usually accept any non-empty string |
+| **Model** | Model name as the endpoint knows it | `gpt-4o`, `llama3.1`, etc. |
+| **Temperature / Max tokens** | Optional request parameters | Leave blank for endpoint defaults |
 
-For multi-step tasks, preload the agent with a directory of sites worth checking. In **Settings → Known sites**, add entries with a name, URL, and a description of what data lives there; the agent consults the directory before falling back to a generic web search. An optional **search URL template** with a `{query}` placeholder lets the agent deep-link straight into a site's search results.
+Click **Test connection** before saving — it sends a one-word prompt and shows you the reply or the exact error.
 
-Bulk-load via **Import JSON**:
+Notes:
+
+- The key is stored in `chrome.storage.local` **on this device only**; it is never synced to other machines, and never sent anywhere except the endpoint you configured.
+- The model needs to support **tool calling** (OpenAI `tools`/`function` format). Models without tool support can chat but can't drive the browser.
+- Every model request times out after **120 seconds**, so a hung endpoint can never freeze a task permanently.
+
+## 4. A tour of the sidebar
+
+### 4.1 Header
+
+**CANAgent · status pill · 🗑 · ⚙**
+
+The status pill is color-coded: neutral **Idle**, blue **Thinking…/Using browser…**, amber **Paused / Waiting for approval / Login required**, red **Error**.
+
+- **🗑 Clear conversation** — stops any running task (aborting in-flight model requests), wipes the chat, the agent's conversation memory, and the tool log. Use it to start fresh; the agent's context (and your token spend) otherwise grows with every exchange.
+- **⚙ Settings** — model configuration, Known Sites, and Skills.
+
+### 4.2 Tab context panel
+
+The row of buttons under the header controls what page content is handed to the agent *up front* (the agent can also fetch tabs itself mid-task with its tools):
+
+- **Use current tab** — snapshots the active tab's content into context.
+- **Use all tabs** — snapshots every open tab (you'll be asked to approve all-tab reads during tasks).
+- **Refresh** — re-extracts whatever is currently in context.
+
+Each tab in context is listed with a status dot — green (readable), amber (login required), red (blocked or unreadable, e.g. `chrome://` pages) — and a **stale** tag once a snapshot is older than 5 minutes. Stale context isn't deleted; the agent is told it may be out of date and re-fetches when freshness matters.
+
+### 4.3 Chat
+
+- Assistant answers render full **markdown** — headings, lists, tables, code, links (links open in a new tab).
+- Answers that drew on web pages end with a **Source tabs** block — smaller bold text under a divider, each source a numbered clickable link with its full URL.
+- Every assistant message has a **⧉ Copy** button that copies the raw markdown.
+- **Send / Pause / Stop** — Pause halts the loop between steps; Stop aborts the task, including any in-flight model request.
+- Typing `/` shows your matching **skill** names as clickable chips (see [§6](#6-skills--reusable-procedures)).
+
+### 4.4 Inline cards
+
+Three kinds of amber cards appear in the chat when the agent needs you:
+
+| Card | When | Your options |
+|---|---|---|
+| **Approve action?** | The agent wants to do something state-changing: click, type into a field, submit a form, or read all tabs | Approve / Deny — a denial is reported to the agent, which continues without it |
+| **Authentication required** | A page redirected to login (detected via URL patterns, password fields, sign-in text, known identity providers) | Sign in to the site in the browser as usual, then **Resume** — the agent re-checks and continues |
+| **Needs access to \<site\>** | You've manually restricted the extension's site access and the agent opened a page it can't read | **Allow this site** / **Allow all sites** / Stop — granting resumes and retries automatically |
+
+### 4.5 The tool activity log
+
+The collapsible **Tool activity** bar at the bottom shows every tool call with a status icon (… running, ✓ ok, ✗ error, ⊘ denied). Hover an entry to see the arguments. The agent's full toolset:
+
+| Tool | What it does | Approval? |
+|---|---|---|
+| `list_tabs` | List all open tabs (id, title, URL) | – |
+| `get_active_tab` | Identify the focused tab | – |
+| `get_tab_content` | Extract a tab's readable text, headings, links, metadata | – |
+| `get_all_tab_contents` | Extract every open tab | **Yes** |
+| `navigate` | Point a tab at a URL and wait for load | – |
+| `search_web` | Search via your default search engine in a new tab | – |
+| `search_known_sites` | Look up your Known Sites directory ([§5](#5-known-sites--the-agents-address-book)) | – |
+| `use_skill` | Load a skill's full instructions ([§6](#6-skills--reusable-procedures)) | – |
+| `get_element_map` | List a page's interactive elements with stable reference ids | – |
+| `click_element` | Click an element | **Yes** |
+| `fill_input` | Type into a field | **Yes** |
+| `submit_form` | Submit a form | **Yes** |
+| `wait_for_page_state` | Wait for a tab to finish loading | – |
+| `detect_auth_state` | Check whether a page is behind a login | – |
+
+## 5. Known Sites — the agent's address book
+
+### 5.1 What it is and why
+
+An agent that doesn't know where your data lives wastes its steps on generic web searches — or worse, confidently reads the wrong site. Known Sites is a small, user-curated **directory of places worth checking**, with descriptions of what data lives at each. Before reaching for a web search, the agent consults this directory; when an entry matches the task, it navigates straight there.
+
+This is what makes **multi-step tasks** practical. "Check whether any bug filed this week is mentioned in the runbook wiki" requires the agent to know what "the bug tracker" and "the runbook wiki" *are*. With both in the directory, that request becomes two precise navigations instead of guesswork.
+
+Because the agent browses with *your* browser session, directory entries can point at private, authenticated systems — your Jira, your intranet wiki, your cloud console. If the site asks for login mid-task, the auth pause ([§4.4](#44-inline-cards)) kicks in and the task continues after you sign in.
+
+### 5.2 Anatomy of an entry
+
+| Field | Role |
+|---|---|
+| **Name** | Short label, used in citations and skill references — "Team Jira" |
+| **URL** | Where the agent navigates — the site's front door or the most useful landing page |
+| **Description** | **The matching surface.** The agent decides whether a site is relevant by reading this. Write it as *what data lives here*, not what the site is. |
+| **Search URL template** *(optional)* | A deep-link with a `{query}` placeholder. When present, the agent substitutes a URL-encoded query and jumps **directly to results**, skipping the site's homepage and search box entirely. |
+
+Description quality decides whether the directory works. Compare:
+
+> ❌ "Our Jira instance."
+>
+> ✅ "Engineering tickets, sprint boards, and bug reports for the platform team. Ticket IDs look like PLAT-1234."
+
+The second one matches questions about tickets, sprints, bugs, *and* lets the agent recognize a ticket ID in your question and know where it resolves.
+
+Search templates are the biggest reliability upgrade for sites you query often. Working a site's search UI takes the agent several steps (find the box, fill it, submit, wait); a template makes it one `navigate`:
+
+```text
+https://en.wikipedia.org/w/index.php?search={query}
+https://jira.example.com/issues/?jql=text~%22{query}%22
+https://wiki.internal.example.com/search?q={query}
+```
+
+### 5.3 How the agent consumes the directory
+
+- **25 entries or fewer:** the whole directory (names, URLs, descriptions, templates) is included in the agent's instructions for every task — zero lookups needed; the agent plans with it from the first step.
+- **More than 25:** the instructions just announce that a directory of N sites exists, and the agent queries it with the `search_known_sites` tool — a local keyword match over names, descriptions, and URLs returning the 10 best hits. Nothing leaves your machine.
+- Edits apply from the **next task** — no reload required.
+
+### 5.4 Managing entries
+
+**Settings → Known sites**: add, edit (✎), and delete (✕) entries, with **Import JSON** / **Export JSON** for bulk loading and sharing. Import merges by name — an imported entry replaces an existing entry with the same name, everything else is appended.
+
+A starter set showing the range — an authenticated work system, an API explorer, and public data services:
 
 ```json
 [
   {
     "name": "Team Jira",
     "url": "https://jira.example.com",
-    "description": "Engineering tickets, sprints, and bug reports",
+    "description": "Engineering tickets, sprint boards, and bug reports for the platform team.",
     "searchUrlTemplate": "https://jira.example.com/issues/?jql=text~%22{query}%22"
   },
   {
-    "name": "Wikipedia",
-    "url": "https://en.wikipedia.org",
-    "description": "General reference encyclopedia",
-    "searchUrlTemplate": "https://en.wikipedia.org/w/index.php?search={query}"
-  }
-]
-```
-
-Small directories (≤25 entries) are injected directly into the agent's instructions; larger ones are exposed through a `search_known_sites` lookup tool.
-
-### Example data sources
-
-The agent reaches everything through the browser, so any site with a usable web UI — including API explorers and map services — can be registered as a data source. Some useful entries:
-
-**Microsoft Graph** — the agent can't call the Graph REST API directly (no OAuth client), but it can drive [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer), Microsoft's browser UI for the API. Sign in once with your Microsoft 365 account; afterwards the agent can read query results (your mail, calendar, Teams, OneDrive metadata) from the page. If Graph Explorer asks you to sign in mid-task, the agent pauses and waits for you to authenticate, then resumes.
-
-**OpenStreetMap** — the map site and its [Nominatim](https://nominatim.openstreetmap.org) geocoder both have search URLs the agent can deep-link into for place lookups, addresses, and points of interest. [Overpass Turbo](https://overpass-turbo.eu) is useful for structured queries ("all pharmacies in this area") if you're comfortable letting the agent compose Overpass QL.
-
-Import-ready JSON:
-
-```json
-[
-  {
     "name": "Microsoft Graph Explorer",
     "url": "https://developer.microsoft.com/en-us/graph/graph-explorer",
-    "description": "Browser UI for the Microsoft Graph API: Microsoft 365 mail, calendar, contacts, Teams, OneDrive. Requires signing in with a Microsoft account; compose REST queries like /me/messages or /me/events in the request field and read the JSON response from the page."
+    "description": "Browser UI for the Microsoft Graph API: Microsoft 365 mail, calendar, contacts, Teams, OneDrive. Requires signing in with a Microsoft account; compose REST queries like /me/messages and read the JSON response from the page."
   },
   {
     "name": "OpenStreetMap",
@@ -84,74 +208,171 @@ Import-ready JSON:
   {
     "name": "Nominatim (OSM geocoder)",
     "url": "https://nominatim.openstreetmap.org",
-    "description": "OpenStreetMap geocoding: resolve place names and addresses to locations, with structured detail pages.",
+    "description": "OpenStreetMap geocoding: resolve place names and addresses to locations.",
     "searchUrlTemplate": "https://nominatim.openstreetmap.org/ui/search.html?q={query}"
   },
   {
     "name": "Overpass Turbo",
     "url": "https://overpass-turbo.eu",
-    "description": "Run structured Overpass QL queries against OpenStreetMap data, e.g. find all features of a type within an area. Results render on a map and as raw data."
+    "description": "Structured Overpass QL queries against OpenStreetMap data, e.g. all features of a type within an area."
   }
 ]
 ```
 
-The same pattern works for any browser-accessible source: internal dashboards, wikis, ticketing systems, government open-data portals, package registries. Describe *what data lives there* in the description — that's what the agent matches against when planning.
+The same pattern extends to anything with a web UI: dashboards, wikis, ticketing systems, government open-data portals, package registries, internal admin consoles.
 
-## Skills
+## 6. Skills — reusable procedures
 
-Skills are reusable procedures the agent can apply to tasks, modeled on Claude Code's skills. Each skill has a **name** (lowercase-kebab), a one-line **description**, and a markdown **body** of instructions. Manage them in **Settings → Skills** (add/edit/delete, plus JSON import/export); two editable examples (`summarize-tabs`, `research`) are seeded on install.
+### 6.1 What they are and why
 
-Two ways a skill runs:
+Some tasks you run once; others you run every week with the same shape: *triage the new tickets*, *summarize what's in my tabs*, *research X properly across multiple sources*. Without skills, you re-type the procedure each time and get slightly different behavior each time.
 
-- **Automatically** — the agent sees every skill's name and description; when a task matches, it loads the full instructions via its `use_skill` tool and follows them.
-- **Explicitly** — type `/name` in the chat (e.g. `/research best fish tacos in Toronto`). Matching skill names are suggested above the input as you type.
+A **skill** is a named, saved procedure — modeled on Claude Code's skills. It has three parts:
 
-Import format:
+| Part | Role |
+|---|---|
+| **Name** | A lowercase-kebab slug (`jira-triage`). Doubles as its slash command: `/jira-triage`. |
+| **Description** | One line stating *when this skill applies*. Like a known site's description, this is the matching surface the model sees. |
+| **Body** | The full instructions in markdown — typically numbered steps that name actual tools and describe the expected output format. |
+
+### 6.2 Progressive disclosure — how skills stay cheap
+
+Skill bodies can be long; sending all of them with every message would bloat each request. CANAgent uses the same trick Claude Code does:
+
+- The model **always** sees the skill *names and descriptions* — a few tokens each, in every task's instructions.
+- A skill's *body* is loaded **only when needed**, via the `use_skill` tool. The model reads "research — research a question on the web…", decides it matches your request, calls `use_skill("research")`, gets the full procedure back as a tool result, and follows it.
+
+You'll see the `use_skill` call in the tool activity log whenever a skill fires — that's your signal a saved procedure is steering the task.
+
+### 6.3 Two ways to trigger a skill
+
+1. **Automatic** — describe the task naturally ("can you summarize everything I have open?") and the model matches it against skill descriptions, loading one if it fits. Trigger quality depends on the description: "Synthesize the content of all open tabs into a structured summary" matches a lot of phrasings; "tab helper" matches nothing reliably.
+2. **Explicit** — type `/name` plus any input: `/research best static site generators 2026`. This *forces* the skill: its body is spliced into the task before the model sees it, so there's no matching step to go wrong. The chat shows exactly what you typed; matching names appear as clickable chips above the input as you type. An unknown `/name` returns the list of available skills without starting a task (or spending tokens).
+
+### 6.4 The seeded examples, as authoring models
+
+Two editable skills ship on first install. They're deliberately written the way good skills should be — numbered steps, real tool names, explicit output format:
+
+**`summarize-tabs`** — *Synthesize the content of all open tabs into a structured summary.*
+
+```text
+1. Call list_tabs to enumerate open tabs.
+2. Call get_all_tab_contents (the user will be asked to approve).
+3. Group what you find:
+   - Common themes appearing across multiple tabs.
+   - Unique findings per tab worth knowing.
+   - Inaccessible tabs (blocked, auth-required, or browser-internal) listed briefly.
+4. Keep the summary scannable: short sections, bullets, no filler.
+5. End with the standard "Source tabs:" citation list with URLs.
+```
+
+**`research`** — *Research a question on the web: search, read multiple sources, cross-check, and cite.*
+
+```text
+1. If a known site from the directory plausibly covers the topic, start there;
+   otherwise call search_web with a focused query.
+2. Read the results page with get_tab_content and pick the 2-3 most credible,
+   relevant results.
+3. Navigate to each and extract the relevant facts.
+4. Cross-check: note where sources agree and disagree. Do not present a single
+   source as settled fact.
+5. If results are thin, refine the query once and search again before giving up.
+6. Answer concisely, flag uncertainty explicitly, and end with the
+   "Source tabs:" citation list with URLs.
+```
+
+Note how `research` step 1 reaches into the **Known Sites directory** — skills and the directory compose. A `jira-triage` skill doesn't need to hardcode your Jira URL; it can say "open the Team Jira board from the known sites" and stay valid even when the URL changes.
+
+### 6.5 Authoring guidance
+
+- **Write the body as numbered steps naming real tools** (`navigate`, `get_tab_content`, `search_web`, `get_element_map`…). The model follows concrete procedures far more reliably than vibes.
+- **Make the description trigger-shaped**: it should read like the requests that ought to activate it.
+- **Specify the output format** — a table, a grouped list, a tone. This is what makes recurring runs consistent.
+- **Don't fight the safety model**: a skill can include click/fill/submit steps, but each such action still requires your approval at run time. Skills change *what the agent tries*, never *what it's allowed to do silently*.
+- Keep one skill per workflow; compose by referencing known sites rather than duplicating URLs across skills.
+
+### 6.6 Managing skills
+
+**Settings → Skills**: the same management model as Known Sites — add/edit/delete, **Import JSON** / **Export JSON**, merge-by-name on import. Names must be lowercase-kebab and unique.
 
 ```json
 [
   {
     "name": "jira-triage",
-    "description": "Triage new Jira tickets and produce a priority report",
-    "body": "1. Navigate to the team board ...\n2. Extract tickets created this week ...\n3. Format as a table with priority recommendations."
+    "description": "Triage this week's new Jira tickets and produce a priority report",
+    "body": "1. Open the Team Jira board from the known sites directory.\n2. Extract tickets created in the last 7 days with get_tab_content.\n3. Classify each as P1/P2/P3 with a one-line rationale.\n4. Output a table: ticket id (linked), title, priority, rationale.\n5. End with the Source tabs citation list."
   }
 ]
 ```
 
-## Using it
+Deleting the seeded examples is fine — they won't come back (seeding only happens when no skills key exists at all).
 
-- **Use current tab** — adds the active tab's content to the agent's context.
-- **Use all tabs** — snapshots every open tab (reading them during a task still requires per-task approval).
-- **Refresh** — re-extracts the current context; tabs older than 5 minutes are marked stale.
-- Ask anything in the chat. The agent decides whether to answer from knowledge or use browser tools (search, navigate, read tabs), and shows each tool call in the **Tool activity** log.
-- If a task hits a login wall, the agent pauses with a notice; sign in in the browser and click **Resume**.
-- If the agent opens a page it doesn't have permission to read (e.g. search results), it pauses and the sidebar offers **Allow this site** / **Allow all sites** inline; granting resumes the task automatically.
-- Clicks, form fills, submissions, and all-tab reads require your approval in the sidebar before they run.
+## 7. Permissions and safety
 
-## Architecture
+**Host access is granted at install.** The manifest requests `<all_urls>`, so the agent never stalls mid-task on a browser permission prompt. The trade-off is deliberate: enforcement moved from the browser's permission layer to the **application layer**, where it's visible and per-action:
 
+- **Always asks first:** reading all tabs at once, clicking anything, typing into any field, submitting any form. Each request appears as an approval card naming the exact element and tab.
+- **Read-only default:** everything else the agent does is observation.
+- **Auth pause:** the agent never tries to get around a login — it detects login walls (URL patterns, password fields, sign-in text, known identity providers like Okta/Auth0/Microsoft/Google/Atlassian) and waits for you.
+- **Fallback re-grant card:** if you restrict the extension's site access manually (`chrome://extensions` → CANAgent → Details → Site access), the agent pauses with an inline **Allow this site / Allow all sites** card instead of failing.
+
+**What's stored, what isn't:**
+
+| Stored locally | Never stored |
+|---|---|
+| Model settings (key never synced) | Page content (snapshots live in memory for the session only) |
+| Known Sites and Skills | Conversation history across browser restarts |
+| — | Anything on a server: there is no backend; the only network traffic is to your model endpoint |
+
+## 8. Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| "No model configured" banner | Open ⚙ Settings, fill in endpoint/key/model, **Test connection**, Save. |
+| "Could not reach the model endpoint" | Endpoint down or unreachable. For local servers, confirm the port and that the server allows requests (Ollama: `OLLAMA_ORIGINS` may need setting). |
+| "Model request timed out after 120s" | The endpoint accepted the request but never answered — typical of an overloaded local model. Try a smaller model or raise max tokens limits server-side. |
+| Task seems stuck | **Stop** aborts the current step including in-flight model requests; 🗑 clears everything. Both always return control. |
+| A tab shows **blocked** / **unsupported** | `blocked` = site access restricted (the inline card or "Allow this site" fixes it); `unsupported` = the browser won't let any extension read it (`chrome://` pages, Web Store, some PDFs). |
+| Agent answers without using the browser when it should | Say so explicitly ("check my open tabs", "search the web for…"), add the site to Known Sites, or write a skill that names the tools to use. |
+| Long task dies when the sidebar closes | The background service worker is kept alive by the open sidebar. Keep the panel open during long tasks. |
+| Skill didn't auto-trigger | Sharpen its description (see [§6.3](#63-two-ways-to-trigger-a-skill)) or force it with `/name`. |
+
+## 9. Development
+
+```text
+extension/
+  public/manifest.json        MV3 manifest (sidePanel, tabs, scripting, search, <all_urls>)
+  sidebar.html                Side panel page
+  src/
+    sidebar/                  Preact UI
+      Sidebar.tsx             Layout, port connection, event routing
+      ChatPanel.tsx           Chat, approval/auth/permission cards, skill hints, citations
+      TabContextPanel.tsx     Context buttons and tab list
+      ToolActivityPanel.tsx   Tool log
+      SettingsScreen.tsx      Model config overlay
+      KnownSitesSection.tsx   Known Sites manager
+      SkillsSection.tsx       Skills manager
+      Markdown.tsx            Sanitized markdown renderer (marked + DOMPurify)
+    background/               Service worker
+      serviceWorker.ts        Port hub, message routing, skill seeding
+      agentRuntime.ts         Agent loop, approvals, pauses, prompt assembly
+      browserToolAdapter.ts   The 14 browser tools
+      tabContextManager.ts    Context snapshots and staleness
+      authDetector.ts         Multi-signal login detection
+      llmProvider.ts          OpenAI-compatible client (abortable, 120s timeout)
+      storage.ts              Settings, sites, skills persistence
+    content/                  Injected on demand
+      contentScript.ts        Message handler (extract / element map / act)
+      domExtractor.ts         Structured extraction + element refs
+      readabilityExtractor.ts Main-content heuristics
+    shared/                   Types, message protocol, tool schemas
 ```
-src/
-  sidebar/      Preact UI: chat, tab context, tool activity, settings overlay
-  background/   Service worker: agent runtime, browser tool adapter,
-                tab context manager, auth detector, LLM provider, storage
-  content/      Injected on demand: readability-style extraction, element map,
-                gated click/fill/submit actions
-  shared/       Types, message protocol, tool schemas
-```
 
-Key behaviours:
-
-- **Full host access at install** — the manifest grants `<all_urls>` so the agent never stalls on mid-task permission prompts. Safety is enforced at the application layer instead: all-tab reads and state-changing actions require per-action approval in the sidebar. If you restrict site access in `chrome://extensions`, the sidebar offers an inline re-grant card when needed.
-- **Read-only by default** — `click_element`, `fill_input`, `submit_form`, and `get_all_tab_contents` require per-action approval.
-- **Browser-first** — `search_web` uses `chrome.search.query` (your default search engine) in a new tab and reads results through the normal extraction path. No external search or scraping APIs.
-- **Nothing sensitive persisted** — page content is held in memory for the session only; only settings, and nothing synced.
-
-## Development
+Stack: **TypeScript + Preact + Vite** (two build passes: app, then content script as a single IIFE).
 
 ```bash
 mise run typecheck   # tsc --noEmit
 mise run build       # rebuild dist/
 ```
 
-After rebuilding, click the reload icon on the extension card in `chrome://extensions`.
+After rebuilding, reload the extension in `chrome://extensions`.
