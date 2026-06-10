@@ -80,6 +80,17 @@ export interface SiteEntry {
   searchUrlTemplate?: string;
 }
 
+/** A reusable named procedure the agent can apply to tasks (Claude Code-style). */
+export interface Skill {
+  id: string;
+  /** Lowercase-kebab slug; users invoke it by typing /name in the chat. */
+  name: string;
+  /** One-liner shown to the model in every task for auto-triggering. */
+  description: string;
+  /** Full markdown instructions, loaded on demand via the use_skill tool. */
+  body: string;
+}
+
 export interface Settings {
   baseUrl: string;
   apiKey: string;

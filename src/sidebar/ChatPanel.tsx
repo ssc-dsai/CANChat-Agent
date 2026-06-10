@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SidebarCommand } from '../shared/messages';
-import type { AgentStatus, ChatMessageView } from '../shared/types';
+import type { AgentStatus, ChatMessageView, Skill } from '../shared/types';
 import { Markdown } from './Markdown';
 
 /** Split a trailing "Source tabs:" / "Sources:" block off the answer body. */
@@ -34,7 +34,28 @@ export function ChatPanel({
 }: Props) {
   const [input, setInput] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const load = () =>
+      chrome.storage.local.get('ba_skills').then((r) => {
+        setSkills(Array.isArray(r.ba_skills) ? (r.ba_skills as Skill[]) : []);
+      });
+    load();
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if ('ba_skills' in changes) load();
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, []);
+
+  // Skill name hints while typing a /command.
+  const slashMatch = /^\/([a-z0-9-]*)$/i.exec(input.trim().split(/\s/)[0] ?? '');
+  const matchingSkills =
+    input.startsWith('/') && slashMatch
+      ? skills.filter((s) => s.name.startsWith(slashMatch[1].toLowerCase()))
+      : [];
 
   const copyMessage = async (index: number, text: string) => {
     await navigator.clipboard.writeText(text);
@@ -158,6 +179,20 @@ export function ChatPanel({
       </div>
 
       <div class="chat-input-row">
+        {matchingSkills.length > 0 && (
+          <div class="skill-hints">
+            {matchingSkills.map((s) => (
+              <button
+                key={s.id}
+                class="skill-hint"
+                title={s.description}
+                onClick={() => setInput(`/${s.name} `)}
+              >
+                /{s.name}
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           class="chat-input"
           rows={2}

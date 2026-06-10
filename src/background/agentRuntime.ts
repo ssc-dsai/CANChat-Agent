@@ -7,10 +7,10 @@ import type {
   PageContent,
   ToolActivity,
 } from '../shared/types';
-import type { SiteEntry } from '../shared/types';
+import type { SiteEntry, Skill } from '../shared/types';
 import * as browser from './browserToolAdapter';
 import { complete, type LlmMessage, type LlmToolCall } from './llmProvider';
-import { getSettings, getSites } from './storage';
+import { getSettings, getSites, getSkills } from './storage';
 import * as tabContext from './tabContextManager';
 
 const MAX_ITERATIONS = 16;
@@ -64,6 +64,14 @@ function sitesPromptBlock(sites: SiteEntry[]): string {
   return (
     `\n\nKnown sites — a user-curated directory. When a task needs data, check this list first and prefer navigating to a matching site over a generic web search. If an entry has a search template, substitute {query} (URL-encoded) and use navigate to jump straight to its results:\n` +
     sites.map(formatSite).join('\n')
+  );
+}
+
+function skillsPromptBlock(skills: Skill[]): string {
+  if (skills.length === 0) return '';
+  return (
+    `\n\nSkills — reusable procedures the user has saved. When a task matches a skill's description, call use_skill with its name and follow the returned instructions. The user can also force one by typing /name:\n` +
+    skills.map((s) => `- ${s.name} — ${s.description}`).join('\n')
   );
 }
 
@@ -157,6 +165,25 @@ export class AgentRuntime {
       return;
     }
 
+    // Slash-command skill invocation: /name [args] forces a skill.
+    let taskText = text;
+    const slash = /^\/([a-z0-9-]+)\s*([\s\S]*)$/i.exec(text.trim());
+    if (slash) {
+      const skills = await getSkills();
+      const skill = skills.find((s) => s.name.toLowerCase() === slash[1].toLowerCase());
+      if (!skill) {
+        const available = skills.map((s) => `/${s.name}`).join(', ') || '(none defined)';
+        this.emit({
+          type: 'error',
+          message: `No skill named "/${slash[1]}". Available: ${available}`,
+        });
+        return;
+      }
+      taskText =
+        `The user invoked the skill "${skill.name}". Skill instructions:\n${skill.body}\n\n` +
+        `User input: ${slash[2].trim() || '(none)'}`;
+    }
+
     this.pushChat({ role: 'user', text, timestamp: new Date().toISOString() });
     this.running = true;
     this.stopRequested = false;
@@ -164,7 +191,7 @@ export class AgentRuntime {
     this.abortController = new AbortController();
 
     try {
-      await this.runLoop(text);
+      await this.runLoop(taskText);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError' && this.stopRequested) {
         // User stopped or cleared the task; the abort is expected.
@@ -279,10 +306,11 @@ export class AgentRuntime {
   private async runLoop(userText: string): Promise<void> {
     const settings = (await getSettings())!;
 
-    // (Re)build the system message each task so directory edits apply immediately.
+    // (Re)build the system message each task so directory/skill edits apply immediately.
     const systemMessage: LlmMessage = {
       role: 'system',
-      content: SYSTEM_PROMPT + sitesPromptBlock(await getSites()),
+      content:
+        SYSTEM_PROMPT + sitesPromptBlock(await getSites()) + skillsPromptBlock(await getSkills()),
     };
     if (this.conversation.length === 0) {
       this.conversation.push(systemMessage);
@@ -404,6 +432,16 @@ export class AgentRuntime {
         return JSON.stringify(await browser.searchWeb(String(args.query)));
       case 'search_known_sites':
         return searchKnownSites(await getSites(), String(args.query));
+      case 'use_skill': {
+        const skills = await getSkills();
+        const wanted = String(args.name).toLowerCase().replace(/^\//, '');
+        const skill = skills.find((s) => s.name.toLowerCase() === wanted);
+        if (!skill) {
+          const available = skills.map((s) => s.name).join(', ') || '(none defined)';
+          return `Error: no skill named "${wanted}". Available skills: ${available}`;
+        }
+        return `Skill "${skill.name}" loaded. Follow these instructions for the current task:\n\n${skill.body}`;
+      }
       case 'get_element_map':
         return JSON.stringify((await browser.getElementMap(tabId)).slice(0, 120));
       case 'click_element':

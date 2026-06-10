@@ -146,6 +146,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'use_skill',
+      description:
+        "Load the full instructions of one of the user's skills by name and follow them for the current task. Use when the task matches a skill's description.",
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'The skill name, e.g. "research".' },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'wait_for_page_state',
       description: 'Wait until a tab finishes loading (or times out after 20s).',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },

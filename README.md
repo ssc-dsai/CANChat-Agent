@@ -97,6 +97,27 @@ Import-ready JSON:
 
 The same pattern works for any browser-accessible source: internal dashboards, wikis, ticketing systems, government open-data portals, package registries. Describe *what data lives there* in the description — that's what the agent matches against when planning.
 
+## Skills
+
+Skills are reusable procedures the agent can apply to tasks, modeled on Claude Code's skills. Each skill has a **name** (lowercase-kebab), a one-line **description**, and a markdown **body** of instructions. Manage them in **Settings → Skills** (add/edit/delete, plus JSON import/export); two editable examples (`summarize-tabs`, `research`) are seeded on install.
+
+Two ways a skill runs:
+
+- **Automatically** — the agent sees every skill's name and description; when a task matches, it loads the full instructions via its `use_skill` tool and follows them.
+- **Explicitly** — type `/name` in the chat (e.g. `/research best fish tacos in Toronto`). Matching skill names are suggested above the input as you type.
+
+Import format:
+
+```json
+[
+  {
+    "name": "jira-triage",
+    "description": "Triage new Jira tickets and produce a priority report",
+    "body": "1. Navigate to the team board ...\n2. Extract tickets created this week ...\n3. Format as a table with priority recommendations."
+  }
+]
+```
+
 ## Using it
 
 - **Use current tab** — adds the active tab's content to the agent's context.

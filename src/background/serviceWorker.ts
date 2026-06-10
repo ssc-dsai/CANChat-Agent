@@ -1,9 +1,14 @@
 import type { BackgroundEvent, RuntimeRequest, SidebarCommand, TestConnectionResponse } from '../shared/messages';
 import { AgentRuntime } from './agentRuntime';
 import { testConnection } from './llmProvider';
+import { seedSkillsIfEmpty } from './storage';
 
 // Clicking the toolbar icon opens the side panel.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
+chrome.runtime.onInstalled.addListener(() => {
+  void seedSkillsIfEmpty();
+});
 
 const ports = new Set<chrome.runtime.Port>();
 

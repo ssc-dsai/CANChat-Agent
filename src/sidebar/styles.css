@@ -448,6 +448,32 @@ body {
   gap: 6px;
 }
 
+/* Skill hints above the input while typing /command */
+.skill-hints {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.skill-hint {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  border-radius: 10px;
+  padding: 2px 9px;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  cursor: pointer;
+}
+.skill-hint:hover {
+  border-color: var(--accent);
+}
+
+.skill-body {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
 /* Buttons */
 .btn {
   background: var(--bg-input);
