@@ -100,7 +100,7 @@ The same pattern works for any browser-accessible source: internal dashboards, w
 ## Using it
 
 - **Use current tab** — adds the active tab's content to the agent's context.
-- **Use all tabs** — prompts for the broader host permission (granted at runtime, never at install), then snapshots every open tab.
+- **Use all tabs** — snapshots every open tab (reading them during a task still requires per-task approval).
 - **Refresh** — re-extracts the current context; tabs older than 5 minutes are marked stale.
 - Ask anything in the chat. The agent decides whether to answer from knowledge or use browser tools (search, navigate, read tabs), and shows each tool call in the **Tool activity** log.
 - If a task hits a login wall, the agent pauses with a notice; sign in in the browser and click **Resume**.
@@ -121,7 +121,7 @@ src/
 
 Key behaviours:
 
-- **Staged permissions** — the manifest requests only baseline permissions; `<all_urls>` lives under `optional_host_permissions` and is requested from a user gesture in the sidebar.
+- **Full host access at install** — the manifest grants `<all_urls>` so the agent never stalls on mid-task permission prompts. Safety is enforced at the application layer instead: all-tab reads and state-changing actions require per-action approval in the sidebar. If you restrict site access in `chrome://extensions`, the sidebar offers an inline re-grant card when needed.
 - **Read-only by default** — `click_element`, `fill_input`, `submit_form`, and `get_all_tab_contents` require per-action approval.
 - **Browser-first** — `search_web` uses `chrome.search.query` (your default search engine) in a new tab and reads results through the normal extraction path. No external search or scraping APIs.
 - **Nothing sensitive persisted** — page content is held in memory for the session only; only settings, and nothing synced.

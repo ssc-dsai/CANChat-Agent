@@ -17,25 +17,9 @@ export function TabContextPanel({ context, send }: Props) {
     return () => clearInterval(t);
   }, []);
 
-  const useAllTabs = async () => {
-    // Permission requests must come from a user gesture in an extension page.
-    const granted = await chrome.permissions.request({ origins: ['<all_urls>'] });
-    if (granted) send({ type: 'include_all_tabs' });
-  };
-
-  const useCurrentTab = async () => {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-      if (tab?.url && /^https?:/.test(tab.url)) {
-        // "Allow this site": grant standing access to the current origin so
-        // re-reads work without further gestures.
-        await chrome.permissions.request({ origins: [new URL(tab.url).origin + '/*'] });
-      }
-    } catch {
-      // Fall through; activeTab may still cover it.
-    }
-    send({ type: 'include_active_tab' });
-  };
+  // Host access to all sites is granted at install, so these are direct commands.
+  const useAllTabs = () => send({ type: 'include_all_tabs' });
+  const useCurrentTab = () => send({ type: 'include_active_tab' });
 
   const isStale = (capturedAt: string) =>
     Date.now() - new Date(capturedAt).getTime() > STALE_AFTER_MS;

@@ -46,15 +46,6 @@ export function SettingsScreen({ onClose }: Props) {
   };
 
   const save = async () => {
-    // Grant the extension access to the endpoint origin so background fetches
-    // are not blocked by CORS. Must happen here: permission requests need a
-    // user gesture.
-    try {
-      const origin = new URL(settings.baseUrl).origin + '/*';
-      await chrome.permissions.request({ origins: [origin] });
-    } catch {
-      // Invalid URL or user declined — the test/connection error will surface it.
-    }
     const trimmed: Settings = {
       ...settings,
       baseUrl: settings.baseUrl.trim(),

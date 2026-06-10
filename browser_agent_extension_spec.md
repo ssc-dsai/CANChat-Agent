@@ -129,15 +129,11 @@ The extension needs access to:
 - Scripting/content-script injection
 - Storage
 - Search via the browser's default search engine
-- Host permissions requested at runtime for pages the user authorizes
+- Host permissions for all sites, granted at install
 
-### 5.3 Staged Permission Model
+### 5.3 Permission Model
 
-The extension must use a staged permission model. Broad host access is never requested at install time. Instead:
-
-- The manifest declares only baseline permissions.
-- Broad host access is declared under `optional_host_permissions` and requested at runtime via `chrome.permissions.request()` only when the user enables multi-tab reading or site automation.
-- `activeTab` covers single-tab operations triggered by user gesture without standing host access.
+The extension requests full host access at install time so the agent can read and act on any page without mid-task permission interruptions:
 
 ```json
 {
@@ -149,13 +145,13 @@ The extension must use a staged permission model. Broad host access is never req
     "storage",
     "search"
   ],
-  "optional_host_permissions": [
+  "host_permissions": [
     "<all_urls>"
   ]
 }
 ```
 
-The sidebar should make the current permission level visible and provide controls to grant or revoke broader access.
+Safety remains enforced at the application layer: reads of all tabs and any state-changing page action still require explicit per-action user approval in the sidebar (Section 13). If the user manually restricts site access in the browser's extension settings, the sidebar offers an inline re-grant card and resumes the task once access is restored.
 
 ## 6. Sidebar UI Requirements
 
@@ -549,7 +545,7 @@ The first version should not attempt to:
 3. Agent loop in extension background service worker.
 4. Active tab summarization.
 5. Active tab question answering.
-6. All-tabs summarization with user approval and runtime permission grant.
+6. All-tabs summarization with user approval.
 7. Browser search/navigation tool using the browser's default search engine.
 8. Auth-required detection and pause/resume.
 9. Tool activity log.
@@ -616,7 +612,7 @@ The extension is acceptable when:
 1. A user can configure an LLM endpoint, API key, and model from the settings screen, and the agent refuses to run without valid configuration.
 2. A user can ask the sidebar to summarize the current page.
 3. A user can ask questions about the current page DOM content.
-4. A user can approve reading all tabs and receive a cross-tab summary, with the host permission requested at runtime rather than install time.
+4. A user can approve reading all tabs and receive a cross-tab summary.
 5. The agent can decide when browser access is required.
 6. The agent can navigate/search using the browser's default search engine.
 7. If a site requires login, the agent pauses and resumes after authentication.
@@ -637,7 +633,7 @@ Start with the MVP:
 - Background agent runtime.
 - Content script for DOM extraction.
 - Active-tab summarization and Q&A.
-- Multi-tab summarization after user approval, with broad host access requested at runtime (`optional_host_permissions`), never at install time.
+- Multi-tab summarization after user approval. Full host access (`host_permissions: ["<all_urls>"]`) is granted at install.
 - Browser tool adapter with listTabs, getActiveTab, getTabContent, getAllTabContents, navigate, searchWeb, and detectAuthState.
 - searchWeb opens a new tab using the browser's default search engine (`chrome.search.query`); results are read back through the content extraction path.
 - Authentication detection that pauses tasks when login is required.
