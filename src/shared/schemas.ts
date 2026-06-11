@@ -210,6 +210,26 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'run_javascript',
+      description:
+        "Run JavaScript in the page's own context (it can read the page's variables, app state, and framework internals) and get the result back. The value of the last expression or an explicit return is JSON-serialized and returned. Use for tasks the other tools can't express — reading app/framework state or computing over page data. Requires user approval. Prefer the dedicated tools (get_tab_content, get_element_map, click_element, …) when they suffice.",
+      parameters: {
+        type: 'object',
+        properties: {
+          ...tabIdParam,
+          code: {
+            type: 'string',
+            description:
+              'JavaScript source. May use await. End with the value you want returned (e.g. `document.title` or `return ...` inside an async context).',
+          },
+        },
+        required: ['tabId', 'code'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'wait_for_page_state',
       description: 'Wait until a tab finishes loading (or times out after 20s).',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },

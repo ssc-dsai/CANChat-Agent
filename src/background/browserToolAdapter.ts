@@ -226,6 +226,55 @@ export async function waitForPageState(tabId: number): Promise<PageStateResult> 
   return { tabId, state: complete ? 'complete' : 'timeout', url: tab.url ?? '' };
 }
 
+const MAX_JS_RESULT_CHARS = 10000;
+
+// Runs in the page's MAIN world. Arbitrary code via eval, so the result of the
+// last expression flows back. Wrapped in async so `await` works. Note: pages
+// whose CSP forbids unsafe-eval will throw here — returned as __error, not a crash.
+function jsRunner(src: string): Promise<string> {
+  return (async () => {
+    try {
+      // eslint-disable-next-line no-eval
+      const result = await (0, eval)(src);
+      return JSON.stringify(result ?? null);
+    } catch (e) {
+      return JSON.stringify({ __error: String(e) });
+    }
+  })();
+}
+
+export async function runJavascript(tabId: number, code: string): Promise<string> {
+  let tab: chrome.tabs.Tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {
+    return JSON.stringify({ __error: 'Tab no longer exists.' });
+  }
+  if (isRestrictedUrl(tab.url ?? '')) {
+    return JSON.stringify({ __error: 'Cannot run scripts on browser-internal pages.' });
+  }
+  let injection: chrome.scripting.InjectionResult<string>[];
+  try {
+    injection = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: jsRunner,
+      args: [code],
+    });
+  } catch (err) {
+    const message = String(err);
+    const note = /Cannot access|cannot be scripted|permission/i.test(message)
+      ? 'No permission to run scripts on this tab. The user can grant access with "Allow this site".'
+      : message;
+    return JSON.stringify({ __error: note });
+  }
+  let out = injection[0]?.result ?? 'null';
+  if (out.length > MAX_JS_RESULT_CHARS) {
+    out = out.slice(0, MAX_JS_RESULT_CHARS) + ' …[truncated]';
+  }
+  return out;
+}
+
 export async function detectAuthState(tabId: number): Promise<AuthState> {
   const content = await getTabContent(tabId);
   if (content.extractionStatus === 'blocked') {

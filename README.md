@@ -25,7 +25,7 @@ You bring your own model: any OpenAI-compatible endpoint works, from OpenAI's AP
 When you send a message, the agent runs a loop of up to 16 steps:
 
 1. **Classify** — can this be answered from model knowledge alone, or does it need the browser? General, stable questions get direct answers. Anything about *your* pages, tabs, recent events, or specific sites triggers browser use.
-2. **Act** — the agent picks from 14 browser tools (listed in [§4.5](#45-the-tool-activity-log)): listing tabs, reading page content, navigating, searching, checking login state, and so on.
+2. **Act** — the agent picks from its tools (listed in [§4.5](#45-the-tool-activity-log)): listing tabs, reading page content, navigating, searching, running JavaScript, checking login state, and so on.
 3. **Observe** — tool results (extracted page text, tab lists, navigation outcomes) feed back into the loop.
 4. **Repeat** until it has enough to answer, then it replies in the chat with markdown formatting and a **source citation list** linking every page it drew on.
 
@@ -116,7 +116,7 @@ Three kinds of amber cards appear in the chat when the agent needs you:
 
 | Card | When | Your options |
 |---|---|---|
-| **Approve action?** | The agent wants to do something state-changing: click, type into a field, submit a form, or read all tabs | Approve / Deny — a denial is reported to the agent, which continues without it |
+| **Approve action?** | The agent wants to do something state-changing: click, type into a field, submit a form, **run JavaScript** (the card shows the exact code), or read all tabs | Approve / Deny — a denial is reported to the agent, which continues without it |
 | **Authentication required** | A page redirected to login (detected via URL patterns, password fields, sign-in text, known identity providers) | Sign in to the site in the browser as usual, then **Resume** — the agent re-checks and continues |
 | **Needs access to \<site\>** | You've manually restricted the extension's site access and the agent opened a page it can't read | **Allow this site** / **Allow all sites** / Stop — granting resumes and retries automatically |
 
@@ -138,6 +138,7 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `click_element` | Click an element | **Yes** |
 | `fill_input` | Type into a field | **Yes** |
 | `submit_form` | Submit a form | **Yes** |
+| `run_javascript` | Run JavaScript in the page's own context and return the result — for reading app/framework state or computing over page data when the DOM tools can't | **Yes** |
 | `wait_for_page_state` | Wait for a tab to finish loading | – |
 | `detect_auth_state` | Check whether a page is behind a login | – |
 
@@ -358,6 +359,7 @@ The mechanics:
 | Long task dies when the sidebar closes | The background service worker is kept alive by the open sidebar. Keep the panel open during long tasks. |
 | Skill didn't auto-trigger | Sharpen its description (see [§6.3](#63-two-ways-to-trigger-a-skill)) or force it with `/name`. |
 | Error right after sending a snapshot | Your endpoint/model isn't vision-capable — it rejected the image content. Switch to a multimodal model or discard the snapshot. |
+| `run_javascript` returns an `__error` about eval/CSP | That page's Content Security Policy blocks `eval`. The agent can't run arbitrary JS there; it should fall back to the DOM tools. |
 
 ## 9. Development
 
@@ -378,7 +380,7 @@ extension/
     background/               Service worker
       serviceWorker.ts        Port hub, message routing, skill seeding
       agentRuntime.ts         Agent loop, approvals, pauses, prompt assembly
-      browserToolAdapter.ts   The 14 browser tools
+      browserToolAdapter.ts   Browser tools (DOM, navigation, JS execution)
       tabContextManager.ts    Context snapshots and staleness
       authDetector.ts         Multi-signal login detection
       llmProvider.ts          OpenAI-compatible client (abortable, 120s timeout)

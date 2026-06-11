@@ -32,6 +32,7 @@ const APPROVAL_REQUIRED = new Set([
   'click_element',
   'fill_input',
   'submit_form',
+  'run_javascript', // arbitrary code in the page — always gated
   'get_all_tab_contents', // reading all tabs needs explicit approval per spec
 ]);
 
@@ -46,6 +47,7 @@ Decision policy:
 Working method:
 - Use search_web for web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
 - Before clicking, filling, or submitting anything, call get_element_map and act on refIds. State-changing actions require user approval; the runtime handles asking.
+- A run_javascript tool runs JavaScript in the page's own context for tasks the other tools can't express — reading app/framework state or computing over page data. It requires user approval; prefer the dedicated tools when they suffice.
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
@@ -566,6 +568,8 @@ export class AgentRuntime {
         );
       case 'submit_form':
         return JSON.stringify(await browser.submitForm(tabId, String(args.selectorOrRef)));
+      case 'run_javascript':
+        return browser.runJavascript(tabId, String(args.code));
       case 'wait_for_page_state':
         return JSON.stringify(await browser.waitForPageState(tabId));
       case 'detect_auth_state': {
@@ -694,6 +698,8 @@ export class AgentRuntime {
         return `Type into element "${args.selectorOrRef}" on tab ${args.tabId}: "${String(args.value).slice(0, 80)}"`;
       case 'submit_form':
         return `Submit the form at "${args.selectorOrRef}" on tab ${args.tabId}`;
+      case 'run_javascript':
+        return `Run JavaScript on tab ${args.tabId}:\n${String(args.code).slice(0, 200)}`;
       default:
         return `${name} ${JSON.stringify(args).slice(0, 120)}`;
     }
