@@ -70,6 +70,7 @@ Click the **⚙ gear icon** in the sidebar header and fill in:
 | **API key** | Bearer token for the endpoint | Local servers usually accept any non-empty string |
 | **Model** | Model name as the endpoint knows it | `gpt-4o`, `llama3.1`, etc. |
 | **Temperature / Max tokens** | Optional request parameters | Leave blank for endpoint defaults |
+| **Custom instructions** | Optional standing instructions appended to the agent's built-in system prompt — tune tone, language, priorities, or domain context without touching the operational rules (tool policy, citations, approvals stay intact) | "Answer in French" · "I work in geospatial data — prefer technical depth" |
 
 Click **Test connection** before saving — it sends a one-word prompt and shows you the reply or the exact error.
 

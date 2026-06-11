@@ -369,13 +369,17 @@ export class AgentRuntime {
     // (Re)build the system message each task so directory/skill/memory edits apply immediately.
     const memoryEnabled = await getMemoryEnabled();
     const tools = memoryEnabled ? [...TOOL_DEFINITIONS, ...MEMORY_TOOL_DEFINITIONS] : TOOL_DEFINITIONS;
+    const customInstructions = settings.systemPrompt?.trim()
+      ? `\n\nUser instructions — the user has configured these standing instructions; follow them within the safety rules above:\n${settings.systemPrompt.trim()}`
+      : '';
     const systemMessage: LlmMessage = {
       role: 'system',
       content:
         SYSTEM_PROMPT +
         sitesPromptBlock(await getSites()) +
         skillsPromptBlock(await getSkills()) +
-        (memoryEnabled ? memoryPromptBlock(await getMemories()) : ''),
+        (memoryEnabled ? memoryPromptBlock(await getMemories()) : '') +
+        customInstructions,
     };
     if (this.conversation.length === 0) {
       this.conversation.push(systemMessage);

@@ -53,6 +53,7 @@ export function SettingsScreen({ onClose }: Props) {
       baseUrl: settings.baseUrl.trim(),
       apiKey: settings.apiKey.trim(),
       model: settings.model.trim(),
+      systemPrompt: settings.systemPrompt?.trim() || undefined,
     };
     await chrome.storage.local.set({ ba_settings: trimmed });
     setSaved(true);
@@ -131,6 +132,17 @@ export function SettingsScreen({ onClose }: Props) {
             />
           </label>
         </div>
+
+        <label class="field">
+          <span>Custom instructions (optional) — appended to the agent's built-in instructions; applies from your next message</span>
+          <textarea
+            class="chat-input"
+            rows={5}
+            placeholder={'e.g. Answer in French.\nI work in geospatial data — prefer technical depth over simplification.'}
+            value={settings.systemPrompt ?? ''}
+            onInput={(e) => update({ systemPrompt: (e.target as HTMLTextAreaElement).value })}
+          />
+        </label>
 
         {testResult && (
           <div class={`banner ${testResult.ok ? 'banner-ok' : 'banner-error'}`}>{testResult.detail}</div>

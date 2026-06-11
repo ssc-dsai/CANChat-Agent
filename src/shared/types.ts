@@ -105,6 +105,8 @@ export interface Settings {
   model: string;
   temperature?: number;
   maxTokens?: number;
+  /** Optional user instructions appended to the built-in system prompt. */
+  systemPrompt?: string;
 }
 
 export type AgentStatus =
