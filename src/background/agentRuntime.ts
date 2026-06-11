@@ -114,7 +114,10 @@ function memoryPromptBlock(entries: MemoryEntry[]): string {
   );
 }
 
-function buildLearnTask(focus: string): string {
+function buildLearnTask(focus: string, existing?: Skill): string {
+  const existingBlock = existing
+    ? `\nYou already have a playbook for this site (name: "${existing.name}"). REFINE and improve it rather than starting over, and when you save, reuse the name "${existing.name}" so it replaces the current one. Current playbook:\n${existing.body}\n`
+    : '';
   return (
     `The user wants you to LEARN how to operate the web app in the current tab and save a reusable playbook. Work through these steps:\n` +
     `1. Call get_active_tab to get the current URL and host (this host is the playbook's origin).\n` +
@@ -128,6 +131,7 @@ function buildLearnTask(focus: string): string {
     `5. Synthesize a concise playbook: the concrete way to perform this app's key actions (navigate/pan/zoom, search, read data) using code snippets and/or element references, plus gotchas (e.g. CSP blocking eval, login required). If run_javascript is blocked by CSP, base the playbook on get_element_map + click/fill instead.\n` +
     `6. Call save_app_playbook with the origin from step 1, a short kebab name, a one-line description, and the playbook body. The user will be asked to approve the save.\n` +
     `7. Briefly tell the user what you learned and saved.\n` +
+    existingBlock +
     (focus ? `\nFocus the exploration on: ${focus}\n` : '') +
     `\nDo not perform destructive actions while exploring; prefer read-only inspection.`
   );
@@ -251,7 +255,16 @@ export class AgentRuntime {
       const name = slash[1].toLowerCase();
       // Built-in /learn: explore the current app and save an origin-scoped playbook.
       if (name === 'learn' && !skills.some((s) => s.name.toLowerCase() === 'learn')) {
-        taskText = buildLearnTask(slash[2].trim());
+        // Find an existing playbook for the current site so /learn refines it
+        // instead of creating a duplicate.
+        let existing: Skill | undefined;
+        try {
+          const host = normalizeHost((await browser.getActiveTab()).url);
+          existing = skills.find((s) => s.origin && hostMatches(host, s.origin));
+        } catch {
+          // No active tab; proceed without an existing playbook.
+        }
+        taskText = buildLearnTask(slash[2].trim(), existing);
       } else {
         const skill = skills.find((s) => s.name.toLowerCase() === name);
         if (!skill) {
@@ -604,18 +617,18 @@ export class AgentRuntime {
           body: String(args.body).trim(),
           origin,
         };
-        // Upsert: replace an existing playbook for the same origin + name.
-        const idx = skills.findIndex(
-          (s) => s.origin === origin && s.name.toLowerCase() === playbook.name.toLowerCase(),
-        );
-        if (idx >= 0) {
+        // One playbook per site: replace any existing playbook bound to this
+        // origin, regardless of name, so re-learning updates rather than duplicates.
+        const idx = skills.findIndex((s) => s.origin === origin);
+        const replaced = idx >= 0;
+        if (replaced) {
           playbook.id = skills[idx].id;
           skills[idx] = playbook;
         } else {
           skills.push(playbook);
         }
         await saveSkills(skills);
-        return `Saved app playbook "${playbook.name}" for ${origin}. It will auto-activate on that site.`;
+        return `${replaced ? 'Updated' : 'Saved'} app playbook "${playbook.name}" for ${origin}. It will auto-activate on that site.`;
       }
       case 'use_skill': {
         const skills = await getSkills();

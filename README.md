@@ -310,6 +310,8 @@ The problem: a site like [marinetraffic.com](https://www.marinetraffic.com/) is 
 
 **Reuse:** the playbook is scoped to the site's origin (e.g. `marinetraffic.com`). Whenever you're on that site afterward, its instructions load **automatically** — no slash command, no description-matching. Ask "pan the map to the English Channel and zoom in" and the agent already knows how this app's map is driven.
 
+**Re-learning:** there's one playbook per site. Running `/learn` again on a site you've already taught loads the current playbook into the exploration, asks the agent to *refine* it, and replaces the existing one when saved — so re-learning improves a playbook rather than piling up duplicates.
+
 Playbooks appear in **Settings → Skills** with an `[app: <site>]` badge; edit or delete them like any skill, and set the **Site** field by hand to author one without `/learn`. They're just skills with a site binding, so JSON import/export carries them too (add an `"origin"` field).
 
 ### 6.7 Managing skills
