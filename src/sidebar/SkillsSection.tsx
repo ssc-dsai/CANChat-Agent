@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Skill } from '../shared/types';
+import { normalizeHost } from '../shared/url';
 
-const EMPTY_FORM: Omit<Skill, 'id'> = { name: '', description: '', body: '' };
+const EMPTY_FORM: Omit<Skill, 'id'> = { name: '', description: '', body: '', origin: '' };
 
 const NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -52,6 +53,7 @@ export function SkillsSection() {
       name: form.name.trim(),
       description: form.description.trim(),
       body: form.body.trim(),
+      origin: form.origin?.trim() ? normalizeHost(form.origin) : undefined,
     };
     const next = editingId ? skills.map((s) => (s.id === editingId ? entry : s)) : [...skills, entry];
     await save(next);
@@ -61,7 +63,12 @@ export function SkillsSection() {
   };
 
   const edit = (skill: Skill) => {
-    setForm({ name: skill.name, description: skill.description, body: skill.body });
+    setForm({
+      name: skill.name,
+      description: skill.description,
+      body: skill.body,
+      origin: skill.origin ?? '',
+    });
     setEditingId(skill.id);
     setShowForm(true);
   };
@@ -110,6 +117,7 @@ export function SkillsSection() {
         name: e.name.trim(),
         description: e.description.trim(),
         body: e.body.trim(),
+        origin: typeof e.origin === 'string' && e.origin.trim() ? normalizeHost(e.origin) : undefined,
       });
     }
     // Merge by name: imported skills replace same-named existing ones.
@@ -129,7 +137,8 @@ export function SkillsSection() {
       </div>
       <p class="settings-note">
         Reusable procedures for the agent. It applies a skill automatically when a task matches
-        its description, or you can force one by typing /name in the chat.
+        its description, or you can force one by typing /name in the chat. Skills bound to a site
+        (app playbooks) load automatically when you're on that site — teach one by typing /learn.
       </p>
 
       {skills.length > 0 && (
@@ -137,6 +146,7 @@ export function SkillsSection() {
           {skills.map((s) => (
             <li key={s.id} class="site-row" title={s.body}>
               <span class="site-name">/{s.name}</span>
+              {s.origin && <span class="stale-tag">app: {s.origin}</span>}
               <span class="site-desc">{s.description}</span>
               <button class="icon-btn" title="Edit" onClick={() => edit(s)}>
                 ✎
@@ -170,6 +180,15 @@ export function SkillsSection() {
               onInput={(e) =>
                 setForm({ ...form, description: (e.target as HTMLInputElement).value })
               }
+            />
+          </label>
+          <label class="field">
+            <span>Site (optional) — app playbook; auto-loads on this host</span>
+            <input
+              type="text"
+              placeholder="marinetraffic.com"
+              value={form.origin ?? ''}
+              onInput={(e) => setForm({ ...form, origin: (e.target as HTMLInputElement).value })}
             />
           </label>
           <label class="field">

@@ -139,6 +139,7 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `fill_input` | Type into a field | **Yes** |
 | `submit_form` | Submit a form | **Yes** |
 | `run_javascript` | Run JavaScript in the page's own context and return the result — for reading app/framework state or computing over page data when the DOM tools can't | **Yes** |
+| `save_app_playbook` | Persist a learned, site-scoped playbook (see [§6.6](#66-app-playbooks--teaching-the-agent-an-app)) | **Yes** |
 | `wait_for_page_state` | Wait for a tab to finish loading | – |
 | `detect_auth_state` | Check whether a page is behind a login | – |
 
@@ -294,7 +295,24 @@ Note how `research` step 1 reaches into the **Known Sites directory** — skills
 - **Don't fight the safety model**: a skill can include click/fill/submit steps, but each such action still requires your approval at run time. Skills change *what the agent tries*, never *what it's allowed to do silently*.
 - Keep one skill per workflow; compose by referencing known sites rather than duplicating URLs across skills.
 
-### 6.6 Managing skills
+### 6.6 App Playbooks — teaching the agent an app
+
+A **playbook** is a skill bound to a website. It's how you teach the agent to operate a complex web app — a mapping site, a dashboard, an internal tool — once, and have it remember.
+
+The problem: a site like [marinetraffic.com](https://www.marinetraffic.com/) is mostly an interactive map. DOM extraction sees almost nothing useful, because the map is drawn on a canvas and driven by JavaScript. The agent *can* figure the map out in the moment — with `run_javascript` to find the live map object (Leaflet/Mapbox/etc.) and drive it, `get_element_map` for the controls, and `snapshot` for vision — but without playbooks it would re-derive all of that every session.
+
+**Teaching:** on the site, type **`/learn`** (optionally with a focus, e.g. `/learn how to search for a vessel`). The agent:
+
+1. Identifies the site and catalogs its controls.
+2. Introspects the page's JavaScript to find what it can drive directly — for maps, the live map instance and its `setView`/`flyTo`/`getCenter` methods; for other apps, framework state and key objects.
+3. Takes a snapshot for visual context.
+4. Writes a concise playbook (how to navigate, search, read data — with concrete code/selectors) and calls `save_app_playbook`, which asks for your approval (the card shows the playbook before it's stored).
+
+**Reuse:** the playbook is scoped to the site's origin (e.g. `marinetraffic.com`). Whenever you're on that site afterward, its instructions load **automatically** — no slash command, no description-matching. Ask "pan the map to the English Channel and zoom in" and the agent already knows how this app's map is driven.
+
+Playbooks appear in **Settings → Skills** with an `[app: <site>]` badge; edit or delete them like any skill, and set the **Site** field by hand to author one without `/learn`. They're just skills with a site binding, so JSON import/export carries them too (add an `"origin"` field).
+
+### 6.7 Managing skills
 
 **Settings → Skills**: the same management model as Known Sites — add/edit/delete, **Import JSON** / **Export JSON**, merge-by-name on import. Names must be lowercase-kebab and unique.
 
@@ -359,7 +377,8 @@ The mechanics:
 | Long task dies when the sidebar closes | The background service worker is kept alive by the open sidebar. Keep the panel open during long tasks. |
 | Skill didn't auto-trigger | Sharpen its description (see [§6.3](#63-two-ways-to-trigger-a-skill)) or force it with `/name`. |
 | Error right after sending a snapshot | Your endpoint/model isn't vision-capable — it rejected the image content. Switch to a multimodal model or discard the snapshot. |
-| `run_javascript` returns an `__error` about eval/CSP | That page's Content Security Policy blocks `eval`. The agent can't run arbitrary JS there; it should fall back to the DOM tools. |
+| `run_javascript` returns an `__error` about eval/CSP | That page's Content Security Policy blocks `eval`. The agent can't run arbitrary JS there; it should fall back to the DOM tools. A `/learn` playbook on such a site should rely on `get_element_map` and clicks rather than JavaScript. |
+| `/learn` didn't save anything | The save step needs your approval — watch for the "Save app playbook…" card. If the site blocks `eval`, the agent may still build a DOM-based playbook; if extraction and JS both fail, there may be nothing learnable beyond a snapshot. |
 
 ## 9. Development
 

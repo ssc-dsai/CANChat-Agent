@@ -195,6 +195,30 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'save_app_playbook',
+      description:
+        "Persist a reusable playbook for operating a specific web app, scoped to its site origin. The body auto-loads whenever the user returns to that site. Use at the end of a /learn exploration to record how to drive the app (navigation, search, reading data) with concrete code snippets or element references. Requires user approval.",
+      parameters: {
+        type: 'object',
+        properties: {
+          origin: {
+            type: 'string',
+            description: 'The site hostname this playbook applies to, e.g. "marinetraffic.com".',
+          },
+          name: { type: 'string', description: 'Short lowercase-kebab name for the playbook.' },
+          description: { type: 'string', description: 'One line: what this playbook lets you do.' },
+          body: {
+            type: 'string',
+            description: 'The full playbook in markdown: how to perform the app\'s key actions.',
+          },
+        },
+        required: ['origin', 'name', 'description', 'body'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'use_skill',
       description:
         "Load the full instructions of one of the user's skills by name and follow them for the current task. Use when the task matches a skill's description.",

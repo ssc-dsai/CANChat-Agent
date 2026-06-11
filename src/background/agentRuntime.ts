@@ -8,6 +8,7 @@ import type {
   ToolActivity,
 } from '../shared/types';
 import type { MemoryEntry, SiteEntry, Skill } from '../shared/types';
+import { hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { complete, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import {
@@ -18,6 +19,7 @@ import {
   getSkills,
   MEMORY_MAX_ENTRIES,
   saveMemories,
+  saveSkills,
 } from './storage';
 import * as tabContext from './tabContextManager';
 
@@ -33,6 +35,7 @@ const APPROVAL_REQUIRED = new Set([
   'fill_input',
   'submit_form',
   'run_javascript', // arbitrary code in the page — always gated
+  'save_app_playbook', // persists a reusable playbook — confirm before storing
   'get_all_tab_contents', // reading all tabs needs explicit approval per spec
 ]);
 
@@ -48,6 +51,7 @@ Working method:
 - Use search_web for web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
 - Before clicking, filling, or submitting anything, call get_element_map and act on refIds. State-changing actions require user approval; the runtime handles asking.
 - A run_javascript tool runs JavaScript in the page's own context for tasks the other tools can't express — reading app/framework state or computing over page data. It requires user approval; prefer the dedicated tools when they suffice.
+- App playbooks: when you are on a site the user has taught you, its playbook appears automatically above as an "Active app playbook" — follow it to operate that app. The user teaches a new app by typing /learn, which has you explore the site and save a playbook with save_app_playbook.
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
@@ -78,12 +82,20 @@ function sitesPromptBlock(sites: SiteEntry[]): string {
   );
 }
 
-function skillsPromptBlock(skills: Skill[]): string {
+function skillsPromptBlock(skills: Skill[], activeHost: string): string {
   if (skills.length === 0) return '';
-  return (
-    `\n\nSkills — reusable procedures the user has saved. When a task matches a skill's description, call use_skill with its name and follow the returned instructions. The user can also force one by typing /name:\n` +
-    skills.map((s) => `- ${s.name} — ${s.description}`).join('\n')
-  );
+  // An origin-bound skill matching the current tab is an active app playbook:
+  // inject its full body so the agent knows how to operate this app.
+  const activePlaybooks = skills.filter((s) => s.origin && activeHost && hostMatches(activeHost, s.origin));
+  let block =
+    `\n\nSkills — reusable procedures the user has saved. When a task matches a skill's description, call use_skill with its name and follow the returned instructions. The user can also force one by typing /name. Teach a new app with /learn.\n` +
+    skills
+      .map((s) => `- ${s.name}${s.origin ? ` [app: ${s.origin}]` : ''} — ${s.description}`)
+      .join('\n');
+  for (const p of activePlaybooks) {
+    block += `\n\nActive app playbook for ${p.origin} (you are on this site now — use it to operate the app):\n${p.body}`;
+  }
+  return block;
 }
 
 function memoryPromptBlock(entries: MemoryEntry[]): string {
@@ -99,6 +111,25 @@ function memoryPromptBlock(entries: MemoryEntry[]): string {
     guidance +
     `\nKnown facts (use them naturally to tailor answers; reference by id when updating):\n` +
     entries.map((e) => `- [${e.id}] ${e.text}`).join('\n')
+  );
+}
+
+function buildLearnTask(focus: string): string {
+  return (
+    `The user wants you to LEARN how to operate the web app in the current tab and save a reusable playbook. Work through these steps:\n` +
+    `1. Call get_active_tab to get the current URL and host (this host is the playbook's origin).\n` +
+    `2. Call get_element_map to catalog the interactive controls (search boxes, buttons, toggles).\n` +
+    `3. Use run_javascript to introspect the app's live JavaScript and find objects you can drive directly. Probe for common libraries, especially maps:\n` +
+    `   - Leaflet: typeof L, and objects with setView/flyTo/getCenter/getZoom.\n` +
+    `   - Mapbox/MapLibre GL: objects with jumpTo/flyTo/getCenter.\n` +
+    `   - OpenLayers (ol.Map) and Google Maps (google.maps.Map).\n` +
+    `   - Scan window for objects exposing those methods; check __NEXT_DATA__ or framework state for data.\n` +
+    `4. Call snapshot to capture the interface visually for context.\n` +
+    `5. Synthesize a concise playbook: the concrete way to perform this app's key actions (navigate/pan/zoom, search, read data) using code snippets and/or element references, plus gotchas (e.g. CSP blocking eval, login required). If run_javascript is blocked by CSP, base the playbook on get_element_map + click/fill instead.\n` +
+    `6. Call save_app_playbook with the origin from step 1, a short kebab name, a one-line description, and the playbook body. The user will be asked to approve the save.\n` +
+    `7. Briefly tell the user what you learned and saved.\n` +
+    (focus ? `\nFocus the exploration on: ${focus}\n` : '') +
+    `\nDo not perform destructive actions while exploring; prefer read-only inspection.`
   );
 }
 
@@ -217,18 +248,25 @@ export class AgentRuntime {
     const slash = /^\/([a-z0-9-]+)\s*([\s\S]*)$/i.exec(text.trim());
     if (slash) {
       const skills = await getSkills();
-      const skill = skills.find((s) => s.name.toLowerCase() === slash[1].toLowerCase());
-      if (!skill) {
-        const available = skills.map((s) => `/${s.name}`).join(', ') || '(none defined)';
-        this.emit({
-          type: 'error',
-          message: `No skill named "/${slash[1]}". Available: ${available}`,
-        });
-        return;
+      const name = slash[1].toLowerCase();
+      // Built-in /learn: explore the current app and save an origin-scoped playbook.
+      if (name === 'learn' && !skills.some((s) => s.name.toLowerCase() === 'learn')) {
+        taskText = buildLearnTask(slash[2].trim());
+      } else {
+        const skill = skills.find((s) => s.name.toLowerCase() === name);
+        if (!skill) {
+          const available =
+            ['/learn', ...skills.map((s) => `/${s.name}`)].join(', ');
+          this.emit({
+            type: 'error',
+            message: `No skill named "/${slash[1]}". Available: ${available}`,
+          });
+          return;
+        }
+        taskText =
+          `The user invoked the skill "${skill.name}". Skill instructions:\n${skill.body}\n\n` +
+          `User input: ${slash[2].trim() || '(none)'}`;
       }
-      taskText =
-        `The user invoked the skill "${skill.name}". Skill instructions:\n${skill.body}\n\n` +
-        `User input: ${slash[2].trim() || '(none)'}`;
     }
 
     // Consume any pending snapshots: shown on the user's message and sent
@@ -374,12 +412,19 @@ export class AgentRuntime {
     const customInstructions = settings.systemPrompt?.trim()
       ? `\n\nUser instructions — the user has configured these standing instructions; follow them within the safety rules above:\n${settings.systemPrompt.trim()}`
       : '';
+    // Active tab host drives app-playbook auto-activation.
+    let activeHost = '';
+    try {
+      activeHost = normalizeHost((await browser.getActiveTab()).url);
+    } catch {
+      // No active tab (or restricted); playbooks just won't auto-activate.
+    }
     const systemMessage: LlmMessage = {
       role: 'system',
       content:
         SYSTEM_PROMPT +
         sitesPromptBlock(await getSites()) +
-        skillsPromptBlock(await getSkills()) +
+        skillsPromptBlock(await getSkills(), activeHost) +
         (memoryEnabled ? memoryPromptBlock(await getMemories()) : '') +
         customInstructions,
     };
@@ -548,6 +593,30 @@ export class AgentRuntime {
         await saveMemories(entries.filter((e) => e.id !== id));
         return `Deleted memory [${id}].`;
       }
+      case 'save_app_playbook': {
+        const origin = normalizeHost(String(args.origin));
+        if (!origin) return 'Error: a site origin is required to save an app playbook.';
+        const skills = await getSkills();
+        const playbook: Skill = {
+          id: `skill-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: String(args.name).trim() || 'playbook',
+          description: String(args.description).trim(),
+          body: String(args.body).trim(),
+          origin,
+        };
+        // Upsert: replace an existing playbook for the same origin + name.
+        const idx = skills.findIndex(
+          (s) => s.origin === origin && s.name.toLowerCase() === playbook.name.toLowerCase(),
+        );
+        if (idx >= 0) {
+          playbook.id = skills[idx].id;
+          skills[idx] = playbook;
+        } else {
+          skills.push(playbook);
+        }
+        await saveSkills(skills);
+        return `Saved app playbook "${playbook.name}" for ${origin}. It will auto-activate on that site.`;
+      }
       case 'use_skill': {
         const skills = await getSkills();
         const wanted = String(args.name).toLowerCase().replace(/^\//, '');
@@ -700,6 +769,8 @@ export class AgentRuntime {
         return `Submit the form at "${args.selectorOrRef}" on tab ${args.tabId}`;
       case 'run_javascript':
         return `Run JavaScript on tab ${args.tabId}:\n${String(args.code).slice(0, 200)}`;
+      case 'save_app_playbook':
+        return `Save app playbook "${args.name}" for ${normalizeHost(String(args.origin))}:\n${String(args.body).slice(0, 200)}`;
       default:
         return `${name} ${JSON.stringify(args).slice(0, 120)}`;
     }

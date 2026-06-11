@@ -555,6 +555,7 @@ The first version should not attempt to:
 
 - Complex form automation
 - Persistent memory across sessions (later added post-MVP as an opt-in, off-by-default feature with local-only storage)
+- App playbooks: site-scoped procedures the agent learns via /learn (page JS introspection + element map + snapshot) and reuses automatically; stored as origin-bound skills (post-MVP addition)
 - Enterprise policy management
 - WebMCP discovery or invocation
 - Fine-grained semantic indexing of browsing history

@@ -68,11 +68,17 @@ export function ChatPanel({
     return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
 
-  // Skill name hints while typing a /command.
+  // Skill name hints while typing a /command. Includes the built-in /learn.
   const slashMatch = /^\/([a-z0-9-]*)$/i.exec(input.trim().split(/\s/)[0] ?? '');
+  const hintItems: Array<{ id: string; name: string; description: string }> = [
+    ...(skills.some((s) => s.name.toLowerCase() === 'learn')
+      ? []
+      : [{ id: 'builtin-learn', name: 'learn', description: 'Explore this site and save a reusable playbook' }]),
+    ...skills.map((s) => ({ id: s.id, name: s.name, description: s.description })),
+  ];
   const matchingSkills =
     input.startsWith('/') && slashMatch
-      ? skills.filter((s) => s.name.startsWith(slashMatch[1].toLowerCase()))
+      ? hintItems.filter((s) => s.name.startsWith(slashMatch[1].toLowerCase()))
       : [];
 
   const copyMessage = async (index: number, text: string) => {

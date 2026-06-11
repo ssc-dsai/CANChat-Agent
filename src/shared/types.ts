@@ -89,6 +89,12 @@ export interface Skill {
   description: string;
   /** Full markdown instructions, loaded on demand via the use_skill tool. */
   body: string;
+  /**
+   * Optional site binding. When set (a normalized hostname like
+   * "marinetraffic.com"), the skill is an app playbook: its body auto-injects
+   * whenever the active tab's host matches.
+   */
+  origin?: string;
 }
 
 /** One durable fact about the user, kept only when memory is enabled. */
