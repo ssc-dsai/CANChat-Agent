@@ -16,7 +16,7 @@ function splitSources(text: string): { body: string; sources: string | null } {
 interface Props {
   messages: ChatMessageView[];
   status: AgentStatus;
-  approval: { requestId: string; description: string } | null;
+  approval: { requestId: string; description: string; detail: string } | null;
   authNotice: { origin: string; message: string } | null;
   permissionNotice: { origin: string; message: string } | null;
   pendingSnapshots: string[];
@@ -183,7 +183,11 @@ export function ChatPanel({
           <div class="prompt-card">
             <div>
               <strong>Approve action?</strong>
-              <div class="prompt-detail">{approval.description}</div>
+              <div class="prompt-reason">{approval.description}</div>
+              <details class="prompt-tech">
+                <summary>Technical detail</summary>
+                <div class="prompt-detail">{approval.detail}</div>
+              </details>
             </div>
             <div class="prompt-actions">
               <button

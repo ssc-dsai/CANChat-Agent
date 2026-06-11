@@ -116,7 +116,7 @@ Three kinds of amber cards appear in the chat when the agent needs you:
 
 | Card | When | Your options |
 |---|---|---|
-| **Approve action?** | The agent wants to do something state-changing: click, type into a field, submit a form, **run JavaScript** (the card shows the exact code), or read all tabs | Approve / Deny — a denial is reported to the agent, which continues without it |
+| **Approve action?** | The agent wants to do something state-changing: click, type into a field, submit a form, **run JavaScript**, or read all tabs. The card leads with the agent's plain-language reason — *what* it's doing and *why* — with the exact mechanics (element, code) tucked under a "Technical detail" toggle | Approve / Deny — a denial is reported to the agent, which continues without it |
 | **Authentication required** | A page redirected to login (detected via URL patterns, password fields, sign-in text, known identity providers) | Sign in to the site in the browser as usual, then **Resume** — the agent re-checks and continues |
 | **Needs access to \<site\>** | You've manually restricted the extension's site access and the agent opened a page it can't read | **Allow this site** / **Allow all sites** / Stop — granting resumes and retries automatically |
 

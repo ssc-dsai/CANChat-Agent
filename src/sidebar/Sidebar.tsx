@@ -28,7 +28,7 @@ export function Sidebar() {
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
   const [activities, setActivities] = useState<ToolActivity[]>([]);
   const [context, setContext] = useState<TabContextSummary | null>(null);
-  const [approval, setApproval] = useState<{ requestId: string; description: string } | null>(null);
+  const [approval, setApproval] = useState<{ requestId: string; description: string; detail: string } | null>(null);
   const [authNotice, setAuthNotice] = useState<{ origin: string; message: string } | null>(null);
   const [permissionNotice, setPermissionNotice] = useState<{ origin: string; message: string } | null>(null);
   const [pendingSnapshots, setPendingSnapshots] = useState<string[]>([]);
@@ -90,7 +90,7 @@ export function Sidebar() {
             });
             break;
           case 'approval_request':
-            setApproval({ requestId: event.requestId, description: event.description });
+            setApproval({ requestId: event.requestId, description: event.description, detail: event.detail });
             break;
           case 'auth_required':
             setAuthNotice(event.origin ? { origin: event.origin, message: event.message } : null);

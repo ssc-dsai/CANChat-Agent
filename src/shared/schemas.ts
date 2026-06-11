@@ -4,6 +4,16 @@ const tabIdParam = {
   tabId: { type: 'number', description: 'The id of the target tab.' },
 };
 
+// Required on every approval-gated tool. The user reads this on the approval
+// card to make an informed choice, so it must state what the action does and why.
+const reasonParam = {
+  reason: {
+    type: 'string',
+    description:
+      "A short, plain-language explanation, written for the user, of WHAT this action does and WHY it helps the current task (e.g. \"Open the vessel's detail panel so I can read its destination\"). Avoid jargon and refIds.",
+  },
+};
+
 /** Only offered to the model when the user has enabled persistent memory. */
 export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
@@ -85,7 +95,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       name: 'get_all_tab_contents',
       description:
         'Extract readable content from every open tab. Requires the user to have granted all-tabs access; requires user approval each time.',
-      parameters: { type: 'object', properties: {}, required: [] },
+      parameters: { type: 'object', properties: { ...reasonParam }, required: ['reason'] },
     },
   },
   {
@@ -136,8 +146,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         properties: {
           ...tabIdParam,
           selectorOrRef: { type: 'string', description: 'refId from get_element_map (preferred) or a CSS selector.' },
+          ...reasonParam,
         },
-        required: ['tabId', 'selectorOrRef'],
+        required: ['tabId', 'selectorOrRef', 'reason'],
       },
     },
   },
@@ -153,8 +164,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           ...tabIdParam,
           selectorOrRef: { type: 'string', description: 'refId from get_element_map (preferred) or a CSS selector.' },
           value: { type: 'string', description: 'The value to enter.' },
+          ...reasonParam,
         },
-        required: ['tabId', 'selectorOrRef', 'value'],
+        required: ['tabId', 'selectorOrRef', 'value', 'reason'],
       },
     },
   },
@@ -169,8 +181,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         properties: {
           ...tabIdParam,
           selectorOrRef: { type: 'string', description: 'refId from get_element_map (preferred) or a CSS selector.' },
+          ...reasonParam,
         },
-        required: ['tabId', 'selectorOrRef'],
+        required: ['tabId', 'selectorOrRef', 'reason'],
       },
     },
   },
@@ -211,8 +224,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             type: 'string',
             description: 'The full playbook in markdown: how to perform the app\'s key actions.',
           },
+          ...reasonParam,
         },
-        required: ['origin', 'name', 'description', 'body'],
+        required: ['origin', 'name', 'description', 'body', 'reason'],
       },
     },
   },
@@ -246,8 +260,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
             description:
               'JavaScript source. May use await. End with the value you want returned (e.g. `document.title` or `return ...` inside an async context).',
           },
+          ...reasonParam,
         },
-        required: ['tabId', 'code'],
+        required: ['tabId', 'code', 'reason'],
       },
     },
   },

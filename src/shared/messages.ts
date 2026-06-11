@@ -27,7 +27,7 @@ export type BackgroundEvent =
   | { type: 'chat_message'; message: ChatMessageView }
   | { type: 'status'; status: AgentStatus; detail?: string }
   | { type: 'tool_activity'; activity: ToolActivity }
-  | { type: 'approval_request'; requestId: string; description: string }
+  | { type: 'approval_request'; requestId: string; description: string; detail: string }
   | { type: 'auth_required'; origin: string; message: string }
   | { type: 'permission_required'; origin: string; message: string }
   | { type: 'context_update'; summary: TabContextSummary | null }
@@ -39,7 +39,7 @@ export type BackgroundEvent =
       messages: ChatMessageView[];
       activities: ToolActivity[];
       context: TabContextSummary | null;
-      pendingApproval: { requestId: string; description: string } | null;
+      pendingApproval: { requestId: string; description: string; detail: string } | null;
       authNotice: { origin: string; message: string } | null;
       permissionNotice: { origin: string; message: string } | null;
       pendingSnapshots: string[];

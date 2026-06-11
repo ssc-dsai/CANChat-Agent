@@ -408,9 +408,27 @@ body {
   gap: 8px;
 }
 
+.prompt-reason {
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.prompt-tech {
+  margin-top: 6px;
+}
+.prompt-tech > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 .prompt-detail {
   color: var(--text-dim);
   margin-top: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .prompt-actions {

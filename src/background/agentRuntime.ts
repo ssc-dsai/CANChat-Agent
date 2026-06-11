@@ -50,6 +50,7 @@ Decision policy:
 Working method:
 - Use search_web for web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
 - Before clicking, filling, or submitting anything, call get_element_map and act on refIds. State-changing actions require user approval; the runtime handles asking.
+- Every action that needs approval (click_element, fill_input, submit_form, run_javascript, get_all_tab_contents, save_app_playbook) takes a required "reason" argument. Always set it to a clear, plain-language explanation, written for the user, of what the action does and why it helps the task — this is what they read to decide. No jargon or refIds.
 - A run_javascript tool runs JavaScript in the page's own context for tasks the other tools can't express — reading app/framework state or computing over page data. It requires user approval; prefer the dedicated tools when they suffice.
 - App playbooks: when you are on a site the user has taught you, its playbook appears automatically above as an "Active app playbook" — follow it to operate that app. The user teaches a new app by typing /learn, which has you explore the site and save a playbook with save_app_playbook.
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
@@ -160,6 +161,7 @@ function searchKnownSites(sites: SiteEntry[], query: string): string {
 interface PendingApproval {
   requestId: string;
   description: string;
+  detail: string;
   resolve: (approved: boolean) => void;
 }
 
@@ -203,7 +205,11 @@ export class AgentRuntime {
       activities: this.activities.slice(-50),
       context: tabContext.toSummary(tabContext.getSnapshot()),
       pendingApproval: this.pendingApproval
-        ? { requestId: this.pendingApproval.requestId, description: this.pendingApproval.description }
+        ? {
+            requestId: this.pendingApproval.requestId,
+            description: this.pendingApproval.description,
+            detail: this.pendingApproval.detail,
+          }
         : null,
       authNotice: this.authWait ? { origin: this.authWait.origin, message: this.authWait.message } : null,
       permissionNotice: this.permissionWait
@@ -528,7 +534,11 @@ export class AgentRuntime {
     const activity = this.startActivity(name, args);
 
     if (APPROVAL_REQUIRED.has(name)) {
-      const approved = await this.requestApproval(this.describeAction(name, args));
+      const reason =
+        typeof args.reason === 'string' && args.reason.trim()
+          ? args.reason.trim()
+          : 'The agent wants to perform this action.';
+      const approved = await this.requestApproval(reason, this.describeAction(name, args));
       if (!approved) {
         this.finishActivity(activity, 'denied', 'User denied this action');
         return 'The user denied this action. Do not retry it; ask the user how to proceed or finish with what you have.';
@@ -712,12 +722,12 @@ export class AgentRuntime {
 
   // ----- approvals and pause -----
 
-  private requestApproval(description: string): Promise<boolean> {
+  private requestApproval(description: string, detail: string): Promise<boolean> {
     this.setStatus('awaiting_approval', description);
     const requestId = `appr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    this.emit({ type: 'approval_request', requestId, description });
+    this.emit({ type: 'approval_request', requestId, description, detail });
     return new Promise<boolean>((resolve) => {
-      this.pendingApproval = { requestId, description, resolve };
+      this.pendingApproval = { requestId, description, detail, resolve };
     });
   }
 
