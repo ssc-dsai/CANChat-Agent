@@ -35,6 +35,9 @@ const APPROVAL_REQUIRED = new Set([
   'fill_input',
   'submit_form',
   'run_javascript', // arbitrary code in the page — always gated
+  'press_keys', // keyboard input can submit/trigger — gated
+  'click_at', // coordinate click can commit actions — gated
+  'drag', // drag can reorder/drop — gated
   'save_app_playbook', // persists a reusable playbook — confirm before storing
   'get_all_tab_contents', // reading all tabs needs explicit approval per spec
 ]);
@@ -52,6 +55,7 @@ Working method:
 - Before clicking, filling, or submitting anything, call get_element_map and act on refIds. State-changing actions require user approval; the runtime handles asking.
 - Every action that needs approval (click_element, fill_input, submit_form, run_javascript, get_all_tab_contents, save_app_playbook) takes a required "reason" argument. Always set it to a clear, plain-language explanation, written for the user, of what the action does and why it helps the task — this is what they read to decide. No jargon or refIds.
 - A run_javascript tool runs JavaScript in the page's own context for tasks the other tools can't express — reading app/framework state or computing over page data. It requires user approval; prefer the dedicated tools when they suffice.
+- Choosing a control method: for apps with a usable JavaScript API (maps, charts), driving the page's own object via run_javascript (e.g. a Leaflet map's setView) is the most reliable — prefer it. For ordinary UI, use get_element_map (it now sees into shadow DOM and same-origin iframes, and returns each element's rect) then click_element/fill_input on refIds. Use press_keys for Enter/shortcuts, wait_for_element before acting on content that loads asynchronously, and click_at/drag/scroll_wheel (with coordinates from element rects) for canvas or map content that has no clickable element.
 - App playbooks: when you are on a site the user has taught you, its playbook appears automatically above as an "Active app playbook" — follow it to operate that app. The user teaches a new app by typing /learn, which has you explore the site and save a playbook with save_app_playbook.
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
@@ -129,7 +133,7 @@ function buildLearnTask(focus: string, existing?: Skill): string {
     `   - OpenLayers (ol.Map) and Google Maps (google.maps.Map).\n` +
     `   - Scan window for objects exposing those methods; check __NEXT_DATA__ or framework state for data.\n` +
     `4. Call snapshot to capture the interface visually for context.\n` +
-    `5. Synthesize a concise playbook: the concrete way to perform this app's key actions (navigate/pan/zoom, search, read data) using code snippets and/or element references, plus gotchas (e.g. CSP blocking eval, login required). If run_javascript is blocked by CSP, base the playbook on get_element_map + click/fill instead.\n` +
+    `5. Synthesize a concise playbook: the concrete way to perform this app's key actions (navigate/pan/zoom, search, read data) using code snippets and/or element references, plus gotchas (e.g. CSP blocking eval, login required). Note which control method works best for each action — run_javascript on the app's own objects, element refs (click_element/fill_input), keyboard shortcuts (press_keys), or coordinate gestures (click_at/drag/scroll_wheel). If run_javascript is blocked by CSP, base the playbook on get_element_map + click/fill/press_keys instead.\n` +
     `6. Call save_app_playbook with the origin from step 1, a short kebab name, a one-line description, and the playbook body. The user will be asked to approve the save.\n` +
     `7. Briefly tell the user what you learned and saved.\n` +
     existingBlock +
@@ -662,6 +666,27 @@ export class AgentRuntime {
         return JSON.stringify(await browser.submitForm(tabId, String(args.selectorOrRef)));
       case 'run_javascript':
         return browser.runJavascript(tabId, String(args.code));
+      case 'press_keys':
+        return JSON.stringify(
+          await browser.pressKeys(tabId, String(args.combo), args.targetRef ? String(args.targetRef) : undefined),
+        );
+      case 'wait_for_element':
+        return JSON.stringify(
+          await browser.waitForElement(
+            tabId,
+            String(args.selector),
+            (args.state as 'present' | 'visible' | 'enabled') ?? 'visible',
+            typeof args.timeoutMs === 'number' ? args.timeoutMs : 8000,
+          ),
+        );
+      case 'click_at':
+        return JSON.stringify(await browser.clickAt(tabId, Number(args.x), Number(args.y)));
+      case 'drag':
+        return JSON.stringify(
+          await browser.drag(tabId, Number(args.fromX), Number(args.fromY), Number(args.toX), Number(args.toY)),
+        );
+      case 'scroll_wheel':
+        return JSON.stringify(await browser.scrollWheel(tabId, Number(args.x), Number(args.y), Number(args.deltaY)));
       case 'wait_for_page_state':
         return JSON.stringify(await browser.waitForPageState(tabId));
       case 'detect_auth_state': {
@@ -792,6 +817,12 @@ export class AgentRuntime {
         return `Submit the form at "${args.selectorOrRef}" on tab ${args.tabId}`;
       case 'run_javascript':
         return `Run JavaScript on tab ${args.tabId}:\n${String(args.code).slice(0, 200)}`;
+      case 'press_keys':
+        return `Press "${args.combo}" on tab ${args.tabId}`;
+      case 'click_at':
+        return `Click at (${args.x}, ${args.y}) on tab ${args.tabId}`;
+      case 'drag':
+        return `Drag (${args.fromX}, ${args.fromY}) → (${args.toX}, ${args.toY}) on tab ${args.tabId}`;
       case 'save_app_playbook':
         return `Save app playbook "${args.name}" for ${normalizeHost(String(args.origin))}:\n${String(args.body).slice(0, 200)}`;
       default:

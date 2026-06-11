@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { CURATED_PLAYBOOKS, type CuratedPlaybook } from '../shared/curatedPlaybooks';
 import type { Skill } from '../shared/types';
 import { normalizeHost } from '../shared/url';
 
@@ -27,6 +28,7 @@ export function SkillsSection() {
   const [showJson, setShowJson] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
 
   useEffect(() => {
     loadSkills().then(setSkills);
@@ -60,6 +62,20 @@ export function SkillsSection() {
     setForm(EMPTY_FORM);
     setEditingId(null);
     setShowForm(false);
+  };
+
+  const installCurated = async (p: CuratedPlaybook) => {
+    // One playbook per origin: replace any existing skill bound to this origin.
+    const entry: Skill = { id: newId(), name: p.name, description: p.description, body: p.body, origin: p.origin };
+    const idx = skills.findIndex((s) => s.origin === p.origin);
+    const next = skills.slice();
+    if (idx >= 0) {
+      entry.id = skills[idx].id;
+      next[idx] = entry;
+    } else {
+      next.push(entry);
+    }
+    await save(next);
   };
 
   const edit = (skill: Skill) => {
@@ -228,7 +244,31 @@ export function SkillsSection() {
           <button class="btn btn-small" onClick={exportJson} disabled={skills.length === 0}>
             Export JSON
           </button>
+          <button class="btn btn-small" onClick={() => setShowLibrary(!showLibrary)}>
+            App playbook library
+          </button>
         </div>
+      )}
+
+      {showLibrary && (
+        <ul class="sites-list">
+          {CURATED_PLAYBOOKS.map((p) => {
+            const installed = skills.some((s) => s.origin === p.origin);
+            return (
+              <li key={p.origin} class="site-row" title={p.body}>
+                <span class="site-name">{p.origin}</span>
+                <span class="site-desc">{p.description}</span>
+                {installed ? (
+                  <span class="stale-tag">Installed</span>
+                ) : (
+                  <button class="btn btn-small" onClick={() => installCurated(p)}>
+                    Add
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       {showJson && (

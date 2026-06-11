@@ -37,6 +37,8 @@ Three principles shape the design:
 
 If a question refers to "the page" or "this article" without saying which, the agent assumes you mean the currently active tab.
 
+**How the agent controls a page.** It drives pages through the DOM: realistic pointer/keyboard event sequences (so React/Vue inputs and most click handlers respond), an element map that sees into shadow DOM and same-origin iframes, keyboard shortcuts, wait-for-element synchronization, and coordinate gestures (click/drag/wheel) for canvas and maps. For apps with a usable JavaScript API — most web maps — it can also drive the app's own objects directly via `run_javascript`, which is the most reliable path. Two honest limits: synthetic events are not browser-*trusted* (`isTrusted: false`), so a small number of apps that explicitly check for trusted input won't respond; and cross-origin iframes can't be reached. Both would require a `chrome.debugger`-based "high-fidelity mode" that we've deliberately not added (it needs a scary permission and shows a persistent debugging banner).
+
 ## 2. Installation
 
 Toolchain is managed with [mise](https://mise.jdx.dev) (Node is pinned in `mise.toml`):
@@ -138,6 +140,11 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `click_element` | Click an element | **Yes** |
 | `fill_input` | Type into a field | **Yes** |
 | `submit_form` | Submit a form | **Yes** |
+| `press_keys` | Send a key or combo (Enter, Control+Enter, app shortcuts like "c" to compose) | **Yes** |
+| `click_at` | Click at viewport coordinates — for canvas/map content with no clickable element | **Yes** |
+| `drag` | Drag between coordinates — pan a map, move a slider, drag-and-drop | **Yes** |
+| `scroll_wheel` | Wheel event at a point — zoom a map or trigger lazy-loading | – |
+| `wait_for_element` | Wait for an element to become present/visible/enabled before acting | – |
 | `run_javascript` | Run JavaScript in the page's own context and return the result — for reading app/framework state or computing over page data when the DOM tools can't | **Yes** |
 | `save_app_playbook` | Persist a learned, site-scoped playbook (see [§6.6](#66-app-playbooks--teaching-the-agent-an-app)) | **Yes** |
 | `wait_for_page_state` | Wait for a tab to finish loading | – |
@@ -310,6 +317,8 @@ The problem: a site like [marinetraffic.com](https://www.marinetraffic.com/) is 
 
 **Reuse:** the playbook is scoped to the site's origin (e.g. `marinetraffic.com`). Whenever you're on that site afterward, its instructions load **automatically** — no slash command, no description-matching. Ask "pan the map to the English Channel and zoom in" and the agent already knows how this app's map is driven.
 
+**Curated library:** **Settings → Skills → App playbook library** offers ready-made playbooks for common apps (Outlook on the web, Outlook.com, Gmail, MarineTraffic, Jira Cloud). Click **Add** and it installs as an origin-bound playbook that auto-activates on that site — a starting point you can then refine with `/learn` or edit by hand.
+
 **Re-learning:** there's one playbook per site. Running `/learn` again on a site you've already taught loads the current playbook into the exploration, asks the agent to *refine* it, and replaces the existing one when saved — so re-learning improves a playbook rather than piling up duplicates.
 
 Playbooks appear in **Settings → Skills** with an `[app: <site>]` badge; edit or delete them like any skill, and set the **Site** field by hand to author one without `/learn`. They're just skills with a site binding, so JSON import/export carries them too (add an `"origin"` field).
@@ -380,6 +389,7 @@ The mechanics:
 | Skill didn't auto-trigger | Sharpen its description (see [§6.3](#63-two-ways-to-trigger-a-skill)) or force it with `/name`. |
 | Error right after sending a snapshot | Your endpoint/model isn't vision-capable — it rejected the image content. Switch to a multimodal model or discard the snapshot. |
 | `run_javascript` returns an `__error` about eval/CSP | That page's Content Security Policy blocks `eval`. The agent can't run arbitrary JS there; it should fall back to the DOM tools. A `/learn` playbook on such a site should rely on `get_element_map` and clicks rather than JavaScript. |
+| A click or keystroke seems to do nothing | A few apps only respond to browser-*trusted* events, which extensions can't synthesize. Try a `run_javascript` approach instead, or an app playbook that drives the app's own objects. Content inside a cross-origin iframe also can't be reached. |
 | `/learn` didn't save anything | The save step needs your approval — watch for the "Save app playbook…" card. If the site blocks `eval`, the agent may still build a DOM-based playbook; if extraction and JS both fail, there may be nothing learnable beyond a snapshot. |
 
 ## 9. Development

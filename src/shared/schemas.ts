@@ -190,6 +190,105 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'press_keys',
+      description:
+        'Dispatch a keyboard key or combo to the page — "Enter", "Control+Enter", "Escape", "Tab", or a single letter for app shortcuts (e.g. "c" to compose in Outlook/Gmail). Optionally focus a refId first. State-changing: requires user approval.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ...tabIdParam,
+          combo: { type: 'string', description: 'Key or combo, e.g. "Enter" or "Control+Enter".' },
+          targetRef: {
+            type: 'string',
+            description: 'Optional refId to focus before pressing. Defaults to the focused element.',
+          },
+          ...reasonParam,
+        },
+        required: ['tabId', 'combo', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'wait_for_element',
+      description:
+        'Wait until an element matching a CSS selector becomes present/visible/enabled (or time out). Use before acting on dynamically-loaded content.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ...tabIdParam,
+          selector: { type: 'string', description: 'CSS selector to wait for.' },
+          state: {
+            type: 'string',
+            enum: ['present', 'visible', 'enabled'],
+            description: 'Condition to wait for (default visible).',
+          },
+          timeoutMs: { type: 'number', description: 'Max wait in ms (default 8000).' },
+        },
+        required: ['tabId', 'selector'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'click_at',
+      description:
+        'Click at viewport coordinates (x, y) — for canvas/map content with no clickable element. Use element rects from get_element_map to choose coordinates. State-changing: requires user approval.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ...tabIdParam,
+          x: { type: 'number', description: 'Viewport x coordinate.' },
+          y: { type: 'number', description: 'Viewport y coordinate.' },
+          ...reasonParam,
+        },
+        required: ['tabId', 'x', 'y', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'drag',
+      description:
+        'Drag from one viewport coordinate to another — pan a map, move a slider, or drag-and-drop. State-changing: requires user approval.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ...tabIdParam,
+          fromX: { type: 'number' },
+          fromY: { type: 'number' },
+          toX: { type: 'number' },
+          toY: { type: 'number' },
+          ...reasonParam,
+        },
+        required: ['tabId', 'fromX', 'fromY', 'toX', 'toY', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'scroll_wheel',
+      description:
+        'Dispatch a mouse wheel event at viewport coordinates — zoom a map (negative deltaY zooms in) or trigger lazy-loading. Viewport-only; no approval needed.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ...tabIdParam,
+          x: { type: 'number', description: 'Viewport x coordinate.' },
+          y: { type: 'number', description: 'Viewport y coordinate.' },
+          deltaY: { type: 'number', description: 'Wheel delta; negative = up/zoom-in, positive = down.' },
+        },
+        required: ['tabId', 'x', 'y', 'deltaY'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_known_sites',
       description:
         "Search the user's curated directory of known sites (names, URLs, descriptions, optional search-URL templates) for sites likely to contain the data a task needs. Check this before falling back to a generic web search.",

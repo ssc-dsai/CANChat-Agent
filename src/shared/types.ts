@@ -40,6 +40,8 @@ export interface ElementRef {
   selector: string;
   visible: boolean;
   enabled: boolean;
+  /** Viewport-coordinate bounding box, for coordinate gestures. */
+  rect?: { x: number; y: number; width: number; height: number };
 }
 
 export type AuthStatus = 'authenticated' | 'auth_required' | 'unknown' | 'blocked';

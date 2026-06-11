@@ -220,6 +220,42 @@ export async function submitForm(tabId: number, selectorOrRef: string): Promise<
   return sendToTab<ActionResult>(tabId, { kind: 'ba_submit', refIdOrSelector: selectorOrRef });
 }
 
+export async function pressKeys(tabId: number, combo: string, targetRef?: string): Promise<ActionResult> {
+  await ensureContentScript(tabId);
+  return sendToTab<ActionResult>(tabId, { kind: 'ba_press_keys', combo, targetRef });
+}
+
+export async function waitForElement(
+  tabId: number,
+  selector: string,
+  state: 'present' | 'visible' | 'enabled',
+  timeoutMs: number,
+): Promise<ActionResult> {
+  await ensureContentScript(tabId);
+  return sendToTab<ActionResult>(tabId, { kind: 'ba_wait', selector, state, timeoutMs });
+}
+
+export async function clickAt(tabId: number, x: number, y: number): Promise<ActionResult> {
+  await ensureContentScript(tabId);
+  return sendToTab<ActionResult>(tabId, { kind: 'ba_click_at', x, y });
+}
+
+export async function drag(
+  tabId: number,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): Promise<ActionResult> {
+  await ensureContentScript(tabId);
+  return sendToTab<ActionResult>(tabId, { kind: 'ba_drag', fromX, fromY, toX, toY });
+}
+
+export async function scrollWheel(tabId: number, x: number, y: number, deltaY: number): Promise<ActionResult> {
+  await ensureContentScript(tabId);
+  return sendToTab<ActionResult>(tabId, { kind: 'ba_wheel', x, y, deltaY });
+}
+
 export async function waitForPageState(tabId: number): Promise<PageStateResult> {
   const complete = await waitForTabComplete(tabId);
   const tab = await chrome.tabs.get(tabId);

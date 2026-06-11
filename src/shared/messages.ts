@@ -60,4 +60,9 @@ export type ContentRequest =
   | { kind: 'ba_element_map' }
   | { kind: 'ba_click'; refIdOrSelector: string }
   | { kind: 'ba_fill'; refIdOrSelector: string; value: string }
-  | { kind: 'ba_submit'; refIdOrSelector: string };
+  | { kind: 'ba_submit'; refIdOrSelector: string }
+  | { kind: 'ba_press_keys'; combo: string; targetRef?: string }
+  | { kind: 'ba_wait'; selector: string; state: 'present' | 'visible' | 'enabled'; timeoutMs: number }
+  | { kind: 'ba_click_at'; x: number; y: number }
+  | { kind: 'ba_drag'; fromX: number; fromY: number; toX: number; toY: number }
+  | { kind: 'ba_wheel'; x: number; y: number; deltaY: number };

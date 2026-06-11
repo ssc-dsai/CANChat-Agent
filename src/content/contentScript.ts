@@ -1,10 +1,15 @@
 import type { ContentRequest } from '../shared/messages';
 import {
   buildElementMap,
+  clickAt,
   clickElement,
+  drag,
   extractPage,
   fillInput,
+  pressKeys,
+  scrollWheel,
   submitForm,
+  waitForElement,
 } from './domExtractor';
 
 declare global {
@@ -39,6 +44,22 @@ if (!window.__browserAgentInjected) {
         case 'ba_submit':
           sendResponse(submitForm(request.refIdOrSelector));
           break;
+        case 'ba_press_keys':
+          sendResponse(pressKeys(request.combo, request.targetRef));
+          break;
+        case 'ba_click_at':
+          sendResponse(clickAt(request.x, request.y));
+          break;
+        case 'ba_drag':
+          sendResponse(drag(request.fromX, request.fromY, request.toX, request.toY));
+          break;
+        case 'ba_wheel':
+          sendResponse(scrollWheel(request.x, request.y, request.deltaY));
+          break;
+        case 'ba_wait':
+          // Async: keep the message channel open until the wait resolves.
+          waitForElement(request.selector, request.state, request.timeoutMs).then(sendResponse);
+          return true;
       }
     } catch (err) {
       sendResponse({ ok: false, detail: String(err) });

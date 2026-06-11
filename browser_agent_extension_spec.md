@@ -556,6 +556,7 @@ The first version should not attempt to:
 - Complex form automation
 - Persistent memory across sessions (later added post-MVP as an opt-in, off-by-default feature with local-only storage)
 - App playbooks: site-scoped procedures the agent learns via /learn (page JS introspection + element map + snapshot) and reuses automatically; stored as origin-bound skills (post-MVP addition)
+- Stronger page control (post-MVP): realistic pointer/keyboard event sequences, React/Vue-aware input setting, shadow-DOM + same-origin iframe piercing in the element map, element rects, and press_keys/wait_for_element/click_at/drag/scroll_wheel tools; plus a curated, opt-in app-playbook library. Trusted input (isTrusted) and cross-origin iframes remain out of scope — they would require a chrome.debugger "high-fidelity mode," deliberately deferred for its permission and UX cost.
 - Enterprise policy management
 - WebMCP discovery or invocation
 - Fine-grained semantic indexing of browsing history
