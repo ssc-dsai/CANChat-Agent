@@ -110,7 +110,120 @@ function isVisible(el: Element): boolean {
   return style.visibility !== 'hidden' && style.display !== 'none';
 }
 
-const MAP_SELECTOR = 'a[href], button, input, select, textarea, [role="button"], [onclick]';
+const NATIVE_INTERACTIVE = 'a[href], button, input, select, textarea, summary, [onclick], [tabindex]';
+
+// Elements with these ARIA roles are interactive controls worth mapping, even
+// when they are plain <div>/<span> (common in Office 365 / Google apps).
+const INTERACTIVE_ROLES = new Set([
+  'button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem',
+  'menuitemcheckbox', 'menuitemradio', 'option', 'combobox', 'textbox',
+  'searchbox', 'slider', 'spinbutton', 'treeitem', 'gridcell', 'columnheader',
+  'rowheader', 'listbox', 'menu', 'menubar', 'radiogroup', 'scrollbar',
+]);
+
+const GROUP_ROLES = new Set([
+  'dialog', 'alertdialog', 'menu', 'menubar', 'toolbar', 'tablist', 'listbox',
+  'grid', 'table', 'group', 'region', 'navigation', 'form', 'tree',
+]);
+
+// Implicit ARIA role from tag/type — covers the common cases (not the full spec).
+function implicitRole(el: Element): string | undefined {
+  const tag = el.tagName.toLowerCase();
+  if (tag === 'a') return (el as HTMLAnchorElement).href ? 'link' : undefined;
+  if (tag === 'button' || tag === 'summary') return 'button';
+  if (tag === 'select') return el.hasAttribute('multiple') ? 'listbox' : 'combobox';
+  if (tag === 'textarea') return 'textbox';
+  if (tag === 'nav') return 'navigation';
+  if (tag === 'input') {
+    const type = (el as HTMLInputElement).type;
+    if (type === 'checkbox') return 'checkbox';
+    if (type === 'radio') return 'radio';
+    if (type === 'range') return 'slider';
+    if (type === 'number') return 'spinbutton';
+    if (['button', 'submit', 'reset', 'image'].includes(type)) return 'button';
+    if (type === 'search') return 'searchbox';
+    return 'textbox';
+  }
+  return undefined;
+}
+
+function effectiveRole(el: Element): string | undefined {
+  return el.getAttribute('role')?.trim().split(/\s+/)[0] || implicitRole(el);
+}
+
+function refText(el: string, root: Document | ShadowRoot): string {
+  return el
+    .split(/\s+/)
+    .map((id) => root.getElementById?.(id)?.textContent ?? '')
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Simplified accessible-name computation (accname order). A future upgrade is
+// the dom-accessibility-api library; this stays dependency-free for the IIFE.
+function computeName(el: Element): string {
+  const root = el.getRootNode() as Document | ShadowRoot;
+  const labelledby = el.getAttribute('aria-labelledby');
+  if (labelledby) {
+    const t = refText(labelledby, root);
+    if (t) return t;
+  }
+  const ariaLabel = el.getAttribute('aria-label');
+  if (ariaLabel?.trim()) return ariaLabel.trim();
+  if (el.id && root.querySelector) {
+    const label = root.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+    if (label?.textContent?.trim()) return label.textContent.replace(/\s+/g, ' ').trim();
+  }
+  const wrapLabel = el.closest('label');
+  if (wrapLabel?.textContent?.trim()) return wrapLabel.textContent.replace(/\s+/g, ' ').trim();
+  const placeholder = (el as HTMLInputElement).placeholder;
+  if (placeholder) return placeholder;
+  const title = el.getAttribute('title');
+  if (title?.trim()) return title.trim();
+  const alt = el.getAttribute('alt');
+  if (alt?.trim()) return alt.trim();
+  return (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
+function computeStates(el: Element): string[] {
+  const s: string[] = [];
+  const exp = el.getAttribute('aria-expanded');
+  if (exp === 'true') s.push('expanded');
+  else if (exp === 'false') s.push('collapsed');
+  if (el.getAttribute('aria-selected') === 'true') s.push('selected');
+  const checked = el.getAttribute('aria-checked') ?? ((el as HTMLInputElement).checked ? 'true' : null);
+  if (checked === 'true') s.push('checked');
+  else if (checked === 'mixed') s.push('mixed');
+  if (el.getAttribute('aria-pressed') === 'true') s.push('pressed');
+  const cur = el.getAttribute('aria-current');
+  if (cur && cur !== 'false') s.push('current');
+  const pop = el.getAttribute('aria-haspopup');
+  if (pop && pop !== 'false') s.push('haspopup');
+  if (el.getAttribute('aria-disabled') === 'true' || (el as HTMLButtonElement).disabled) s.push('disabled');
+  if (el.getAttribute('aria-readonly') === 'true') s.push('readonly');
+  if (el.getAttribute('aria-required') === 'true') s.push('required');
+  return s;
+}
+
+function closestGroup(el: Element): string | undefined {
+  let node = el.parentElement;
+  for (let depth = 0; node && depth < 12; depth++) {
+    const role = node.getAttribute('role');
+    if (role && GROUP_ROLES.has(role)) {
+      const name = computeName(node).slice(0, 60);
+      return name ? `${role} "${name}"` : role;
+    }
+    node = node.parentElement;
+  }
+  return undefined;
+}
+
+function isInteractive(el: Element): boolean {
+  if (el.matches(NATIVE_INTERACTIVE)) return true;
+  const role = el.getAttribute('role')?.trim().split(/\s+/)[0];
+  return role ? INTERACTIVE_ROLES.has(role) : false;
+}
 
 // Collect interactive elements, descending into shadow roots and same-origin
 // iframes so apps built on web components or framed editors (e.g. OWA) are
@@ -120,7 +233,7 @@ function collectInteractive(root: Document | ShadowRoot, out: Element[]): void {
   if (out.length >= 200) return;
   for (const el of Array.from(root.querySelectorAll('*'))) {
     if (out.length >= 200) break;
-    if (el.matches(MAP_SELECTOR) && isVisible(el)) out.push(el);
+    if (isInteractive(el) && isVisible(el)) out.push(el);
     const shadow = (el as HTMLElement).shadowRoot;
     if (shadow) collectInteractive(shadow, out);
     if (el instanceof HTMLIFrameElement) {
@@ -143,19 +256,20 @@ export function buildElementMap(): ElementRef[] {
     const refId = `el-${refCounter++}`;
     refMap.set(refId, el);
     const r = el.getBoundingClientRect();
-    const text =
-      (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 100) ||
-      (el as HTMLInputElement).placeholder ||
-      undefined;
-    return {
+    const name = computeName(el);
+    const states = computeStates(el);
+    const group = closestGroup(el);
+    const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 100);
+    const ref: ElementRef = {
       refId,
       tagName: el.tagName.toLowerCase(),
-      role: el.getAttribute('role') ?? undefined,
+      role: effectiveRole(el),
       ariaLabel: el.getAttribute('aria-label') ?? undefined,
-      text,
+      name: name || undefined,
+      text: text && text !== name ? text : undefined,
       selector: cssPath(el),
       visible: true,
-      enabled: !(el as HTMLButtonElement).disabled,
+      enabled: !(el as HTMLButtonElement).disabled && el.getAttribute('aria-disabled') !== 'true',
       rect: {
         x: Math.round(r.x),
         y: Math.round(r.y),
@@ -163,6 +277,9 @@ export function buildElementMap(): ElementRef[] {
         height: Math.round(r.height),
       },
     };
+    if (states.length > 0) ref.states = states;
+    if (group) ref.group = group;
+    return ref;
   });
 }
 
@@ -252,6 +369,76 @@ export function submitForm(refIdOrSelector: string): ActionResult {
   if (!form) return { ok: false, detail: 'No form found for element' };
   form.requestSubmit();
   return { ok: true, detail: 'Form submitted' };
+}
+
+// --- canvas / app content reader ---------------------------------------------
+
+function htmlToText(html: string): string {
+  try {
+    return (new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '')
+      .replace(/\s+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  } catch {
+    return '';
+  }
+}
+
+const APP_CONTENT_MAX = 20000;
+
+// Best-effort extraction of content the DOM/ARIA can't see (e.g. canvas-rendered
+// Google Docs/Sheets). No special permission: we read the selection model and
+// intercept the app's own copy output (the in-flight dataTransfer, never the
+// system clipboard).
+export function readAppContent(): { method: string; text: string; truncated: boolean } {
+  const sel = window.getSelection();
+  const saved = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
+  const restore = () => {
+    if (!sel) return;
+    sel.removeAllRanges();
+    if (saved) sel.addRange(saved);
+  };
+  const cap = (text: string, method: string) => {
+    const t = text.trim();
+    return { method, text: t.slice(0, APP_CONTENT_MAX), truncated: t.length > APP_CONTENT_MAX };
+  };
+
+  // 1) Selection model: many apps reflect their content here on select-all.
+  try {
+    document.execCommand('selectAll');
+    const selected = (window.getSelection()?.toString() ?? '').trim();
+    if (selected.length > 50) {
+      restore();
+      return cap(selected, 'selection');
+    }
+  } catch {
+    // fall through
+  }
+
+  // 2) Copy interception: capture what the app writes on copy, then discard it.
+  try {
+    let captured = '';
+    const onCopy = (e: Event) => {
+      const dt = (e as ClipboardEvent).clipboardData;
+      if (dt) captured = dt.getData('text/plain') || htmlToText(dt.getData('text/html'));
+    };
+    window.addEventListener('copy', onCopy, true);
+    document.execCommand('selectAll');
+    document.execCommand('copy');
+    window.removeEventListener('copy', onCopy, true);
+    if (captured.trim().length > 50) {
+      restore();
+      return cap(captured, 'copy');
+    }
+  } catch {
+    // fall through
+  }
+  restore();
+
+  // 3) Plain visible text.
+  const body = (document.body?.innerText ?? '').replace(/\n{3,}/g, '\n\n').trim();
+  if (body.length > 50) return cap(body, 'innerText');
+  return { method: 'none', text: '', truncated: false };
 }
 
 // --- keyboard ----------------------------------------------------------------

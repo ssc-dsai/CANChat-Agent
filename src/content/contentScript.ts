@@ -7,6 +7,7 @@ import {
   extractPage,
   fillInput,
   pressKeys,
+  readAppContent,
   scrollWheel,
   submitForm,
   waitForElement,
@@ -31,6 +32,9 @@ if (!window.__browserAgentInjected) {
           break;
         case 'ba_extract':
           sendResponse(extractPage());
+          break;
+        case 'ba_app_content':
+          sendResponse(readAppContent());
           break;
         case 'ba_element_map':
           sendResponse(buildElementMap());

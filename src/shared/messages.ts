@@ -79,6 +79,7 @@ export interface ExtractPdfResponse {
 export type ContentRequest =
   | { kind: 'ba_ping' }
   | { kind: 'ba_extract' }
+  | { kind: 'ba_app_content' }
   | { kind: 'ba_element_map' }
   | { kind: 'ba_click'; refIdOrSelector: string }
   | { kind: 'ba_fill'; refIdOrSelector: string; value: string }

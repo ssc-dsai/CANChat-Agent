@@ -92,6 +92,15 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'read_app_content',
+      description:
+        'Best-effort read of content the normal page tools cannot see — e.g. a canvas-rendered Google Doc or Sheet body. Try this when get_tab_content returns little on an app page. If it also returns nothing, fall back to snapshot + vision.',
+      parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_all_tab_contents',
       description:
         'Extract readable content from every open tab. Requires the user to have granted all-tabs access; requires user approval each time.',

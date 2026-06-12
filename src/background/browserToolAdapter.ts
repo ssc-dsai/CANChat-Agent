@@ -202,6 +202,20 @@ export async function getElementMap(tabId: number): Promise<ElementRef[]> {
   return sendToTab<ElementRef[]>(tabId, { kind: 'ba_element_map' });
 }
 
+export async function readAppContent(tabId: number): Promise<string> {
+  await ensureContentScript(tabId);
+  const result = await sendToTab<{ method: string; text: string; truncated: boolean }>(tabId, {
+    kind: 'ba_app_content',
+  });
+  if (result.method === 'none' || !result.text) {
+    return JSON.stringify({
+      method: 'none',
+      note: 'No extractable text — the content is likely canvas-rendered. Use the snapshot tool and read it with vision.',
+    });
+  }
+  return JSON.stringify(result);
+}
+
 export async function clickElement(tabId: number, selectorOrRef: string): Promise<ActionResult> {
   await ensureContentScript(tabId);
   return sendToTab<ActionResult>(tabId, { kind: 'ba_click', refIdOrSelector: selectorOrRef });

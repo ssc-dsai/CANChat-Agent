@@ -34,9 +34,16 @@ export interface PageContent {
 export interface ElementRef {
   refId: string;
   tagName: string;
+  /** Effective ARIA role (explicit or implicit from the tag). */
   role?: string;
   ariaLabel?: string;
+  /** Computed accessible name (accname algorithm, simplified). */
+  name?: string;
   text?: string;
+  /** ARIA states, e.g. ['expanded','selected','disabled']. */
+  states?: string[];
+  /** Nearest landmark/container, e.g. 'dialog "Compose"'. */
+  group?: string;
   selector: string;
   visible: boolean;
   enabled: boolean;

@@ -68,6 +68,7 @@ const READ_ONLY_TOOLS = new Set([
   'record_finding',
   'export_data',
   'read_pdf',
+  'read_app_content',
 ]);
 
 const SYSTEM_PROMPT = `You are a browser agent running in a Chrome extension side panel. The browser is your primary tool environment.
@@ -93,7 +94,9 @@ Working method:
 - Before clicking, filling, or submitting anything, call get_element_map and act on refIds. State-changing actions require user approval; the runtime handles asking.
 - Every action that needs approval (click_element, fill_input, submit_form, run_javascript, get_all_tab_contents, save_app_playbook) takes a required "reason" argument. Always set it to a clear, plain-language explanation, written for the user, of what the action does and why it helps the task — this is what they read to decide. No jargon or refIds.
 - A run_javascript tool runs JavaScript in the page's own context for tasks the other tools can't express — reading app/framework state or computing over page data. It requires user approval; prefer the dedicated tools when they suffice.
-- Choosing a control method: for apps with a usable JavaScript API (maps, charts), driving the page's own object via run_javascript (e.g. a Leaflet map's setView) is the most reliable — prefer it. For ordinary UI, use get_element_map (it now sees into shadow DOM and same-origin iframes, and returns each element's rect) then click_element/fill_input on refIds. Use press_keys for Enter/shortcuts, wait_for_element before acting on content that loads asynchronously, and click_at/drag/scroll_wheel (with coordinates from element rects) for canvas or map content that has no clickable element.
+- Choosing a control method: for apps with a usable JavaScript API (maps, charts), driving the page's own object via run_javascript (e.g. a Leaflet map's setView) is the most reliable — prefer it. For ordinary UI, use get_element_map (it sees into shadow DOM and same-origin iframes, and returns each element's accessible name, effective ARIA role, states, group, and rect) then click_element/fill_input on refIds. Use press_keys for Enter/shortcuts, wait_for_element before acting on content that loads asynchronously, and click_at/drag/scroll_wheel (with coordinates from element rects) for canvas or map content that has no clickable element.
+- The element map is accessibility-aware: identify controls by their role + accessible name (e.g. menuitem "Insert", tab "Inbox") rather than guessing selectors — names are more stable across app updates — and use states (only expand a control that is "collapsed", etc.). This is the reliable way to operate complex apps like Office 365 / Outlook web and the menus/toolbars of Google apps.
+- If get_tab_content returns little on an app page (canvas-rendered apps like Google Docs/Sheets), call read_app_content; if that also returns nothing, use snapshot + vision.
 - App playbooks: when you are on a site the user has taught you, its playbook appears automatically above as an "Active app playbook" — follow it to operate that app. The user teaches a new app by typing /learn, which has you explore the site and save a playbook with save_app_playbook.
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
@@ -877,6 +880,8 @@ export class AgentRuntime {
       }
       case 'get_element_map':
         return JSON.stringify((await browser.getElementMap(tabId)).slice(0, 120));
+      case 'read_app_content':
+        return browser.readAppContent(tabId);
       case 'click_element':
         return JSON.stringify(await browser.clickElement(tabId, String(args.selectorOrRef)));
       case 'fill_input':
