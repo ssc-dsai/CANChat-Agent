@@ -22,10 +22,10 @@ You bring your own model: any OpenAI-compatible endpoint works, from OpenAI's AP
 
 ## 1. How it works
 
-When you send a message, the agent runs a loop of up to 16 steps:
+When you send a message, the agent runs a think→act→observe loop against a step budget (20 by default, auto-extending to 40 while a plan is still in progress):
 
 1. **Classify** — can this be answered from model knowledge alone, or does it need the browser? General, stable questions get direct answers. Anything about *your* pages, tabs, recent events, or specific sites triggers browser use.
-2. **Act** — the agent picks from its tools (listed in [§4.5](#45-the-tool-activity-log)): listing tabs, reading page content, navigating, searching, running JavaScript, checking login state, and so on.
+2. **Act** — the agent picks from its tools (listed in [§4.6](#46-the-tool-activity-log)): listing tabs, reading page content, navigating, searching, running JavaScript, checking login state, and so on.
 3. **Observe** — tool results (extracted page text, tab lists, navigation outcomes) feed back into the loop.
 4. **Repeat** until it has enough to answer, then it replies in the chat with markdown formatting and a **source citation list** linking every page it drew on.
 
@@ -36,6 +36,8 @@ Three principles shape the design:
 - **Pause, don't fail.** When a task hits a login wall or a missing permission, the agent doesn't abandon the task — it pauses, tells you what it needs, and resumes where it left off once you've acted.
 
 If a question refers to "the page" or "this article" without saying which, the agent assumes you mean the currently active tab.
+
+**How the agent plans.** For anything beyond a quick lookup, the agent works deliberately rather than reactively. It drafts a **plan** (shown live in the sidebar), keeps a running set of **findings** as it goes, and tracks a **step budget** it paces itself against. A compact working-state block — active tab, plan with per-step status, findings, remaining budget — rides at the top of its context and refreshes every step, so it stays oriented over long tasks; older raw tool output is compacted away once its key results are recorded as findings. Independent reads (e.g. several tabs at once) run in parallel. If a long task runs out of budget it extends once while the plan still has open steps, then composes a best-effort answer from its findings — it never dead-ends with "reached maximum steps." After a substantial task you can save the whole workflow as a reusable skill in one click.
 
 **How the agent controls a page.** It drives pages through the DOM: realistic pointer/keyboard event sequences (so React/Vue inputs and most click handlers respond), an element map that sees into shadow DOM and same-origin iframes, keyboard shortcuts, wait-for-element synchronization, and coordinate gestures (click/drag/wheel) for canvas and maps. For apps with a usable JavaScript API — most web maps — it can also drive the app's own objects directly via `run_javascript`, which is the most reliable path. Two honest limits: synthetic events are not browser-*trusted* (`isTrusted: false`), so a small number of apps that explicitly check for trusted input won't respond; and cross-origin iframes can't be reached. Both would require a `chrome.debugger`-based "high-fidelity mode" that we've deliberately not added (it needs a scary permission and shows a persistent debugging banner).
 
@@ -104,15 +106,20 @@ The row of buttons under the header controls what page content is handed to the 
 
 Each tab in context is listed with a status dot — green (readable), amber (login required), red (blocked or unreadable, e.g. `chrome://` pages) — and a **stale** tag once a snapshot is older than 5 minutes. Stale context isn't deleted; the agent is told it may be out of date and re-fetches when freshness matters.
 
-### 4.3 Chat
+### 4.3 Plan panel
+
+On a multi-step task a **Plan** panel appears between the tab buttons and the chat, listing the agent's steps with live status (○ pending, » in progress, ✓ done, – skipped) and a done/total count. It's the agent's own plan, updated as it works — a window into what it's doing and how far along it is. Simple one-shot tasks don't show a plan.
+
+### 4.4 Chat
 
 - Assistant answers render full **markdown** — headings, lists, tables, code, links (links open in a new tab).
 - Answers that drew on web pages end with a **Source tabs** block — smaller bold text under a divider, each source a numbered clickable link with its full URL.
 - Every assistant message has a **⧉ Copy** button that copies the raw markdown.
 - **Send / Pause / Stop** — Pause halts the loop between steps; Stop aborts the task, including any in-flight model request.
 - Typing `/` shows your matching **skill** names as clickable chips (see [§6](#6-skills--reusable-procedures)).
+- After a substantial task, a **Save this workflow as a reusable skill?** chip appears above the input — one click distills what the agent just did into an editable skill (see [§6.7](#67-managing-skills)).
 
-### 4.4 Inline cards
+### 4.5 Inline cards
 
 Three kinds of amber cards appear in the chat when the agent needs you:
 
@@ -122,7 +129,7 @@ Three kinds of amber cards appear in the chat when the agent needs you:
 | **Authentication required** | A page redirected to login (detected via URL patterns, password fields, sign-in text, known identity providers) | Sign in to the site in the browser as usual, then **Resume** — the agent re-checks and continues |
 | **Needs access to \<site\>** | You've manually restricted the extension's site access and the agent opened a page it can't read | **Allow this site** / **Allow all sites** / Stop — granting resumes and retries automatically |
 
-### 4.5 The tool activity log
+### 4.6 The tool activity log
 
 The collapsible **Tool activity** bar at the bottom shows every tool call with a status icon (… running, ✓ ok, ✗ error, ⊘ denied). Hover an entry to see the arguments. The agent's full toolset:
 
@@ -140,6 +147,8 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `click_element` | Click an element | **Yes** |
 | `fill_input` | Type into a field | **Yes** |
 | `submit_form` | Submit a form | **Yes** |
+| `set_plan` / `update_plan` | Draft and track the step-by-step plan shown in the sidebar | – |
+| `record_finding` | Save an intermediate result to working notes that survive context compaction | – |
 | `press_keys` | Send a key or combo (Enter, Control+Enter, app shortcuts like "c" to compose) | **Yes** |
 | `click_at` | Click at viewport coordinates — for canvas/map content with no clickable element | **Yes** |
 | `drag` | Drag between coordinates — pan a map, move a slider, drag-and-drop | **Yes** |

@@ -1,6 +1,7 @@
 import type {
   AgentStatus,
   ChatMessageView,
+  PlanView,
   Settings,
   TabContextSummary,
   ToolActivity,
@@ -11,6 +12,8 @@ export type SidebarCommand =
   | { type: 'user_message'; text: string }
   | { type: 'stop_task' }
   | { type: 'clear_conversation' }
+  | { type: 'distill_skill' }
+  | { type: 'dismiss_distill' }
   | { type: 'pause_agent' }
   | { type: 'resume_agent' }
   | { type: 'approval_response'; requestId: string; approved: boolean }
@@ -32,6 +35,8 @@ export type BackgroundEvent =
   | { type: 'permission_required'; origin: string; message: string }
   | { type: 'context_update'; summary: TabContextSummary | null }
   | { type: 'pending_snapshots'; thumbs: string[] }
+  | { type: 'plan_update'; plan: PlanView | null }
+  | { type: 'distill_offer'; available: boolean }
   | { type: 'error'; message: string }
   | {
       type: 'full_state';
@@ -43,6 +48,8 @@ export type BackgroundEvent =
       authNotice: { origin: string; message: string } | null;
       permissionNotice: { origin: string; message: string } | null;
       pendingSnapshots: string[];
+      plan: PlanView | null;
+      canDistill: boolean;
     };
 
 /** One-shot messages handled by chrome.runtime.onMessage. */

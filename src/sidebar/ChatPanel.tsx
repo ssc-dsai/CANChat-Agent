@@ -20,6 +20,7 @@ interface Props {
   authNotice: { origin: string; message: string } | null;
   permissionNotice: { origin: string; message: string } | null;
   pendingSnapshots: string[];
+  canDistill: boolean;
   send: (command: SidebarCommand) => void;
   disabled: boolean;
 }
@@ -47,6 +48,7 @@ export function ChatPanel({
   authNotice,
   permissionNotice,
   pendingSnapshots,
+  canDistill,
   send,
   disabled,
 }: Props) {
@@ -208,6 +210,17 @@ export function ChatPanel({
       </div>
 
       <div class="chat-input-row">
+        {canDistill && (
+          <div class="distill-chip">
+            <span>Save this workflow as a reusable skill?</span>
+            <button class="btn btn-small btn-primary" onClick={() => send({ type: 'distill_skill' })}>
+              Save skill
+            </button>
+            <button class="icon-btn" title="Dismiss" onClick={() => send({ type: 'dismiss_distill' })}>
+              ✕
+            </button>
+          </div>
+        )}
         {pendingSnapshots.length > 0 && (
           <div class="snapshot-pending">
             {pendingSnapshots.map((src, i) => (

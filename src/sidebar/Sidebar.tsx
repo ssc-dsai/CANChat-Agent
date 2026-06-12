@@ -3,11 +3,13 @@ import type { BackgroundEvent, SidebarCommand } from '../shared/messages';
 import type {
   AgentStatus,
   ChatMessageView,
+  PlanView,
   Settings,
   TabContextSummary,
   ToolActivity,
 } from '../shared/types';
 import { ChatPanel } from './ChatPanel';
+import { PlanPanel } from './PlanPanel';
 import { SettingsScreen } from './SettingsScreen';
 import { TabContextPanel } from './TabContextPanel';
 import { ToolActivityPanel } from './ToolActivityPanel';
@@ -32,6 +34,8 @@ export function Sidebar() {
   const [authNotice, setAuthNotice] = useState<{ origin: string; message: string } | null>(null);
   const [permissionNotice, setPermissionNotice] = useState<{ origin: string; message: string } | null>(null);
   const [pendingSnapshots, setPendingSnapshots] = useState<string[]>([]);
+  const [plan, setPlan] = useState<PlanView | null>(null);
+  const [canDistill, setCanDistill] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -66,6 +70,8 @@ export function Sidebar() {
             setAuthNotice(event.authNotice);
             setPermissionNotice(event.permissionNotice);
             setPendingSnapshots(event.pendingSnapshots);
+            setPlan(event.plan);
+            setCanDistill(event.canDistill);
             break;
           case 'chat_message':
             setMessages((m) => [...m, event.message]);
@@ -103,6 +109,12 @@ export function Sidebar() {
             break;
           case 'pending_snapshots':
             setPendingSnapshots(event.thumbs);
+            break;
+          case 'plan_update':
+            setPlan(event.plan);
+            break;
+          case 'distill_offer':
+            setCanDistill(event.available);
             break;
           case 'error':
             setErrorBanner(event.message);
@@ -164,6 +176,8 @@ export function Sidebar() {
 
       <TabContextPanel context={context} send={send} />
 
+      <PlanPanel plan={plan} />
+
       <ChatPanel
         messages={messages}
         status={status}
@@ -171,6 +185,7 @@ export function Sidebar() {
         authNotice={authNotice}
         permissionNotice={permissionNotice}
         pendingSnapshots={pendingSnapshots}
+        canDistill={canDistill}
         send={send}
         disabled={configured === false}
       />

@@ -332,6 +332,60 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'set_plan',
+      description:
+        'Lay out (or replace) your step-by-step plan for a multi-step task. Call this first whenever a task needs more than a couple of tool calls, and call it again to revise the plan if something changes. The plan is shown to the user.',
+      parameters: {
+        type: 'object',
+        properties: {
+          steps: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Ordered list of short step descriptions.',
+          },
+        },
+        required: ['steps'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_plan',
+      description:
+        'Update the status of one plan step. Keep exactly one step in_progress at a time; mark steps done as you complete them.',
+      parameters: {
+        type: 'object',
+        properties: {
+          step: { type: 'number', description: '1-based index of the step.' },
+          status: {
+            type: 'string',
+            enum: ['pending', 'in_progress', 'done', 'skipped'],
+          },
+          note: { type: 'string', description: 'Optional short note about the step.' },
+        },
+        required: ['step', 'status'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'record_finding',
+      description:
+        'Save one important intermediate result to your working notes (e.g. "Vessel X is en route to Rotterdam, ETA June 14"). Use this instead of relying on scrolling history — findings stay in view even as older tool output is compacted away.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'The finding, stated concisely.' },
+        },
+        required: ['text'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'use_skill',
       description:
         "Load the full instructions of one of the user's skills by name and follow them for the current task. Use when the task matches a skill's description.",

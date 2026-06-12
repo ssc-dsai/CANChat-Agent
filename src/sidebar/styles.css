@@ -208,6 +208,73 @@ body {
   flex-shrink: 0;
 }
 
+/* Plan panel */
+.plan-panel {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+}
+
+.plan-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 130px;
+  overflow-y: auto;
+}
+
+.plan-step {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.plan-icon {
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+.plan-in_progress .plan-icon {
+  color: var(--accent);
+}
+.plan-done .plan-icon {
+  color: var(--ok);
+}
+.plan-done .plan-text {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+.plan-skipped .plan-text {
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+.plan-in_progress .plan-text {
+  font-weight: 600;
+}
+
+/* Distill chip */
+.distill-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.distill-chip span {
+  flex: 1;
+}
+
 /* Chat */
 .chat {
   flex: 1;

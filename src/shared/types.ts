@@ -143,6 +143,12 @@ export interface ChatMessageView {
   images?: string[];
 }
 
+export type PlanStepStatus = 'pending' | 'in_progress' | 'done' | 'skipped';
+
+export interface PlanView {
+  steps: { text: string; status: PlanStepStatus }[];
+}
+
 export type ContextScope = 'active' | 'selected' | 'all';
 
 export interface TabContextSnapshot {

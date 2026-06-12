@@ -5,9 +5,11 @@ import type {
   AuthState,
   ChatMessageView,
   PageContent,
+  PlanStepStatus,
+  PlanView,
   ToolActivity,
 } from '../shared/types';
-import type { MemoryEntry, SiteEntry, Skill } from '../shared/types';
+import type { MemoryEntry, Settings, SiteEntry, Skill } from '../shared/types';
 import { hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { complete, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
@@ -23,11 +25,20 @@ import {
 } from './storage';
 import * as tabContext from './tabContextManager';
 
-const MAX_ITERATIONS = 16;
+const SOFT_STEP_BUDGET = 20; // default tool-iteration budget per task
+const STEP_BUDGET_EXTENSION = 10; // granted when the plan still has work left
+const HARD_STEP_CEILING = 40; // absolute cap to bound cost
 const SITES_PROMPT_LIMIT = 25;
 const LLM_TIMEOUT_MS = 120000;
 const SINGLE_TAB_CHARS = 12000;
 const MULTI_TAB_CHARS = 5000;
+const CONVERSATION_CHAR_BUDGET = 90000; // compact older tool output beyond this
+const FINDINGS_SHOWN = 20;
+
+interface PlanStep {
+  text: string;
+  status: PlanStepStatus;
+}
 
 /** Tools that mutate page or browser state and therefore need user approval. */
 const APPROVAL_REQUIRED = new Set([
@@ -42,6 +53,21 @@ const APPROVAL_REQUIRED = new Set([
   'get_all_tab_contents', // reading all tabs needs explicit approval per spec
 ]);
 
+/** Read-only / local tools that are safe to run concurrently within one turn. */
+const READ_ONLY_TOOLS = new Set([
+  'list_tabs',
+  'get_active_tab',
+  'get_tab_content',
+  'get_element_map',
+  'detect_auth_state',
+  'wait_for_element',
+  'search_known_sites',
+  'use_skill',
+  'set_plan',
+  'update_plan',
+  'record_finding',
+]);
+
 const SYSTEM_PROMPT = `You are a browser agent running in a Chrome extension side panel. The browser is your primary tool environment.
 
 Decision policy:
@@ -49,6 +75,13 @@ Decision policy:
 - Use browser tools when the user asks about the current page, open tabs, recent or site-specific information, data on websites, or authenticated systems (Jira, dashboards, etc.).
 - Whenever an operation can be done through the browser, do it through the browser.
 - When the user refers to "the page", "this article", "the site", or a web page without saying which one, assume they mean the currently active tab: call get_active_tab, then get_tab_content on it.
+
+Planning multi-step tasks:
+- For any task that needs more than two or three tool calls, FIRST call set_plan with a short ordered list of steps. Keep exactly one step in_progress (update_plan), and mark steps done as you finish them. Revise with set_plan if the situation changes.
+- As you discover important intermediate results, call record_finding to save them. Do not rely on scrolling back through history — older tool output gets compacted away, but findings and the plan stay in view in the working-state block.
+- A live working-state block (active tab, plan, findings, step budget) is kept at the top of your context and refreshed every step. Watch the remaining step budget and pace yourself; when it runs low, record what matters and produce your best answer.
+- You can issue several independent read-only tool calls in one turn — they run in parallel (e.g. get_tab_content on several tabs at once).
+- Before giving your final answer, verify the goal is actually met (re-read the page or re-check the result) rather than assuming an action worked.
 
 Working method:
 - Use search_web for web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
@@ -196,6 +229,17 @@ export class AgentRuntime {
   private abortController: AbortController | null = null;
   private pendingSnapshots: Array<{ dataUrl: string; title: string; url: string }> = [];
   private activityCounter = 0;
+  // --- agent-core working state (plan, findings, step budget) ---
+  private plan: PlanStep[] | null = null;
+  private findings: string[] = [];
+  private stepsUsed = 0;
+  private stepBudget = SOFT_STEP_BUDGET;
+  private toolCallCount = 0;
+  private canDistill = false;
+  private lastUserText = '';
+  private activeHost = '';
+  private activeTabLabel = '';
+  private systemBase = '';
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
 
@@ -220,7 +264,13 @@ export class AgentRuntime {
         ? { origin: this.permissionWait.origin, message: this.permissionWait.message }
         : null,
       pendingSnapshots: this.pendingSnapshots.map((s) => s.dataUrl),
+      plan: this.planView(),
+      canDistill: this.canDistill,
     };
+  }
+
+  private planView(): PlanView | null {
+    return this.plan ? { steps: this.plan.map((s) => ({ text: s.text, status: s.status })) } : null;
   }
 
   attachSnapshot(dataUrl: string, title: string, url: string): void {
@@ -308,6 +358,15 @@ export class AgentRuntime {
     this.stopRequested = false;
     this.pauseRequested = false;
     this.abortController = new AbortController();
+    // Reset per-task working state.
+    this.lastUserText = text;
+    this.plan = null;
+    this.findings = [];
+    this.stepsUsed = 0;
+    this.stepBudget = SOFT_STEP_BUDGET;
+    this.toolCallCount = 0;
+    this.setDistill(false);
+    this.emit({ type: 'plan_update', plan: null });
 
     try {
       await this.runLoop(taskText, snapshots);
@@ -363,8 +422,72 @@ export class AgentRuntime {
     this.messages = [];
     this.activities = [];
     this.pendingSnapshots = [];
+    this.plan = null;
+    this.findings = [];
+    this.stepsUsed = 0;
+    this.toolCallCount = 0;
+    this.canDistill = false;
     this.setStatus('idle');
+    this.emit({ type: 'plan_update', plan: null });
     this.emit(this.fullState());
+  }
+
+  private setDistill(available: boolean): void {
+    this.canDistill = available;
+    this.emit({ type: 'distill_offer', available });
+  }
+
+  dismissDistill(): void {
+    this.setDistill(false);
+  }
+
+  /** Generalize the just-completed task into a reusable skill and save it. */
+  async distillSkill(): Promise<void> {
+    if (this.running || !this.canDistill) return;
+    const settings = await getSettings();
+    if (!settings) return;
+    this.setDistill(false);
+    this.setStatus('thinking', 'Distilling a skill…');
+    try {
+      const planText = this.plan?.map((s, i) => `${i + 1}. ${s.text}`).join('\n') ?? '(no explicit plan)';
+      const prompt: LlmMessage[] = [
+        {
+          role: 'system',
+          content:
+            'You convert a completed browser task into a reusable skill for a browser agent. Respond with ONLY a JSON object: {"name": "<lowercase-kebab>", "description": "<one line: when to use this>", "body": "<numbered markdown steps naming the agent tools used, generalized so it works for similar future tasks>"}. No prose, no code fence.',
+        },
+        {
+          role: 'user',
+          content: `Original request:\n${this.lastUserText}\n\nPlan that was followed:\n${planText}\n\nKey findings:\n${this.findings.join('\n') || '(none)'}\n\nProduce the skill JSON.`,
+        },
+      ];
+      const reply = await complete(settings, prompt, undefined, this.makeSignal());
+      const raw = (reply.content ?? '').trim().replace(/^```(?:json)?|```$/g, '').trim();
+      const parsed = JSON.parse(raw) as { name?: string; description?: string; body?: string };
+      if (!parsed.name || !parsed.description || !parsed.body) {
+        throw new Error('Incomplete skill.');
+      }
+      const name = parsed.name.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+      const skills = await getSkills();
+      const idx = skills.findIndex((s) => s.name.toLowerCase() === name && !s.origin);
+      const skill: Skill = {
+        id: idx >= 0 ? skills[idx].id : `skill-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        description: parsed.description.trim(),
+        body: parsed.body.trim(),
+      };
+      if (idx >= 0) skills[idx] = skill;
+      else skills.push(skill);
+      await saveSkills(skills);
+      this.notice(`Saved skill /${name} — edit it in Settings → Skills.`);
+    } catch (err) {
+      this.emit({
+        type: 'error',
+        message: `Could not distill a skill: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      if (this.status !== 'error') this.setStatus('idle');
+    }
   }
 
   pause(): void {
@@ -436,26 +559,27 @@ export class AgentRuntime {
       ? `\n\nUser instructions — the user has configured these standing instructions; follow them within the safety rules above:\n${settings.systemPrompt.trim()}`
       : '';
     // Active tab host drives app-playbook auto-activation.
-    let activeHost = '';
+    this.activeHost = '';
+    this.activeTabLabel = '';
     try {
-      activeHost = normalizeHost((await browser.getActiveTab()).url);
+      const tab = await browser.getActiveTab();
+      this.activeHost = normalizeHost(tab.url);
+      this.activeTabLabel = `${tab.url} "${tab.title}"`;
     } catch {
       // No active tab (or restricted); playbooks just won't auto-activate.
     }
-    const systemMessage: LlmMessage = {
-      role: 'system',
-      content:
-        SYSTEM_PROMPT +
-        sitesPromptBlock(await getSites()) +
-        skillsPromptBlock(await getSkills(), activeHost) +
-        (memoryEnabled ? memoryPromptBlock(await getMemories()) : '') +
-        customInstructions,
-    };
+    // The base system prompt is fixed for the task; the live state block is
+    // refreshed each turn (see refreshSystemMessage).
+    this.systemBase =
+      SYSTEM_PROMPT +
+      sitesPromptBlock(await getSites()) +
+      skillsPromptBlock(await getSkills(), this.activeHost) +
+      (memoryEnabled ? memoryPromptBlock(await getMemories()) : '') +
+      customInstructions;
     if (this.conversation.length === 0) {
-      this.conversation.push(systemMessage);
-    } else {
-      this.conversation[0] = systemMessage;
+      this.conversation.push({ role: 'system', content: this.systemBase });
     }
+    this.refreshSystemMessage();
 
     const contextBlock = this.buildContextBlock();
     let textContent = contextBlock ? `${contextBlock}\n\n${userText}` : userText;
@@ -476,7 +600,7 @@ export class AgentRuntime {
       this.conversation.push({ role: 'user', content: parts });
     }
 
-    for (let i = 0; i < MAX_ITERATIONS; i++) {
+    for (;;) {
       if (this.stopRequested) {
         this.notice('Task stopped.');
         return;
@@ -484,18 +608,30 @@ export class AgentRuntime {
       await this.waitIfPaused();
       if (this.stopRequested) return;
 
+      // Budget: extend if the plan still has open steps, else wrap up gracefully.
+      if (this.stepsUsed >= this.stepBudget) {
+        if (this.planHasOpenSteps() && this.stepBudget < HARD_STEP_CEILING) {
+          this.stepBudget = Math.min(HARD_STEP_CEILING, this.stepBudget + STEP_BUDGET_EXTENSION);
+          this.notice(`Extending the step budget to ${this.stepBudget} to finish the plan.`);
+        } else {
+          await this.wrapUp(settings);
+          return;
+        }
+      }
+
+      await this.refreshActiveTabLabel();
+      this.compactConversation();
+      this.refreshSystemMessage();
+
       this.setStatus('thinking');
-      const taskSignal = this.abortController?.signal;
-      const signal = taskSignal
-        ? AbortSignal.any([taskSignal, AbortSignal.timeout(LLM_TIMEOUT_MS)])
-        : AbortSignal.timeout(LLM_TIMEOUT_MS);
-      const reply = await complete(settings, this.conversation, tools, signal);
+      const reply = await complete(settings, this.conversation, tools, this.makeSignal());
       if (this.stopRequested) return;
 
       if (!reply.tool_calls || reply.tool_calls.length === 0) {
         const text = reply.content ?? '(no response)';
         this.conversation.push({ role: 'assistant', content: text });
         this.pushChat({ role: 'assistant', text, timestamp: new Date().toISOString() });
+        this.maybeOfferDistill();
         return;
       }
 
@@ -509,21 +645,89 @@ export class AgentRuntime {
         this.pushChat({ role: 'notice', text: reply.content, timestamp: new Date().toISOString() });
       }
 
-      for (const call of reply.tool_calls) {
-        if (this.stopRequested) {
-          this.conversation.push({
-            role: 'tool',
-            tool_call_id: call.id,
-            content: 'Task stopped by user.',
-          });
-          continue;
-        }
-        const result = await this.executeToolCall(call);
-        this.conversation.push({ role: 'tool', tool_call_id: call.id, content: result });
+      this.stepsUsed++;
+      await this.executeToolCalls(reply.tool_calls);
+    }
+  }
+
+  private makeSignal(): AbortSignal {
+    const taskSignal = this.abortController?.signal;
+    return taskSignal
+      ? AbortSignal.any([taskSignal, AbortSignal.timeout(LLM_TIMEOUT_MS)])
+      : AbortSignal.timeout(LLM_TIMEOUT_MS);
+  }
+
+  private async refreshActiveTabLabel(): Promise<void> {
+    try {
+      const tab = await browser.getActiveTab();
+      this.activeTabLabel = `${tab.url} "${tab.title}"`;
+    } catch {
+      // keep the previous label
+    }
+  }
+
+  /** Run a turn's tool calls: read-only ones concurrently, the rest in order. */
+  private async executeToolCalls(calls: LlmToolCall[]): Promise<void> {
+    this.toolCallCount += calls.length;
+    const results = new Map<string, string>();
+    const run = async (call: LlmToolCall) => {
+      results.set(call.id, this.stopRequested ? 'Task stopped by user.' : await this.executeToolCall(call));
+    };
+    await Promise.all(calls.filter((c) => READ_ONLY_TOOLS.has(c.function.name)).map(run));
+    for (const c of calls.filter((c) => !READ_ONLY_TOOLS.has(c.function.name))) {
+      await run(c);
+    }
+    // Preserve original call order in the conversation.
+    for (const c of calls) {
+      this.conversation.push({ role: 'tool', tool_call_id: c.id, content: results.get(c.id) ?? '' });
+    }
+  }
+
+  /** Force a final, tools-disabled answer when the budget is exhausted. */
+  private async wrapUp(settings: Settings): Promise<void> {
+    this.notice('Step budget reached — composing a final answer from what I have.');
+    this.refreshSystemMessage();
+    this.conversation.push({
+      role: 'user',
+      content:
+        'You have reached your step budget — do not call any more tools. Using your findings and what you already know, give the user your best final answer now, clearly noting anything you could not verify.',
+    });
+    this.setStatus('thinking');
+    const reply = await complete(settings, this.conversation, undefined, this.makeSignal());
+    if (this.stopRequested) return;
+    const text = reply.content ?? '(no answer)';
+    this.conversation.push({ role: 'assistant', content: text });
+    this.pushChat({ role: 'assistant', text, timestamp: new Date().toISOString() });
+    this.maybeOfferDistill();
+  }
+
+  /** Rough char count of a message's content (string or multimodal parts). */
+  private static messageLen(m: LlmMessage): number {
+    if (typeof m.content === 'string') return m.content.length;
+    if (Array.isArray(m.content)) {
+      return m.content.reduce((n, p) => n + (p.type === 'text' ? p.text.length : 1200), 0);
+    }
+    return 0;
+  }
+
+  /** Shrink the oldest tool outputs when the conversation grows too large. */
+  private compactConversation(): void {
+    let total = this.conversation.reduce((n, m) => n + AgentRuntime.messageLen(m), 0);
+    if (total <= CONVERSATION_CHAR_BUDGET) return;
+    const protectedTail = 6; // leave the most recent messages intact
+    for (let i = 1; i < this.conversation.length - protectedTail && total > CONVERSATION_CHAR_BUDGET; i++) {
+      const m = this.conversation[i];
+      if (m.role === 'tool' && typeof m.content === 'string' && !m.content.startsWith('[compacted')) {
+        const before = m.content.length;
+        m.content = '[compacted — important results are in Findings]';
+        total -= before - m.content.length;
       }
     }
+  }
 
-    this.notice('Stopped: reached the maximum number of agent steps for one task.');
+  private maybeOfferDistill(): void {
+    const substantial = (this.plan?.length ?? 0) >= 3 || this.toolCallCount >= 4;
+    if (substantial) this.setDistill(true);
   }
 
   private async executeToolCall(call: LlmToolCall): Promise<string> {
@@ -588,6 +792,12 @@ export class AgentRuntime {
         return JSON.stringify(await browser.searchWeb(String(args.query)));
       case 'search_known_sites':
         return searchKnownSites(await getSites(), String(args.query));
+      case 'set_plan':
+        return this.setPlan(Array.isArray(args.steps) ? (args.steps as string[]).map(String) : []);
+      case 'update_plan':
+        return this.updatePlan(Number(args.step), args.status as PlanStepStatus);
+      case 'record_finding':
+        return this.recordFinding(String(args.text));
       case 'save_memory': {
         const entries = await getMemories();
         if (entries.length >= MEMORY_MAX_ENTRIES) {
@@ -762,6 +972,68 @@ export class AgentRuntime {
     await new Promise<void>((resolve) => {
       this.pauseWaiter = resolve;
     });
+  }
+
+  // ----- working state (plan, findings, budget) -----
+
+  private refreshSystemMessage(): void {
+    if (this.conversation.length === 0) return;
+    this.conversation[0] = { role: 'system', content: this.systemBase + this.buildStateBlock() };
+  }
+
+  private buildStateBlock(): string {
+    const remaining = Math.max(0, this.stepBudget - this.stepsUsed);
+    const lines: string[] = ['\n\n=== Working state (updated each step) ==='];
+    if (this.activeTabLabel) lines.push(`Active tab: ${this.activeTabLabel}`);
+    lines.push(`Steps: ${this.stepsUsed}/${this.stepBudget} used (${remaining} left).`);
+    if (this.plan) {
+      const icon: Record<PlanStepStatus, string> = {
+        pending: '[ ]',
+        in_progress: '[»]',
+        done: '[x]',
+        skipped: '[-]',
+      };
+      lines.push('Plan:');
+      this.plan.forEach((s, i) => lines.push(`  ${icon[s.status]} ${i + 1}. ${s.text}`));
+    } else {
+      lines.push('Plan: none yet. If this task needs more than a couple of steps, call set_plan first.');
+    }
+    if (this.findings.length > 0) {
+      lines.push('Findings so far:');
+      this.findings.slice(-FINDINGS_SHOWN).forEach((f) => lines.push(`  - ${f}`));
+    }
+    if (remaining <= 3) {
+      lines.push(
+        'You are low on steps. Record any remaining findings and prepare to give your best final answer soon.',
+      );
+    }
+    return lines.join('\n');
+  }
+
+  private setPlan(steps: string[]): string {
+    this.plan = steps.filter((s) => s.trim()).map((text) => ({ text: text.trim(), status: 'pending' as PlanStepStatus }));
+    this.emit({ type: 'plan_update', plan: this.planView() });
+    return `Plan set with ${this.plan.length} steps.`;
+  }
+
+  private updatePlan(step: number, status: PlanStepStatus): string {
+    if (!this.plan || step < 1 || step > this.plan.length) {
+      return `Error: no plan step ${step}. Call set_plan first.`;
+    }
+    this.plan[step - 1].status = status;
+    this.emit({ type: 'plan_update', plan: this.planView() });
+    return `Step ${step} marked ${status}.`;
+  }
+
+  private recordFinding(text: string): string {
+    const t = text.trim();
+    if (!t) return 'Error: empty finding.';
+    this.findings.push(t);
+    return `Recorded. (${this.findings.length} findings so far.)`;
+  }
+
+  private planHasOpenSteps(): boolean {
+    return this.plan?.some((s) => s.status === 'pending' || s.status === 'in_progress') ?? false;
   }
 
   // ----- helpers -----
