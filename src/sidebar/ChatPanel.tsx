@@ -56,6 +56,11 @@ export function ChatPanel({
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // @-mention of browser bookmarks: { query, start } where start is the '@' index.
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  const [bookmarks, setBookmarks] = useState<Array<{ title: string; url: string }>>([]);
+  const [mentionIndex, setMentionIndex] = useState(0);
 
   useEffect(() => {
     const load = () =>
@@ -83,6 +88,77 @@ export function ChatPanel({
       ? hintItems.filter((s) => s.name.startsWith(slashMatch[1].toLowerCase()))
       : [];
 
+  // Track the active @-mention token from the caret position.
+  const updateMention = (el: HTMLTextAreaElement) => {
+    const caret = el.selectionStart ?? el.value.length;
+    const m = /(?:^|\s)@([^\s@]*)$/.exec(el.value.slice(0, caret));
+    setMention(m ? { query: m[1], start: caret - m[1].length - 1 } : null);
+  };
+
+  // Fetch matching bookmarks (debounced) while a mention is being typed.
+  useEffect(() => {
+    if (!mention || typeof chrome === 'undefined' || !chrome.bookmarks) {
+      setBookmarks([]);
+      return;
+    }
+    let cancelled = false;
+    const q = mention.query.trim();
+    const ql = q.toLowerCase();
+    const rank = (n: chrome.bookmarks.BookmarkTreeNode) => {
+      const t = (n.title ?? '').toLowerCase();
+      if (t.startsWith(ql)) return 0;
+      if (t.includes(ql)) return 1;
+      return 2;
+    };
+    const timer = setTimeout(async () => {
+      let nodes: chrome.bookmarks.BookmarkTreeNode[] = [];
+      try {
+        nodes = q ? await chrome.bookmarks.search(q) : await chrome.bookmarks.getRecent(8);
+      } catch {
+        nodes = [];
+      }
+      if (cancelled) return;
+      const items = nodes
+        .filter((n) => n.url)
+        .filter(
+          (n) =>
+            !q ||
+            (n.title ?? '').toLowerCase().includes(ql) ||
+            (n.url ?? '').toLowerCase().includes(ql),
+        )
+        .sort((a, b) => rank(a) - rank(b))
+        .slice(0, 8)
+        .map((n) => ({ title: n.title || n.url!, url: n.url! }));
+      setBookmarks(items);
+      setMentionIndex(0);
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mention]);
+
+  const mentionOpen = mention !== null && bookmarks.length > 0;
+
+  const insertBookmark = (url: string) => {
+    if (!mention) return;
+    const end = mention.start + 1 + mention.query.length;
+    const before = input.slice(0, mention.start);
+    const after = input.slice(end);
+    const next = `${before}${url} ${after}`;
+    setInput(next);
+    setMention(null);
+    setBookmarks([]);
+    const caret = (before + url + ' ').length;
+    requestAnimationFrame(() => {
+      const t = textareaRef.current;
+      if (t) {
+        t.focus();
+        t.selectionStart = t.selectionEnd = caret;
+      }
+    });
+  };
+
   const copyMessage = async (index: number, text: string) => {
     await navigator.clipboard.writeText(text);
     setCopiedIndex(index);
@@ -106,6 +182,8 @@ export function ChatPanel({
     if (!text || disabled || busy) return;
     send({ type: 'user_message', text });
     setInput('');
+    setMention(null);
+    setBookmarks([]);
   };
 
   return (
@@ -252,14 +330,63 @@ export function ChatPanel({
             ))}
           </div>
         )}
+        {mentionOpen && (
+          <div class="mention-menu">
+            {bookmarks.map((b, i) => (
+              <button
+                key={b.url}
+                class={`mention-item ${i === mentionIndex ? 'active' : ''}`}
+                title={b.url}
+                onMouseEnter={() => setMentionIndex(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // keep focus in the textarea
+                  insertBookmark(b.url);
+                }}
+              >
+                <span class="mention-title">{b.title}</span>
+                <span class="mention-url">{b.url}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
+          ref={textareaRef}
           class="chat-input"
           rows={2}
-          placeholder={disabled ? 'Configure a model in Settings first' : 'Ask the agent…'}
+          placeholder={disabled ? 'Configure a model in Settings first' : 'Ask the agent… (@ for bookmarks)'}
           value={input}
           disabled={disabled}
-          onInput={(e) => setInput((e.target as HTMLTextAreaElement).value)}
+          onInput={(e) => {
+            const el = e.target as HTMLTextAreaElement;
+            setInput(el.value);
+            updateMention(el);
+          }}
+          onKeyUp={(e) => updateMention(e.target as HTMLTextAreaElement)}
+          onClick={(e) => updateMention(e.target as HTMLTextAreaElement)}
           onKeyDown={(e) => {
+            if (mentionOpen) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setMentionIndex((i) => (i + 1) % bookmarks.length);
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setMentionIndex((i) => (i - 1 + bookmarks.length) % bookmarks.length);
+                return;
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                insertBookmark(bookmarks[mentionIndex].url);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setMention(null);
+                setBookmarks([]);
+                return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               submit();

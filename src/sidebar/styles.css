@@ -567,6 +567,52 @@ body {
   flex: 1;
 }
 
+/* @-mention bookmark dropdown */
+.mention-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  margin-bottom: 2px;
+}
+
+.mention-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 5px 9px;
+  cursor: pointer;
+  color: var(--text);
+}
+.mention-item:last-child {
+  border-bottom: none;
+}
+.mention-item.active {
+  background: var(--bg-input);
+}
+
+.mention-title {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-url {
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Skill hints above the input while typing /command */
 .skill-hints {
   display: flex;

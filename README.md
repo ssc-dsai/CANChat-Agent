@@ -117,6 +117,7 @@ On a multi-step task a **Plan** panel appears between the tab buttons and the ch
 - Every assistant message has a **⧉ Copy** button that copies the raw markdown.
 - **Send / Pause / Stop** — Pause halts the loop between steps; Stop aborts the task, including any in-flight model request.
 - Typing `/` shows your matching **skill** names as clickable chips (see [§6](#6-skills--reusable-procedures)).
+- Typing `@` opens a **bookmark picker** — it matches your browser bookmarks by name (arrow keys or click to choose); selecting one inserts that bookmark's URL into the message at the cursor. Works mid-sentence (`summarize @docs`).
 - After a substantial task, a **Save this workflow as a reusable skill?** chip appears above the input — one click distills what the agent just did into an editable skill (see [§6.7](#67-managing-skills)).
 
 ### 4.5 Inline cards
@@ -375,6 +376,7 @@ The mechanics:
 - **Read-only default:** everything else the agent does is observation.
 - **Auth pause:** the agent never tries to get around a login — it detects login walls (URL patterns, password fields, sign-in text, known identity providers like Okta/Auth0/Microsoft/Google/Atlassian) and waits for you.
 - **Fallback re-grant card:** if you restrict the extension's site access manually (`chrome://extensions` → CANAgent → Details → Site access), the agent pauses with an inline **Allow this site / Allow all sites** card instead of failing.
+- **Bookmarks** (`bookmarks` permission): used read-only, only to power the `@` bookmark picker in the chat input. The extension never modifies your bookmarks.
 
 **What's stored, what isn't:**
 
