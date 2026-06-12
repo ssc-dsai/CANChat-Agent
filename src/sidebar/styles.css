@@ -514,7 +514,6 @@ body {
 
 .chat-input {
   width: 100%;
-  resize: none;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -522,10 +521,27 @@ body {
   padding: 8px 10px;
   font-family: inherit;
   font-size: 13px;
+  /* contenteditable editor: ~2 lines tall, grows, scrolls */
+  min-height: 2.6em;
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
+  cursor: text;
 }
 .chat-input:focus {
   outline: none;
   border-color: var(--accent);
+}
+.chat-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+/* Inserted bookmark URLs render bold */
+.chat-input .mention-bold {
+  font-weight: 700;
 }
 
 .chat-buttons {

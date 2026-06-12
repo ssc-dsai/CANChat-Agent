@@ -52,15 +52,42 @@ export function ChatPanel({
   send,
   disabled,
 }: Props) {
-  const [input, setInput] = useState('');
+  // The input is a contenteditable editor (so inserted bookmark URLs can render
+  // bold). `text` mirrors its plain text for logic/button state; the element
+  // itself is uncontrolled — never re-render its content from state.
+  const [text, setText] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // @-mention of browser bookmarks: { query, start } where start is the '@' index.
-  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  // @-mention of browser bookmarks.
+  const [mention, setMention] = useState<{ query: string } | null>(null);
   const [bookmarks, setBookmarks] = useState<Array<{ title: string; url: string }>>([]);
   const [mentionIndex, setMentionIndex] = useState(0);
+
+  const getEditorText = () =>
+    (editorRef.current?.innerText ?? '').replace(/\u00a0/g, ' ');
+  const syncText = () => setText(getEditorText());
+  const setEditorText = (value: string) => {
+    const el = editorRef.current;
+    if (!el) return;
+    el.textContent = value;
+    setText(value);
+    // caret to end
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    el.focus();
+  };
+  const clearEditor = () => {
+    if (editorRef.current) editorRef.current.innerHTML = '';
+    setText('');
+    setMention(null);
+    setBookmarks([]);
+  };
 
   useEffect(() => {
     const load = () =>
@@ -76,7 +103,7 @@ export function ChatPanel({
   }, []);
 
   // Skill name hints while typing a /command. Includes the built-in /learn.
-  const slashMatch = /^\/([a-z0-9-]*)$/i.exec(input.trim().split(/\s/)[0] ?? '');
+  const slashMatch = /^\/([a-z0-9-]*)$/i.exec(text.trim().split(/\s/)[0] ?? '');
   const hintItems: Array<{ id: string; name: string; description: string }> = [
     ...(skills.some((s) => s.name.toLowerCase() === 'learn')
       ? []
@@ -84,15 +111,28 @@ export function ChatPanel({
     ...skills.map((s) => ({ id: s.id, name: s.name, description: s.description })),
   ];
   const matchingSkills =
-    input.startsWith('/') && slashMatch
+    text.startsWith('/') && slashMatch
       ? hintItems.filter((s) => s.name.startsWith(slashMatch[1].toLowerCase()))
       : [];
 
-  // Track the active @-mention token from the caret position.
-  const updateMention = (el: HTMLTextAreaElement) => {
-    const caret = el.selectionStart ?? el.value.length;
-    const m = /(?:^|\s)@([^\s@]*)$/.exec(el.value.slice(0, caret));
-    setMention(m ? { query: m[1], start: caret - m[1].length - 1 } : null);
+  // Locate the active @-mention token (text node + offsets) at the caret.
+  const mentionRangeAtCaret = (): { node: Text; start: number; end: number; query: string } | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !editorRef.current) return null;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return null;
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE || !editorRef.current.contains(node)) return null;
+    const offset = range.startOffset;
+    const before = (node.textContent ?? '').slice(0, offset);
+    const m = /(?:^|\s)@([^\s@]*)$/.exec(before);
+    if (!m) return null;
+    return { node: node as Text, start: offset - m[1].length - 1, end: offset, query: m[1] };
+  };
+
+  const updateMention = () => {
+    const found = mentionRangeAtCaret();
+    setMention(found ? { query: found.query } : null);
   };
 
   // Fetch matching bookmarks (debounced) while a mention is being typed.
@@ -141,22 +181,31 @@ export function ChatPanel({
   const mentionOpen = mention !== null && bookmarks.length > 0;
 
   const insertBookmark = (url: string) => {
-    if (!mention) return;
-    const end = mention.start + 1 + mention.query.length;
-    const before = input.slice(0, mention.start);
-    const after = input.slice(end);
-    const next = `${before}${url} ${after}`;
-    setInput(next);
+    const found = mentionRangeAtCaret();
+    const editor = editorRef.current;
+    const sel = window.getSelection();
+    if (!found || !editor || !sel) return;
+    // Replace the "@query" span with a bold URL node + a trailing space.
+    const del = document.createRange();
+    del.setStart(found.node, found.start);
+    del.setEnd(found.node, found.end);
+    del.deleteContents();
+    const space = document.createTextNode(' ');
+    const bold = document.createElement('span');
+    bold.className = 'mention-bold';
+    bold.textContent = url;
+    del.insertNode(space);
+    del.insertNode(bold);
+    // Caret into the (normal-weight) space node so typing continues unbolded.
+    const after = document.createRange();
+    after.setStart(space, space.length);
+    after.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(after);
+    editor.focus();
     setMention(null);
     setBookmarks([]);
-    const caret = (before + url + ' ').length;
-    requestAnimationFrame(() => {
-      const t = textareaRef.current;
-      if (t) {
-        t.focus();
-        t.selectionStart = t.selectionEnd = caret;
-      }
-    });
+    syncText();
   };
 
   const copyMessage = async (index: number, text: string) => {
@@ -178,12 +227,10 @@ export function ChatPanel({
   const busy = status === 'thinking' || status === 'acting' || status === 'awaiting_approval' || status === 'auth_required';
 
   const submit = () => {
-    const text = input.trim();
-    if (!text || disabled || busy) return;
-    send({ type: 'user_message', text });
-    setInput('');
-    setMention(null);
-    setBookmarks([]);
+    const message = getEditorText().trim();
+    if (!message || disabled || busy) return;
+    send({ type: 'user_message', text: message });
+    clearEditor();
   };
 
   return (
@@ -323,7 +370,10 @@ export function ChatPanel({
                 key={s.id}
                 class="skill-hint"
                 title={s.description}
-                onClick={() => setInput(`/${s.name} `)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setEditorText(`/${s.name} `);
+                }}
               >
                 /{s.name}
               </button>
@@ -339,7 +389,7 @@ export function ChatPanel({
                 title={b.url}
                 onMouseEnter={() => setMentionIndex(i)}
                 onMouseDown={(e) => {
-                  e.preventDefault(); // keep focus in the textarea
+                  e.preventDefault(); // keep focus in the editor
                   insertBookmark(b.url);
                 }}
               >
@@ -349,20 +399,27 @@ export function ChatPanel({
             ))}
           </div>
         )}
-        <textarea
-          ref={textareaRef}
+        <div
+          ref={editorRef}
           class="chat-input"
-          rows={2}
-          placeholder={disabled ? 'Configure a model in Settings first' : 'Ask the agent… (@ for bookmarks)'}
-          value={input}
-          disabled={disabled}
-          onInput={(e) => {
-            const el = e.target as HTMLTextAreaElement;
-            setInput(el.value);
-            updateMention(el);
+          contentEditable={!disabled}
+          role="textbox"
+          aria-multiline="true"
+          data-placeholder={disabled ? 'Configure a model in Settings first' : 'Ask the agent… (@ for bookmarks)'}
+          onInput={() => {
+            // Keep :empty true when only a stray <br> remains, so the placeholder shows.
+            if (editorRef.current && !getEditorText().trim()) editorRef.current.innerHTML = '';
+            syncText();
+            updateMention();
           }}
-          onKeyUp={(e) => updateMention(e.target as HTMLTextAreaElement)}
-          onClick={(e) => updateMention(e.target as HTMLTextAreaElement)}
+          onKeyUp={() => updateMention()}
+          onMouseUp={() => updateMention()}
+          onPaste={(e) => {
+            // Plain-text paste only — no foreign formatting in the editor.
+            e.preventDefault();
+            const pasted = e.clipboardData?.getData('text/plain') ?? '';
+            document.execCommand('insertText', false, pasted);
+          }}
           onKeyDown={(e) => {
             if (mentionOpen) {
               if (e.key === 'ArrowDown') {
@@ -394,7 +451,7 @@ export function ChatPanel({
           }}
         />
         <div class="chat-buttons">
-          <button class="btn btn-primary" onClick={submit} disabled={disabled || busy || !input.trim()}>
+          <button class="btn btn-primary" onClick={submit} disabled={disabled || busy || !text.trim()}>
             Send
           </button>
           {status === 'paused' ? (
