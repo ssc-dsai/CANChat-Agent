@@ -117,7 +117,7 @@ function sitesPromptBlock(sites: SiteEntry[]): string {
     return `\n\nKnown sites: the user maintains a directory of ${sites.length} known sites. When a task needs data, call search_known_sites first; prefer a matching known site over a generic web search.`;
   }
   return (
-    `\n\nKnown sites — a user-curated directory. When a task needs data, check this list first and prefer navigating to a matching site over a generic web search. If an entry has a search template, substitute {query} (URL-encoded) and use navigate to jump straight to its results:\n` +
+    `\n\nKnown sites — a user-curated directory of WHERE THE USER'S DATA LIVES. This is high-priority: before you call search_web, you MUST scan this list, and if any entry's description matches the data the task needs, START THERE rather than web-searching. Go to the site by navigating to its URL, or — if it has a search template — substitute {query} (URL-encoded) into the template and navigate straight to the results. Only fall back to search_web when no entry plausibly fits:\n` +
     sites.map(formatSite).join('\n')
   );
 }
@@ -242,6 +242,7 @@ export class AgentRuntime {
   private activeHost = '';
   private activeTabLabel = '';
   private systemBase = '';
+  private knownSiteNames: string[] = [];
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
 
@@ -572,9 +573,11 @@ export class AgentRuntime {
     }
     // The base system prompt is fixed for the task; the live state block is
     // refreshed each turn (see refreshSystemMessage).
+    const sites = await getSites();
+    this.knownSiteNames = sites.map((s) => s.name);
     this.systemBase =
       SYSTEM_PROMPT +
-      sitesPromptBlock(await getSites()) +
+      sitesPromptBlock(sites) +
       skillsPromptBlock(await getSkills(), this.activeHost) +
       (memoryEnabled ? memoryPromptBlock(await getMemories()) : '') +
       customInstructions;
@@ -988,6 +991,11 @@ export class AgentRuntime {
     const lines: string[] = ['\n\n=== Working state (updated each step) ==='];
     if (this.activeTabLabel) lines.push(`Active tab: ${this.activeTabLabel}`);
     lines.push(`Steps: ${this.stepsUsed}/${this.stepBudget} used (${remaining} left).`);
+    if (this.knownSiteNames.length > 0) {
+      lines.push(
+        `Known sites available — prefer these over web search when the task's data could live on one (details in the Known sites directory above): ${this.knownSiteNames.slice(0, 25).join(', ')}.`,
+      );
+    }
     if (this.plan) {
       const icon: Record<PlanStepStatus, string> = {
         pending: '[ ]',
