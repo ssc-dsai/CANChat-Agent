@@ -9,7 +9,7 @@ import type {
   PlanView,
   ToolActivity,
 } from '../shared/types';
-import type { MemoryEntry, Settings, SiteEntry, Skill } from '../shared/types';
+import type { DataExport, MemoryEntry, Settings, SiteEntry, Skill } from '../shared/types';
 import { hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { complete, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
@@ -66,6 +66,8 @@ const READ_ONLY_TOOLS = new Set([
   'set_plan',
   'update_plan',
   'record_finding',
+  'export_data',
+  'read_pdf',
 ]);
 
 const SYSTEM_PROMPT = `You are a browser agent running in a Chrome extension side panel. The browser is your primary tool environment.
@@ -83,6 +85,7 @@ Planning multi-step tasks:
 - A live working-state block (active tab, plan, findings, step budget) is kept at the top of your context and refreshed every step. Watch the remaining step budget and pace yourself; when it runs low, record what matters and produce your best answer.
 - You can issue several independent read-only tool calls in one turn — they run in parallel (e.g. get_tab_content on several tabs at once).
 - Before giving your final answer, verify the goal is actually met (re-read the page or re-check the result) rather than assuming an action worked.
+- When the task is to collect structured information (one row per item, often across several pages), gather it as you go and call export_data with columns and rows — the user gets a downloadable CSV/JSON table.
 
 Working method:
 - Use search_web for open-web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
@@ -94,6 +97,7 @@ Working method:
 - App playbooks: when you are on a site the user has taught you, its playbook appears automatically above as an "Active app playbook" — follow it to operate that app. The user teaches a new app by typing /learn, which has you explore the site and save a playbook with save_app_playbook.
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
+- To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 
 Answer format:
@@ -797,6 +801,8 @@ export class AgentRuntime {
         return JSON.stringify(await browser.searchWeb(String(args.query)));
       case 'search_known_sites':
         return searchKnownSites(await getSites(), String(args.query));
+      case 'export_data':
+        return this.exportData(args);
       case 'set_plan':
         return this.setPlan(Array.isArray(args.steps) ? (args.steps as string[]).map(String) : []);
       case 'update_plan':
@@ -902,6 +908,11 @@ export class AgentRuntime {
         );
       case 'scroll_wheel':
         return JSON.stringify(await browser.scrollWheel(tabId, Number(args.x), Number(args.y), Number(args.deltaY)));
+      case 'read_pdf':
+        return browser.readPdf(
+          args.tabId !== undefined ? Number(args.tabId) : undefined,
+          args.url ? String(args.url) : undefined,
+        );
       case 'wait_for_page_state':
         return JSON.stringify(await browser.waitForPageState(tabId));
       case 'detect_auth_state': {
@@ -1033,6 +1044,31 @@ export class AgentRuntime {
     this.plan[step - 1].status = status;
     this.emit({ type: 'plan_update', plan: this.planView() });
     return `Step ${step} marked ${status}.`;
+  }
+
+  private exportData(args: Record<string, unknown>): string {
+    const title = String(args.title ?? 'data').trim() || 'data';
+    const columns = Array.isArray(args.columns) ? (args.columns as unknown[]).map(String) : [];
+    let rows = Array.isArray(args.rows)
+      ? (args.rows as unknown[]).map((r) => (Array.isArray(r) ? r.map(String) : [String(r)]))
+      : [];
+    if (columns.length === 0 || rows.length === 0) {
+      return 'Error: export_data needs at least one column and one row.';
+    }
+    let note = '';
+    if (rows.length > 5000) {
+      rows = rows.slice(0, 5000);
+      note = ' (truncated to 5000 rows)';
+    }
+    const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'data'}.csv`;
+    const dataExport: DataExport = { title, filename, columns, rows };
+    this.pushChat({
+      role: 'notice',
+      text: `Prepared a table: "${title}" (${rows.length} rows × ${columns.length} columns)${note}. Download it from the card below.`,
+      timestamp: new Date().toISOString(),
+      dataExport,
+    });
+    return `Exported ${rows.length} rows${note}. The user can download it as CSV or JSON from the card.`;
   }
 
   private recordFinding(text: string): string {

@@ -9,6 +9,7 @@ import type {
   TabSummary,
 } from '../shared/types';
 import { analyzeAuthState } from './authDetector';
+import { extractPdf } from './offscreenClient';
 import { hasAllUrlsAccess } from './permissions';
 
 const PAGE_LOAD_TIMEOUT_MS = 20000;
@@ -309,6 +310,29 @@ export async function runJavascript(tabId: number, code: string): Promise<string
     out = out.slice(0, MAX_JS_RESULT_CHARS) + ' …[truncated]';
   }
   return out;
+}
+
+export async function readPdf(tabId: number | undefined, url: string | undefined): Promise<string> {
+  let target = url;
+  if (!target) {
+    try {
+      const tab = tabId
+        ? await chrome.tabs.get(tabId)
+        : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+      target = tab?.url;
+    } catch {
+      // fall through
+    }
+  }
+  if (!target) return JSON.stringify({ error: 'No URL or tab provided to read a PDF from.' });
+  const result = await extractPdf(target);
+  if (!result.ok) return JSON.stringify({ url: target, error: result.error });
+  return JSON.stringify({
+    url: target,
+    pageCount: result.pageCount,
+    truncated: result.truncated,
+    text: result.text,
+  });
 }
 
 export async function detectAuthState(tabId: number): Promise<AuthState> {

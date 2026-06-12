@@ -135,12 +135,22 @@ export interface ToolActivity {
   timestamp: string;
 }
 
+/** A structured table the agent produced, downloadable as CSV/JSON. */
+export interface DataExport {
+  title: string;
+  filename: string;
+  columns: string[];
+  rows: string[][];
+}
+
 export interface ChatMessageView {
   role: 'user' | 'assistant' | 'notice';
   text: string;
   timestamp: string;
   /** Data URLs of attached snapshot images, for thumbnail rendering. */
   images?: string[];
+  /** A downloadable table attached to this message. */
+  dataExport?: DataExport;
 }
 
 export type PlanStepStatus = 'pending' | 'in_progress' | 'done' | 'skipped';

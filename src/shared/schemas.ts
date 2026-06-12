@@ -332,6 +332,31 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'export_data',
+      description:
+        'Emit a structured table the user can download as CSV or JSON. Use when the task is to collect/scrape structured information (e.g. one row per item across several pages). Assemble rows as you extract; each row is an array of cell strings aligned to columns.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short title for the dataset.' },
+          columns: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Column headers.',
+          },
+          rows: {
+            type: 'array',
+            items: { type: 'array', items: { type: 'string' } },
+            description: 'Rows; each is an array of cell strings aligned to columns.',
+          },
+        },
+        required: ['title', 'columns', 'rows'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_plan',
       description:
         'Lay out (or replace) your step-by-step plan for a multi-step task. Call this first whenever a task needs more than a couple of tool calls, and call it again to revise the plan if something changes. The plan is shown to the user.',
@@ -416,6 +441,22 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           ...reasonParam,
         },
         required: ['tabId', 'code', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_pdf',
+      description:
+        "Extract the text of a PDF — including one open in the current tab. The normal page tools (get_tab_content) cannot read PDF text. Provide a url, or omit it (and tabId) to use the active tab. Scanned image-only PDFs yield no text.",
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'PDF URL. Omit to use the active tab.' },
+          tabId: { type: 'number', description: 'Tab to take the PDF URL from (optional).' },
+        },
+        required: [],
       },
     },
   },

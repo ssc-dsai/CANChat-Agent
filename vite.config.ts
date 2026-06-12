@@ -12,6 +12,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         sidebar: 'sidebar.html',
+        offscreen: 'offscreen.html',
         serviceWorker: 'src/background/serviceWorker.ts',
       },
       output: {

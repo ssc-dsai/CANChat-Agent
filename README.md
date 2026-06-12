@@ -37,6 +37,8 @@ Three principles shape the design:
 
 If a question refers to "the page" or "this article" without saying which, the agent assumes you mean the currently active tab.
 
+**Collecting data and reading PDFs.** Ask the agent to gather structured information ("collect the title and date from each of these into a table") and it builds the dataset as it reads, then drops a **download card** in the chat with CSV and JSON buttons. And because Chrome renders PDFs as a canvas the page tools can't read, the agent has a dedicated `read_pdf` that extracts a PDF's text — including one already open in the current tab, and cookie-gated PDFs you're logged into.
+
 **How the agent plans.** For anything beyond a quick lookup, the agent works deliberately rather than reactively. It drafts a **plan** (shown live in the sidebar), keeps a running set of **findings** as it goes, and tracks a **step budget** it paces itself against. A compact working-state block — active tab, plan with per-step status, findings, remaining budget — rides at the top of its context and refreshes every step, so it stays oriented over long tasks; older raw tool output is compacted away once its key results are recorded as findings. Independent reads (e.g. several tabs at once) run in parallel. If a long task runs out of budget it extends once while the plan still has open steps, then composes a best-effort answer from its findings — it never dead-ends with "reached maximum steps." After a substantial task you can save the whole workflow as a reusable skill in one click.
 
 **How the agent controls a page.** It drives pages through the DOM: realistic pointer/keyboard event sequences (so React/Vue inputs and most click handlers respond), an element map that sees into shadow DOM and same-origin iframes, keyboard shortcuts, wait-for-element synchronization, and coordinate gestures (click/drag/wheel) for canvas and maps. For apps with a usable JavaScript API — most web maps — it can also drive the app's own objects directly via `run_javascript`, which is the most reliable path. Two honest limits: synthetic events are not browser-*trusted* (`isTrusted: false`), so a small number of apps that explicitly check for trusted input won't respond; and cross-origin iframes can't be reached. Both would require a `chrome.debugger`-based "high-fidelity mode" that we've deliberately not added (it needs a scary permission and shows a persistent debugging banner).
@@ -150,6 +152,8 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `submit_form` | Submit a form | **Yes** |
 | `set_plan` / `update_plan` | Draft and track the step-by-step plan shown in the sidebar | – |
 | `record_finding` | Save an intermediate result to working notes that survive context compaction | – |
+| `export_data` | Emit a structured table you can download as CSV/JSON (a card appears in the chat) | – |
+| `read_pdf` | Extract the text of a PDF — including one open in the current tab, which the page tools can't read | – |
 | `press_keys` | Send a key or combo (Enter, Control+Enter, app shortcuts like "c" to compose) | **Yes** |
 | `click_at` | Click at viewport coordinates — for canvas/map content with no clickable element | **Yes** |
 | `drag` | Drag between coordinates — pan a map, move a slider, drag-and-drop | **Yes** |
@@ -377,6 +381,7 @@ The mechanics:
 - **Auth pause:** the agent never tries to get around a login — it detects login walls (URL patterns, password fields, sign-in text, known identity providers like Okta/Auth0/Microsoft/Google/Atlassian) and waits for you.
 - **Fallback re-grant card:** if you restrict the extension's site access manually (`chrome://extensions` → CANAgent → Details → Site access), the agent pauses with an inline **Allow this site / Allow all sites** card instead of failing.
 - **Bookmarks** (`bookmarks` permission): used read-only, only to power the `@` bookmark picker in the chat input. The extension never modifies your bookmarks.
+- **Offscreen document** (`offscreen` permission): a hidden page created on demand to run pdf.js for `read_pdf`. No data leaves the device; it fetches the PDF with your existing session so cookie-gated PDFs work.
 
 **What's stored, what isn't:**
 
@@ -399,6 +404,7 @@ The mechanics:
 | Long task dies when the sidebar closes | The background service worker is kept alive by the open sidebar. Keep the panel open during long tasks. |
 | Skill didn't auto-trigger | Sharpen its description (see [§6.3](#63-two-ways-to-trigger-a-skill)) or force it with `/name`. |
 | Error right after sending a snapshot | Your endpoint/model isn't vision-capable — it rejected the image content. Switch to a multimodal model or discard the snapshot. |
+| `read_pdf` returns little or no text | The PDF is scanned/image-only (no embedded text — OCR is out of scope), or it's served behind something more than a cookie GET (a one-time token or POST). Try the snapshot + vision route for scanned pages. |
 | `run_javascript` returns an `__error` about eval/CSP | That page's Content Security Policy blocks `eval`. The agent can't run arbitrary JS there; it should fall back to the DOM tools. A `/learn` playbook on such a site should rely on `get_element_map` and clicks rather than JavaScript. |
 | A click or keystroke seems to do nothing | A few apps only respond to browser-*trusted* events, which extensions can't synthesize. Try a `run_javascript` approach instead, or an app playbook that drives the app's own objects. Content inside a cross-origin iframe also can't be reached. |
 | `/learn` didn't save anything | The save step needs your approval — watch for the "Save app playbook…" card. If the site blocks `eval`, the agent may still build a DOM-based playbook; if extraction and JS both fail, there may be nothing learnable beyond a snapshot. |

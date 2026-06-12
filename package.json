@@ -10,6 +10,7 @@
   "dependencies": {
     "dompurify": "^3.4.9",
     "marked": "^18.0.5",
+    "pdfjs-dist": "^6.0.227",
     "preact": "^10.24.3"
   },
   "devDependencies": {

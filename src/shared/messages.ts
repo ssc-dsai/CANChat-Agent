@@ -60,6 +60,21 @@ export interface TestConnectionResponse {
   detail: string;
 }
 
+/** Request to the offscreen document to parse a PDF (separate sendMessage channel). */
+export interface ExtractPdfRequest {
+  target: 'offscreen';
+  type: 'extract_pdf';
+  url: string;
+}
+
+export interface ExtractPdfResponse {
+  ok: boolean;
+  text?: string;
+  pageCount?: number;
+  truncated?: boolean;
+  error?: string;
+}
+
 /** Requests handled by the injected content script. */
 export type ContentRequest =
   | { kind: 'ba_ping' }

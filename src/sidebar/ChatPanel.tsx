@@ -1,7 +1,79 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SidebarCommand } from '../shared/messages';
-import type { AgentStatus, ChatMessageView, Skill } from '../shared/types';
+import type { AgentStatus, ChatMessageView, DataExport, Skill } from '../shared/types';
 import { Markdown } from './Markdown';
+
+function toCsv(columns: string[], rows: string[][]): string {
+  const esc = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  return [columns, ...rows].map((r) => r.map((c) => esc(c ?? '')).join(',')).join('\r\n');
+}
+
+function downloadBlob(content: string, type: string, filename: string): void {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function DataExportCard({ data }: { data: DataExport }) {
+  const csv = () => toCsv(data.columns, data.rows);
+  const json = () =>
+    JSON.stringify(
+      data.rows.map((r) => Object.fromEntries(data.columns.map((c, i) => [c, r[i] ?? '']))),
+      null,
+      2,
+    );
+  const preview = data.rows.slice(0, 8);
+  return (
+    <div class="export-card">
+      <div class="export-head">
+        <strong>{data.title}</strong>
+        <span class="export-dims">
+          {data.rows.length} × {data.columns.length}
+        </span>
+      </div>
+      <div class="export-table-wrap">
+        <table class="export-table">
+          <thead>
+            <tr>
+              {data.columns.map((c, i) => (
+                <th key={i}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {preview.map((r, ri) => (
+              <tr key={ri}>
+                {data.columns.map((_, ci) => (
+                  <td key={ci}>{r[ci] ?? ''}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.rows.length > preview.length && (
+          <div class="export-more">+{data.rows.length - preview.length} more rows</div>
+        )}
+      </div>
+      <div class="export-actions">
+        <button class="btn btn-small btn-primary" onClick={() => downloadBlob(csv(), 'text/csv', data.filename)}>
+          Download CSV
+        </button>
+        <button
+          class="btn btn-small"
+          onClick={() => downloadBlob(json(), 'application/json', data.filename.replace(/\.csv$/, '.json'))}
+        >
+          Download JSON
+        </button>
+        <button class="btn btn-small" onClick={() => void navigator.clipboard.writeText(csv())}>
+          Copy CSV
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** Split a trailing "Source tabs:" / "Sources:" block off the answer body. */
 function splitSources(text: string): { body: string; sources: string | null } {
@@ -268,6 +340,7 @@ export function ChatPanel({
             ) : (
               m.text
             )}
+            {m.dataExport && <DataExportCard data={m.dataExport} />}
           </div>
           );
         })}

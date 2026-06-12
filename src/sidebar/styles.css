@@ -208,6 +208,61 @@ body {
   flex-shrink: 0;
 }
 
+/* Data export card */
+.export-card {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.export-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.export-dims {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.export-table-wrap {
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.export-table {
+  border-collapse: collapse;
+  font-size: 11px;
+  width: 100%;
+}
+.export-table th,
+.export-table td {
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  text-align: left;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.export-table th {
+  background: var(--bg-input);
+}
+.export-more {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 0 0;
+}
+.export-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 /* Plan panel */
 .plan-panel {
   border-bottom: 1px solid var(--border);
