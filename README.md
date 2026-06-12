@@ -166,6 +166,7 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `save_app_playbook` | Persist a learned, site-scoped playbook (see [§6.6](#66-app-playbooks--teaching-the-agent-an-app)) | **Yes** |
 | `wait_for_page_state` | Wait for a tab to finish loading | – |
 | `detect_auth_state` | Check whether a page is behind a login | – |
+| `save_memory` / `update_memory` / `delete_memory` | Add, revise, or forget durable facts about you — only when Memory is enabled ([§6½](#6½-memory--what-the-agent-remembers-about-you)) | – |
 
 ## 4¾. SharePoint search (poor-man's RAG)
 
