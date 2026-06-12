@@ -74,10 +74,10 @@ export function TabContextPanel({ context, send }: Props) {
         </button>
         <button
           class="btn btn-small"
-          title="Capture the WHOLE page by scrolling top to bottom — multiple images for opaque/long pages (needs a vision model)"
+          title="OCR the WHOLE page by scrolling top to bottom — captures it as images for the vision model to read (opaque/long pages)"
           onClick={() => send({ type: 'capture_page' })}
         >
-          Capture page
+          OCR Page
         </button>
         <button
           class="btn btn-small"
