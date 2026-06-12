@@ -22,6 +22,7 @@ export type SidebarCommand =
   | { type: 'refresh_context' }
   | { type: 'attach_snapshot'; dataUrl: string; title: string; url: string }
   | { type: 'discard_snapshots' }
+  | { type: 'capture_page' }
   | { type: 'get_state' }
   | { type: 'ping' };
 
@@ -80,6 +81,7 @@ export type ContentRequest =
   | { kind: 'ba_ping' }
   | { kind: 'ba_extract' }
   | { kind: 'ba_app_content' }
+  | { kind: 'ba_scroll_step' }
   | { kind: 'ba_element_map' }
   | { kind: 'ba_click'; refIdOrSelector: string }
   | { kind: 'ba_fill'; refIdOrSelector: string; value: string }

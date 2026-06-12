@@ -104,7 +104,8 @@ The row of buttons under the header controls what page content is handed to the 
 
 - **Use current tab** — snapshots the active tab's content into context.
 - **Use all tabs** — snapshots every open tab (you'll be asked to approve all-tab reads during tasks).
-- **Snapshot** — captures the **visible part of the current tab as an image** and attaches it to your next message. This is the tool for content that text extraction can't see: PowerBI reports, canvas-rendered dashboards and spreadsheets, Figma, embedded PDFs, charts. The image appears in the thread immediately (with a pending chip above the input — ✕ discards it) and is sent with whatever you ask next. **Requires a vision-capable model** (e.g. GPT-4o-class, llava/qwen-vl locally). Captures only the visible viewport — scroll to what matters before snapping; take multiple snapshots if needed.
+- **Snapshot** — captures the **visible part of the current tab as an image** and attaches it to your next message. This is the tool for content that text extraction can't see: PowerBI reports, canvas-rendered dashboards and spreadsheets, Figma, embedded PDFs, charts. The image appears in the thread immediately (with a pending chip above the input — ✕ discards it) and is sent with whatever you ask next. **Requires a vision-capable model** (e.g. GPT-4o-class, llava/qwen-vl locally). Captures only the visible viewport.
+- **Capture page** — like Snapshot, but captures the **whole page** by scrolling top to bottom and taking a series of overlapping screenshots, all attached to your next message. Use it for long or opaque pages where a single viewport isn't enough. Also available to the agent as the `capture_full_page` tool (it'll reach for it when a page's content is invisible to the text tools). **Vision-model required, and token-heavy** (many images) — it's the last-resort escalation. It stops at the bottom (or when scrolling stops changing the view) and caps at ~20 frames. Caveat: it scrolls the window or the largest inner scroll region, so apps that scroll a custom canvas (e.g. Excel Online's grid) may not page past the first view.
 - **Refresh** — re-extracts whatever is currently in context.
 
 Each tab in context is listed with a status dot — green (readable), amber (login required), red (blocked or unreadable, e.g. `chrome://` pages) — and a **stale** tag once a snapshot is older than 5 minutes. Stale context isn't deleted; the agent is told it may be out of date and re-fetches when freshness matters.
@@ -150,6 +151,7 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `use_skill` | Load a skill's full instructions ([§6](#6-skills--reusable-procedures)) | – |
 | `get_element_map` | List a page's interactive elements with stable reference ids, **accessible names, ARIA roles, states, and group context** — robust targeting in complex apps | – |
 | `read_app_content` | Best-effort read of canvas-rendered content the page tools can't see (Google Docs/Sheets bodies) | – |
+| `capture_full_page` | Screenshot the whole page top-to-bottom and read it visually — last resort for opaque pages (needs a vision model) | – |
 | `click_element` | Click an element | **Yes** |
 | `fill_input` | Type into a field | **Yes** |
 | `submit_form` | Submit a form | **Yes** |

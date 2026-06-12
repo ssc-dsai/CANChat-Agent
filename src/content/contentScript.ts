@@ -8,6 +8,7 @@ import {
   fillInput,
   pressKeys,
   readAppContent,
+  scrollStep,
   scrollWheel,
   submitForm,
   waitForElement,
@@ -35,6 +36,9 @@ if (!window.__browserAgentInjected) {
           break;
         case 'ba_app_content':
           sendResponse(readAppContent());
+          break;
+        case 'ba_scroll_step':
+          sendResponse(scrollStep());
           break;
         case 'ba_element_map':
           sendResponse(buildElementMap());

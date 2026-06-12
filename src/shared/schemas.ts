@@ -101,6 +101,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'capture_full_page',
+      description:
+        "Screenshot the whole active tab by scrolling top to bottom, returning the frames as images you can read. Use as a last resort for opaque pages whose content the text tools (get_tab_content, read_app_content) and the element map can't see — canvas-rendered apps, deeply nested DOM. Requires a vision-capable model and is token-heavy; prefer the text tools first.",
+      parameters: {
+        type: 'object',
+        properties: {
+          maxFrames: { type: 'number', description: 'Max scroll frames to capture (default 12, max 20).' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_all_tab_contents',
       description:
         'Extract readable content from every open tab. Requires the user to have granted all-tabs access; requires user approval each time.',

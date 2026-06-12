@@ -371,6 +371,58 @@ export function submitForm(refIdOrSelector: string): ActionResult {
   return { ok: true, detail: 'Form submitted' };
 }
 
+// --- scroll step (for full-page capture) -------------------------------------
+
+// Find the largest genuinely-scrollable element (for apps that scroll an inner
+// container rather than the window — OWA reading pane, many SPAs).
+function findScroller(): Element | null {
+  let best: Element | null = null;
+  let bestArea = 0;
+  for (const el of Array.from(document.querySelectorAll('*'))) {
+    if (el.scrollHeight - el.clientHeight <= 8 || el.clientHeight < 120) continue;
+    const style = getComputedStyle(el);
+    if (!/(auto|scroll)/.test(style.overflowY)) continue;
+    const r = el.getBoundingClientRect();
+    const area = r.width * r.height;
+    if (area > bestArea) {
+      best = el;
+      bestArea = area;
+    }
+  }
+  return best;
+}
+
+// Scroll down ~90% of a viewport, handling window and inner scrollers.
+export function scrollStep(): { scrolled: boolean; atBottom: boolean } {
+  const vh = window.innerHeight;
+  const step = Math.floor(vh * 0.9);
+
+  const docMax = document.documentElement.scrollHeight - vh;
+  if (docMax > 8) {
+    const before = window.scrollY;
+    window.scrollBy(0, step);
+    if (window.scrollY > before + 1) {
+      return { scrolled: true, atBottom: window.scrollY >= docMax - 2 };
+    }
+  }
+
+  const scroller = findScroller();
+  if (scroller) {
+    const before = scroller.scrollTop;
+    scroller.scrollTop += step;
+    const moved = scroller.scrollTop > before + 1;
+    const atBottom = scroller.scrollTop >= scroller.scrollHeight - scroller.clientHeight - 2;
+    return { scrolled: moved, atBottom: !moved || atBottom };
+  }
+
+  // Fallback for canvas apps: send PageDown to the focused element (best effort).
+  const target = (document.activeElement as Element | null) ?? document.body;
+  target.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'PageDown', code: 'PageDown', bubbles: true, composed: true }),
+  );
+  return { scrolled: true, atBottom: false };
+}
+
 // --- canvas / app content reader ---------------------------------------------
 
 function htmlToText(html: string): string {

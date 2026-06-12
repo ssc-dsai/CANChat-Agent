@@ -12,6 +12,7 @@ import type {
 import type { DataExport, MemoryEntry, Settings, SiteEntry, Skill } from '../shared/types';
 import { hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
+import { captureFullPage } from './fullPageCapture';
 import { complete, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import {
   getMemories,
@@ -98,6 +99,7 @@ Working method:
 - Choosing a control method: for apps with a usable JavaScript API (maps, charts), driving the page's own object via run_javascript (e.g. a Leaflet map's setView) is the most reliable — prefer it. For ordinary UI, use get_element_map (it sees into shadow DOM and same-origin iframes, and returns each element's accessible name, effective ARIA role, states, group, and rect) then click_element/fill_input on refIds. Use press_keys for Enter/shortcuts, wait_for_element before acting on content that loads asynchronously, and click_at/drag/scroll_wheel (with coordinates from element rects) for canvas or map content that has no clickable element.
 - The element map is accessibility-aware: identify controls by their role + accessible name (e.g. menuitem "Insert", tab "Inbox") rather than guessing selectors — names are more stable across app updates — and use states (only expand a control that is "collapsed", etc.). This is the reliable way to operate complex apps like Office 365 / Outlook web and the menus/toolbars of Google apps.
 - If get_tab_content returns little on an app page (canvas-rendered apps like Google Docs/Sheets), call read_app_content; if that also returns nothing, use snapshot + vision.
+- As a last resort for an opaque page whose content none of the text tools can reach, call capture_full_page to screenshot the whole page top-to-bottom and read the frames visually. It needs a vision-capable model and is token-heavy, so try the text tools first.
 - App playbooks: when you are on a site the user has taught you, its playbook appears automatically above as an "Active app playbook" — follow it to operate that app. The user teaches a new app by typing /learn, which has you explore the site and save a playbook with save_app_playbook.
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
@@ -239,6 +241,8 @@ export class AgentRuntime {
   private permissionWait: PermissionWait | null = null;
   private abortController: AbortController | null = null;
   private pendingSnapshots: Array<{ dataUrl: string; title: string; url: string }> = [];
+  // Images captured by a tool mid-task, injected as a user image message next turn.
+  private pendingToolImages: string[] = [];
   private activityCounter = 0;
   // --- agent-core working state (plan, findings, step budget) ---
   private plan: PlanStep[] | null = null;
@@ -374,6 +378,7 @@ export class AgentRuntime {
     this.lastUserText = text;
     this.plan = null;
     this.findings = [];
+    this.pendingToolImages = [];
     this.stepsUsed = 0;
     this.stepBudget = SOFT_STEP_BUDGET;
     this.toolCallCount = 0;
@@ -434,6 +439,7 @@ export class AgentRuntime {
     this.messages = [];
     this.activities = [];
     this.pendingSnapshots = [];
+    this.pendingToolImages = [];
     this.plan = null;
     this.findings = [];
     this.stepsUsed = 0;
@@ -661,6 +667,54 @@ export class AgentRuntime {
 
       this.stepsUsed++;
       await this.executeToolCalls(reply.tool_calls);
+      this.flushToolImages();
+    }
+  }
+
+  /** Inject any tool-captured images into the conversation as a user message. */
+  private flushToolImages(): void {
+    if (this.pendingToolImages.length === 0) return;
+    const images = this.pendingToolImages;
+    this.pendingToolImages = [];
+    this.conversation.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Full-page capture frames, top to bottom:' },
+        ...images.map((url): ContentPart => ({ type: 'image_url', image_url: { url } })),
+      ],
+    });
+    this.pushChat({
+      role: 'notice',
+      text: `Captured ${images.length} page frame(s) for analysis.`,
+      timestamp: new Date().toISOString(),
+      images,
+    });
+  }
+
+  /** Sidebar "Capture page" button: capture and queue frames for the next message. */
+  async capturePageToThread(): Promise<void> {
+    if (this.running) {
+      this.emit({ type: 'error', message: 'Wait for the current task to finish before capturing.' });
+      return;
+    }
+    try {
+      const active = await browser.getActiveTab();
+      this.setStatus('acting', 'Capturing page…');
+      const result = await captureFullPage(active.tabId, 12);
+      this.setStatus('idle');
+      if (result.error) {
+        this.emit({ type: 'error', message: result.error });
+        return;
+      }
+      for (const frame of result.frames) {
+        this.attachSnapshot(frame, active.title, active.url);
+      }
+      if (result.frames.length === 0) {
+        this.emit({ type: 'error', message: 'No frames captured.' });
+      }
+    } catch (err) {
+      this.setStatus('idle');
+      this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -900,6 +954,14 @@ export class AgentRuntime {
         return JSON.stringify((await browser.getElementMap(tabId)).slice(0, 120));
       case 'read_app_content':
         return browser.readAppContent(tabId);
+      case 'capture_full_page': {
+        const active = await browser.getActiveTab();
+        const result = await captureFullPage(active.tabId, Number(args.maxFrames) || 12);
+        if (result.error) return JSON.stringify({ error: result.error });
+        if (result.frames.length === 0) return JSON.stringify({ error: 'No frames captured.' });
+        this.pendingToolImages.push(...result.frames);
+        return `Captured ${result.frames.length} page frame(s), top to bottom — they are attached as images below. Read them in order to understand the full page.`;
+      }
       case 'click_element':
         return JSON.stringify(await browser.clickElement(tabId, String(args.selectorOrRef)));
       case 'fill_input':

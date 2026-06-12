@@ -74,6 +74,13 @@ export function TabContextPanel({ context, send }: Props) {
         </button>
         <button
           class="btn btn-small"
+          title="Capture the WHOLE page by scrolling top to bottom — multiple images for opaque/long pages (needs a vision model)"
+          onClick={() => send({ type: 'capture_page' })}
+        >
+          Capture page
+        </button>
+        <button
+          class="btn btn-small"
           onClick={() => send({ type: 'refresh_context' })}
           disabled={!context}
         >

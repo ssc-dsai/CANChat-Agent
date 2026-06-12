@@ -271,6 +271,11 @@ export async function scrollWheel(tabId: number, x: number, y: number, deltaY: n
   return sendToTab<ActionResult>(tabId, { kind: 'ba_wheel', x, y, deltaY });
 }
 
+export async function scrollStep(tabId: number): Promise<{ scrolled: boolean; atBottom: boolean }> {
+  await ensureContentScript(tabId);
+  return sendToTab<{ scrolled: boolean; atBottom: boolean }>(tabId, { kind: 'ba_scroll_step' });
+}
+
 export async function waitForPageState(tabId: number): Promise<PageStateResult> {
   const complete = await waitForTabComplete(tabId);
   const tab = await chrome.tabs.get(tabId);

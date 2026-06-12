@@ -70,6 +70,9 @@ chrome.runtime.onConnect.addListener((port) => {
       case 'discard_snapshots':
         runtime.discardSnapshots();
         break;
+      case 'capture_page':
+        void runtime.capturePageToThread();
+        break;
       case 'get_state':
         port.postMessage(runtime.fullState());
         break;
