@@ -146,6 +146,7 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `navigate` | Point a tab at a URL and wait for load | – |
 | `search_web` | Search via your default search engine in a new tab | – |
 | `search_known_sites` | Look up your Known Sites directory ([§5](#5-known-sites--the-agents-address-book)) | – |
+| `sharepoint_search` | Search your SharePoint via its Search API on the signed-in session; returns passages around the matched terms with source URLs | – |
 | `use_skill` | Load a skill's full instructions ([§6](#6-skills--reusable-procedures)) | – |
 | `get_element_map` | List a page's interactive elements with stable reference ids, **accessible names, ARIA roles, states, and group context** — robust targeting in complex apps | – |
 | `read_app_content` | Best-effort read of canvas-rendered content the page tools can't see (Google Docs/Sheets bodies) | – |
@@ -165,6 +166,15 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `save_app_playbook` | Persist a learned, site-scoped playbook (see [§6.6](#66-app-playbooks--teaching-the-agent-an-app)) | **Yes** |
 | `wait_for_page_state` | Wait for a tab to finish loading | – |
 | `detect_auth_state` | Check whether a page is behind a login | – |
+
+## 4¾. SharePoint search (poor-man's RAG)
+
+If your documents live in SharePoint Online, the agent can do lightweight retrieval over them with **no app registration, no token, and no setup beyond being signed in**. SharePoint's own Search API authenticates with the browser session you already have, and returns a snippet of text *around your search terms* for each hit — so the agent queries it, then answers from those passages and cites the source documents.
+
+- **Enable it:** set your **SharePoint base URL** in Settings (e.g. `https://contoso.sharepoint.com`, or a specific site like `…/sites/Team` to scope the search). Leave it blank and the agent will auto-detect the tenant from an open SharePoint tab.
+- **Use it:** ask something like "search SharePoint for our incident response policy" — the agent calls `sharepoint_search`, gets ranked passages, and answers with citations to the documents.
+
+Honest limits: it only sees what *you* can see (it's your session); SharePoint Search must be enabled/crawled for your content (it normally is); the snippets are short (a sentence or two around the term) — good for relevance and light context, not full-document analysis; and you must be signed into SharePoint in the browser. It's "poor man's" RAG by design — retrieval is the host's search, the LLM does the synthesis.
 
 ## 5. Known Sites — the agent's address book
 

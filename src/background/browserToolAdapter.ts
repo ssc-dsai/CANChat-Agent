@@ -349,6 +349,73 @@ export async function readPdf(tabId: number | undefined, url: string | undefined
   });
 }
 
+// Turn SharePoint's HitHighlightedSummary (with <c0>…</c0> highlights and
+// <ddd/> ellipses) into plain text. No DOM in the service worker, so regex.
+function cleanSummary(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/<ddd\/>/g, '…')
+    .replace(/<\/?c\d+>/g, '') // keep the highlighted term text
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export async function sharepointSearch(base: string, query: string, top: number): Promise<string> {
+  const rowlimit = Math.min(25, Math.max(1, top || 10));
+  const safeQuery = query.replace(/'/g, ' ').trim();
+  const props = 'Title,Path,HitHighlightedSummary,FileType,LastModifiedTime,Author';
+  const url =
+    `${base.replace(/\/+$/, '')}/_api/search/query` +
+    `?querytext='${encodeURIComponent(safeQuery)}'` +
+    `&rowlimit=${rowlimit}` +
+    `&selectproperties='${encodeURIComponent(props)}'` +
+    `&clienttype='ContentSearchRegular'`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      credentials: 'include',
+      headers: { Accept: 'application/json;odata=nometadata' },
+    });
+  } catch (err) {
+    return JSON.stringify({ error: `Could not reach SharePoint at ${base}: ${String(err)}` });
+  }
+  if (!res.ok) {
+    return JSON.stringify({
+      error: `SharePoint search failed (HTTP ${res.status}). Make sure you are signed into ${base} in this browser, and that the base URL is correct.`,
+    });
+  }
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    return JSON.stringify({ error: 'SharePoint returned a non-JSON response (are you signed in?).' });
+  }
+  const rows =
+    (data as { PrimaryQueryResult?: { RelevantResults?: { Table?: { Rows?: Array<{ Cells?: Array<{ Key: string; Value: string }> }> } } } })
+      ?.PrimaryQueryResult?.RelevantResults?.Table?.Rows ?? [];
+  const results = rows
+    .map((row) => {
+      const c: Record<string, string> = {};
+      for (const cell of row.Cells ?? []) c[cell.Key] = cell.Value;
+      return {
+        title: c.Title || c.Path || '(untitled)',
+        url: c.Path,
+        snippet: cleanSummary(c.HitHighlightedSummary),
+        fileType: c.FileType || undefined,
+        modified: c.LastModifiedTime || undefined,
+      };
+    })
+    .filter((r) => r.url);
+  return JSON.stringify({ base, query: safeQuery, count: results.length, results });
+}
+
 export async function detectAuthState(tabId: number): Promise<AuthState> {
   const content = await getTabContent(tabId);
   if (content.extractionStatus === 'blocked') {

@@ -298,6 +298,22 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'sharepoint_search',
+      description:
+        "Search the user's SharePoint using its Search API and the current signed-in browser session (no setup or token). Returns ranked results, each with a text snippet around the matched terms and the source document URL. Use the snippets as evidence to answer the question, and cite the URLs. Good for questions about the user's internal documents.",
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search terms / keywords.' },
+          top: { type: 'number', description: 'Max results (default 10, max 25).' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_known_sites',
       description:
         "Search the user's curated directory of known sites (names, URLs, descriptions, optional search-URL templates) for sites likely to contain the data a task needs. Check this before falling back to a generic web search.",

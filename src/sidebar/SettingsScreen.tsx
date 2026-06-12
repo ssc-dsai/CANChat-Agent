@@ -54,6 +54,7 @@ export function SettingsScreen({ onClose }: Props) {
       apiKey: settings.apiKey.trim(),
       model: settings.model.trim(),
       systemPrompt: settings.systemPrompt?.trim() || undefined,
+      sharepointBaseUrl: settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined,
     };
     await chrome.storage.local.set({ ba_settings: trimmed });
     setSaved(true);
@@ -132,6 +133,16 @@ export function SettingsScreen({ onClose }: Props) {
             />
           </label>
         </div>
+
+        <label class="field">
+          <span>SharePoint base URL (optional) — enables search over your SharePoint via the signed-in session; blank = auto-detect from an open SharePoint tab</span>
+          <input
+            type="url"
+            placeholder="https://contoso.sharepoint.com"
+            value={settings.sharepointBaseUrl ?? ''}
+            onInput={(e) => update({ sharepointBaseUrl: (e.target as HTMLInputElement).value })}
+          />
+        </label>
 
         <label class="field">
           <span>Custom instructions (optional) — appended to the agent's built-in instructions; applies from your next message</span>

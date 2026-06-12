@@ -62,6 +62,7 @@ const READ_ONLY_TOOLS = new Set([
   'detect_auth_state',
   'wait_for_element',
   'search_known_sites',
+  'sharepoint_search',
   'use_skill',
   'set_plan',
   'update_plan',
@@ -101,6 +102,7 @@ Working method:
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
+- For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets around the matched terms) with source URLs. Answer from those snippets and cite the URLs. This is the way to do retrieval over the user's document store.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 
 Answer format:
@@ -804,6 +806,22 @@ export class AgentRuntime {
         return JSON.stringify(await browser.searchWeb(String(args.query)));
       case 'search_known_sites':
         return searchKnownSites(await getSites(), String(args.query));
+      case 'sharepoint_search': {
+        const settings = await getSettings();
+        let base = settings?.sharepointBaseUrl?.trim();
+        if (!base) {
+          try {
+            const u = new URL((await browser.getActiveTab()).url);
+            if (/\.sharepoint\.com$/i.test(u.hostname)) base = u.origin;
+          } catch {
+            // no usable active tab
+          }
+        }
+        if (!base) {
+          return 'Error: no SharePoint base URL. Ask the user to set it in Settings (e.g. https://contoso.sharepoint.com) or to open a SharePoint tab, then retry.';
+        }
+        return browser.sharepointSearch(base, String(args.query), Number(args.top) || 10);
+      }
       case 'export_data':
         return this.exportData(args);
       case 'set_plan':

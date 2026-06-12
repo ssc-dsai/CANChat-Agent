@@ -122,6 +122,8 @@ export interface Settings {
   maxTokens?: number;
   /** Optional user instructions appended to the built-in system prompt. */
   systemPrompt?: string;
+  /** Optional SharePoint base URL for the cookie-auth search tool. */
+  sharepointBaseUrl?: string;
 }
 
 export type AgentStatus =
