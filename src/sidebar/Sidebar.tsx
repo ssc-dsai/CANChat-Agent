@@ -39,6 +39,17 @@ export function Sidebar() {
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [uiScale, setUiScale] = useState(() => {
+    const s = Number(localStorage.getItem('ba_ui_scale'));
+    return s >= 0.8 && s <= 1.6 ? s : 1;
+  });
+
+  const applyScale = (next: number) => {
+    const clamped = Math.min(1.6, Math.max(0.8, Math.round(next * 10) / 10));
+    setUiScale(clamped);
+    document.documentElement.style.zoom = String(clamped);
+    localStorage.setItem('ba_ui_scale', String(clamped));
+  };
 
   const send = useCallback((command: SidebarCommand) => {
     portRef.current?.postMessage(command);
@@ -143,6 +154,17 @@ export function Sidebar() {
       <header class="header">
         <span class="title">CANAgent</span>
         <span class={`status status-${status}`}>{STATUS_LABELS[status]}</span>
+        <span class="scale-ctl">
+          <button class="scale-btn" title="Smaller text" onClick={() => applyScale(uiScale - 0.1)}>
+            A−
+          </button>
+          <button class="scale-val" title="Reset text size" onClick={() => applyScale(1)}>
+            {Math.round(uiScale * 100)}%
+          </button>
+          <button class="scale-btn" title="Larger text" onClick={() => applyScale(uiScale + 0.1)}>
+            A+
+          </button>
+        </span>
         <button
           class="icon-btn"
           title="Clear conversation"

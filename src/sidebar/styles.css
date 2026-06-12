@@ -104,6 +104,37 @@ body {
   line-height: 1;
   padding: 4px 6px;
 }
+
+/* Text-size control */
+.scale-ctl {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+.scale-btn,
+.scale-val {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 1;
+  padding: 3px 4px;
+  border-radius: 5px;
+}
+.scale-btn {
+  font-size: 13px;
+  font-weight: 600;
+}
+.scale-val {
+  font-size: 10px;
+  min-width: 30px;
+  text-align: center;
+}
+.scale-btn:hover,
+.scale-val:hover {
+  color: var(--text);
+  background: var(--bg-input);
+}
 .icon-btn:hover:not(:disabled) {
   color: var(--text);
 }

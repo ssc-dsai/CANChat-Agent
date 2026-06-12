@@ -96,6 +96,7 @@ The status pill is color-coded: neutral **Idle**, blue **Thinking…/Using brows
 
 - **🗑 Clear conversation** — stops any running task (aborting in-flight model requests), wipes the chat, the agent's conversation memory, and the tool log. Use it to start fresh; the agent's context (and your token spend) otherwise grows with every exchange.
 - **⚙ Settings** — model configuration, Known Sites, and Skills.
+- **A− / A+** — adjust the panel's text size (scales the whole sidebar); click the percentage to reset to 100%. The choice persists across sessions.
 
 ### 4.2 Tab context panel
 
