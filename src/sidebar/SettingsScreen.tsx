@@ -137,22 +137,22 @@ export function SettingsScreen({ onClose }: Props) {
         </div>
 
         <label class="field">
-          <span>SharePoint base URL (optional) — enables search over your SharePoint via the signed-in session; blank = auto-detect from an open SharePoint tab</span>
-          <input
-            type="url"
-            placeholder="https://contoso.sharepoint.com"
-            value={settings.sharepointBaseUrl ?? ''}
-            onInput={(e) => update({ sharepointBaseUrl: (e.target as HTMLInputElement).value })}
-          />
-        </label>
-
-        <label class="field">
           <span>Embedding model (optional) — for local repositories; defaults to the model above if blank</span>
           <input
             type="text"
             placeholder="text-embedding-3-small"
             value={settings.embeddingModel ?? ''}
             onInput={(e) => update({ embeddingModel: (e.target as HTMLInputElement).value })}
+          />
+        </label>
+
+        <label class="field">
+          <span>SharePoint base URL (optional) — enables search over your SharePoint via the signed-in session; blank = auto-detect from an open SharePoint tab</span>
+          <input
+            type="url"
+            placeholder="https://contoso.sharepoint.com"
+            value={settings.sharepointBaseUrl ?? ''}
+            onInput={(e) => update({ sharepointBaseUrl: (e.target as HTMLInputElement).value })}
           />
         </label>
 
