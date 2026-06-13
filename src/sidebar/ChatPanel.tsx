@@ -132,9 +132,11 @@ export function ChatPanel({
   const [skills, setSkills] = useState<Skill[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
-  // @-mention of browser bookmarks.
-  const [mention, setMention] = useState<{ query: string } | null>(null);
-  const [bookmarks, setBookmarks] = useState<Array<{ title: string; url: string }>>([]);
+  // @-mention of browser bookmarks and #-mention of local repositories.
+  const [mention, setMention] = useState<{ kind: 'bookmark' | 'repo'; query: string } | null>(null);
+  const [mentionItems, setMentionItems] = useState<
+    Array<{ primary: string; secondary: string; insert: string }>
+  >([]);
   const [mentionIndex, setMentionIndex] = useState(0);
 
   const getEditorText = () =>
@@ -158,7 +160,7 @@ export function ChatPanel({
     if (editorRef.current) editorRef.current.innerHTML = '';
     setText('');
     setMention(null);
-    setBookmarks([]);
+    setMentionItems([]);
   };
 
   useEffect(() => {
@@ -187,8 +189,14 @@ export function ChatPanel({
       ? hintItems.filter((s) => s.name.startsWith(slashMatch[1].toLowerCase()))
       : [];
 
-  // Locate the active @-mention token (text node + offsets) at the caret.
-  const mentionRangeAtCaret = (): { node: Text; start: number; end: number; query: string } | null => {
+  // Locate an active mention token at the caret: "@" for bookmarks, "#" for repos.
+  const mentionRangeAtCaret = (): {
+    node: Text;
+    start: number;
+    end: number;
+    kind: 'bookmark' | 'repo';
+    query: string;
+  } | null => {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0 || !editorRef.current) return null;
     const range = sel.getRangeAt(0);
@@ -197,25 +205,70 @@ export function ChatPanel({
     if (node.nodeType !== Node.TEXT_NODE || !editorRef.current.contains(node)) return null;
     const offset = range.startOffset;
     const before = (node.textContent ?? '').slice(0, offset);
-    const m = /(?:^|\s)@([^\s@]*)$/.exec(before);
+    const m = /(?:^|\s)([@#])([^\s@#]*)$/.exec(before);
     if (!m) return null;
-    return { node: node as Text, start: offset - m[1].length - 1, end: offset, query: m[1] };
+    return {
+      node: node as Text,
+      start: offset - m[2].length - 1,
+      end: offset,
+      kind: m[1] === '@' ? 'bookmark' : 'repo',
+      query: m[2],
+    };
   };
 
   const updateMention = () => {
     const found = mentionRangeAtCaret();
-    setMention(found ? { query: found.query } : null);
+    setMention(found ? { kind: found.kind, query: found.query } : null);
   };
 
-  // Fetch matching bookmarks (debounced) while a mention is being typed.
+  // Fetch matching items (debounced) while a mention is being typed: bookmarks
+  // for "@", local repositories for "#".
   useEffect(() => {
-    if (!mention || typeof chrome === 'undefined' || !chrome.bookmarks) {
-      setBookmarks([]);
+    if (!mention) {
+      setMentionItems([]);
       return;
     }
     let cancelled = false;
     const q = mention.query.trim();
     const ql = q.toLowerCase();
+
+    if (mention.kind === 'repo') {
+      const timer = setTimeout(async () => {
+        let repos: Array<{ name: string; docs: number; chunks: number }> = [];
+        try {
+          const list = await chrome.runtime.sendMessage({ type: 'repo_list' });
+          if (Array.isArray(list)) repos = list;
+        } catch {
+          repos = [];
+        }
+        if (cancelled) return;
+        const items = repos
+          .filter((r) => !q || r.name.toLowerCase().includes(ql))
+          .sort(
+            (a, b) =>
+              (a.name.toLowerCase().startsWith(ql) ? 0 : 1) -
+              (b.name.toLowerCase().startsWith(ql) ? 0 : 1),
+          )
+          .slice(0, 8)
+          .map((r) => ({
+            primary: r.name,
+            secondary: `${r.docs} doc${r.docs === 1 ? '' : 's'}, ${r.chunks} chunk${r.chunks === 1 ? '' : 's'}`,
+            insert: r.name,
+          }));
+        setMentionItems(items);
+        setMentionIndex(0);
+      }, 80);
+      return () => {
+        cancelled = true;
+        clearTimeout(timer);
+      };
+    }
+
+    // bookmark kind
+    if (typeof chrome === 'undefined' || !chrome.bookmarks) {
+      setMentionItems([]);
+      return;
+    }
     const rank = (n: chrome.bookmarks.BookmarkTreeNode) => {
       const t = (n.title ?? '').toLowerCase();
       if (t.startsWith(ql)) return 0;
@@ -240,8 +293,8 @@ export function ChatPanel({
         )
         .sort((a, b) => rank(a) - rank(b))
         .slice(0, 8)
-        .map((n) => ({ title: n.title || n.url!, url: n.url! }));
-      setBookmarks(items);
+        .map((n) => ({ primary: n.title || n.url!, secondary: n.url!, insert: n.url! }));
+      setMentionItems(items);
       setMentionIndex(0);
     }, 120);
     return () => {
@@ -250,9 +303,9 @@ export function ChatPanel({
     };
   }, [mention]);
 
-  const mentionOpen = mention !== null && bookmarks.length > 0;
+  const mentionOpen = mention !== null && mentionItems.length > 0;
 
-  const insertBookmark = (url: string) => {
+  const insertMention = (value: string) => {
     const found = mentionRangeAtCaret();
     const editor = editorRef.current;
     const sel = window.getSelection();
@@ -265,7 +318,7 @@ export function ChatPanel({
     const space = document.createTextNode(' ');
     const bold = document.createElement('span');
     bold.className = 'mention-bold';
-    bold.textContent = url;
+    bold.textContent = value;
     del.insertNode(space);
     del.insertNode(bold);
     // Caret into the (normal-weight) space node so typing continues unbolded.
@@ -276,7 +329,7 @@ export function ChatPanel({
     sel.addRange(after);
     editor.focus();
     setMention(null);
-    setBookmarks([]);
+    setMentionItems([]);
     syncText();
   };
 
@@ -310,8 +363,8 @@ export function ChatPanel({
       <div class="chat-messages" ref={listRef}>
         {messages.length === 0 && (
           <div class="chat-empty">
-            Ask about the current page, your open tabs, or anything on the web. Add tabs to
-            context above, or just ask — the agent will use the browser when it needs to.
+            Ask about the current page, your open tabs, or anything on the web — the agent will
+            use the browser when it needs to. Type @ to insert a bookmark, # to reference a repository.
           </div>
         )}
         {messages.map((m, i) => {
@@ -455,19 +508,19 @@ export function ChatPanel({
         )}
         {mentionOpen && (
           <div class="mention-menu">
-            {bookmarks.map((b, i) => (
+            {mentionItems.map((it, i) => (
               <button
-                key={b.url}
+                key={it.insert + i}
                 class={`mention-item ${i === mentionIndex ? 'active' : ''}`}
-                title={b.url}
+                title={it.secondary}
                 onMouseEnter={() => setMentionIndex(i)}
                 onMouseDown={(e) => {
                   e.preventDefault(); // keep focus in the editor
-                  insertBookmark(b.url);
+                  insertMention(it.insert);
                 }}
               >
-                <span class="mention-title">{b.title}</span>
-                <span class="mention-url">{b.url}</span>
+                <span class="mention-title">{it.primary}</span>
+                <span class="mention-url">{it.secondary}</span>
               </button>
             ))}
           </div>
@@ -478,7 +531,7 @@ export function ChatPanel({
           contentEditable={!disabled}
           role="textbox"
           aria-multiline="true"
-          data-placeholder={disabled ? 'Configure a model in Settings first' : 'Ask the agent… (@ for bookmarks)'}
+          data-placeholder={disabled ? 'Configure a model in Settings first' : 'Ask the agent… (@ bookmarks, # repos)'}
           onInput={() => {
             // Keep :empty true when only a stray <br> remains, so the placeholder shows.
             if (editorRef.current && !getEditorText().trim()) editorRef.current.innerHTML = '';
@@ -497,23 +550,23 @@ export function ChatPanel({
             if (mentionOpen) {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                setMentionIndex((i) => (i + 1) % bookmarks.length);
+                setMentionIndex((i) => (i + 1) % mentionItems.length);
                 return;
               }
               if (e.key === 'ArrowUp') {
                 e.preventDefault();
-                setMentionIndex((i) => (i - 1 + bookmarks.length) % bookmarks.length);
+                setMentionIndex((i) => (i - 1 + mentionItems.length) % mentionItems.length);
                 return;
               }
               if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault();
-                insertBookmark(bookmarks[mentionIndex].url);
+                insertMention(mentionItems[mentionIndex].insert);
                 return;
               }
               if (e.key === 'Escape') {
                 e.preventDefault();
                 setMention(null);
-                setBookmarks([]);
+                setMentionItems([]);
                 return;
               }
             }

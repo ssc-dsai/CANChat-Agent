@@ -51,10 +51,6 @@ export function TabContextPanel({ context, send }: Props) {
     send({ type: 'capture_to_repo', repo: repo.trim(), scope });
   };
 
-  // Host access to all sites is granted at install, so these are direct commands.
-  const useAllTabs = () => send({ type: 'include_all_tabs' });
-  const useCurrentTab = () => send({ type: 'include_active_tab' });
-
   const snapshot = async () => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (!tab) return;
@@ -76,12 +72,6 @@ export function TabContextPanel({ context, send }: Props) {
   return (
     <div class="context-panel">
       <div class="context-actions">
-        <button class="btn btn-small" onClick={useCurrentTab}>
-          Use current tab
-        </button>
-        <button class="btn btn-small" onClick={useAllTabs}>
-          Use all tabs
-        </button>
         <button
           class="btn btn-small"
           title="Capture the visible part of the current tab as an image for the model — for content text extraction can't see (dashboards, canvases, PDFs)"

@@ -102,10 +102,8 @@ The status pill is color-coded: neutral **Idle**, blue **Thinking…/Using brows
 
 ### 4.2 Tab context panel
 
-The row of buttons under the header controls what page content is handed to the agent *up front* (the agent can also fetch tabs itself mid-task with its tools):
+The row of buttons under the header controls what page content is handed to the agent *up front* (the agent reads the active tab by default, and can fetch any tab itself mid-task with its tools):
 
-- **Use current tab** — snapshots the active tab's content into context.
-- **Use all tabs** — snapshots every open tab (you'll be asked to approve all-tab reads during tasks).
 - **Snapshot** — captures the **visible part of the current tab as an image** and attaches it to your next message. This is the tool for content that text extraction can't see: PowerBI reports, canvas-rendered dashboards and spreadsheets, Figma, embedded PDFs, charts. The image appears in the thread immediately (with a pending chip above the input — ✕ discards it) and is sent with whatever you ask next. **Requires a vision-capable model** (e.g. GPT-4o-class, llava/qwen-vl locally). Captures only the visible viewport.
 - **OCR Page** — like Snapshot, but captures the **whole page** by scrolling top to bottom and taking a series of overlapping screenshots, all attached to your next message (the vision model "reads" them). Use it for long or opaque pages where a single viewport isn't enough. Also available to the agent as the `capture_full_page` tool (it'll reach for it when a page's content is invisible to the text tools). **Vision-model required, and token-heavy** (many images) — it's the last-resort escalation. It stops at the bottom (or when scrolling stops changing the view) and caps at ~20 frames. Caveat: it scrolls the window or the largest inner scroll region, so apps that scroll a custom canvas (e.g. Excel Online's grid) may not page past the first view.
 - **Refresh** — re-extracts whatever is currently in context.
@@ -124,6 +122,7 @@ On a multi-step task a **Plan** panel appears between the tab buttons and the ch
 - **Send / Pause / Stop** — Pause halts the loop between steps; Stop aborts the task, including any in-flight model request.
 - Typing `/` shows your matching **skill** names as clickable chips (see [§6](#6-skills--reusable-procedures)).
 - Typing `@` opens a **bookmark picker** — it matches your browser bookmarks by name (arrow keys or click to choose); selecting one inserts that bookmark's URL into the message at the cursor, rendered in **bold**. Works mid-sentence (`summarize @docs`).
+- Typing `#` opens a **repository picker** — it lists your on-device repositories (with doc/chunk counts); selecting one inserts the repo name into the message in **bold**, so you can quickly reference a repo to search (e.g. `what does #Research say about auth`).
 - After a substantial task, a **Save this workflow as a reusable skill?** chip appears above the input — one click distills what the agent just did into an editable skill (see [§6.7](#67-managing-skills)).
 
 ### 4.5 Inline cards

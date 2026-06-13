@@ -411,9 +411,11 @@ name, so the "me" filter isn't a perfect identity match.
 **Auth auto-pause.** When page extraction detects a login wall, the task pauses,
 the panel shows a sign-in notice, and resuming re-fetches the page.
 
-**@-mention bookmarks.** Typing `@` in the composer opens a bookmark picker
-(`chrome.bookmarks`); the chosen URL is inserted and rendered **bold** (the composer
-is a `contenteditable` that rewrites the token).
+**Composer mentions.** The composer is a `contenteditable` that rewrites a typed
+token into a **bold** node. Two triggers share one menu/insert mechanism: `@` opens a
+**bookmark** picker (`chrome.bookmarks`) and inserts the chosen URL; `#` opens a
+**repository** picker (`repo_list`) and inserts the chosen repo name (so the user can
+reference a repo to search, e.g. `#Research`).
 
 ---
 
@@ -430,7 +432,7 @@ is a `contenteditable` that rewrites the token).
 - **Plan panel** (`PlanPanel.tsx`): the live plan with per-step status.
 - **Tool activity** (`ToolActivityPanel.tsx`): a running log of tool calls and
   outcomes, including approvals (Approve/Deny inline).
-- **Tab-context bar** (`TabContextPanel.tsx`): "Use current tab"/"Use all tabs",
+- **Tab-context bar** (`TabContextPanel.tsx`):
   Snapshot, OCR Page, Refresh; a **repo capture** row — a repo-name box that is a
   `<datalist>` dropdown of existing repos *and* accepts a new typed name, plus
   **+ Tab** / **+ Group** buttons.
