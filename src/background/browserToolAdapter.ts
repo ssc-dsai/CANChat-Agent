@@ -493,16 +493,75 @@ function cleanSummary(raw: string): string {
     .trim();
 }
 
-export async function sharepointSearch(base: string, query: string, top: number): Promise<string> {
-  const rowlimit = Math.min(25, Math.max(1, top || 10));
-  const safeQuery = query.replace(/'/g, ' ').trim();
-  const props = 'Title,Path,HitHighlightedSummary,FileType,LastModifiedTime,Author';
-  const url =
+// SharePoint encodes people as claims tokens like
+// "i:0#.f|membership|jane@contoso.com | Jane Smith". Pull a readable name/email.
+function cleanUser(raw: string): string | undefined {
+  if (!raw) return undefined;
+  // Multi-valued props are ';'-separated; take the first principal.
+  const first = raw.split(/;\s*/)[0].trim();
+  const name = first.includes('|') ? first.split('|').pop()!.trim() : first;
+  return name || undefined;
+}
+
+interface SharepointSearchOptions {
+  query?: string;
+  top?: number;
+  sortBy?: 'relevance' | 'modified';
+  editedByMe?: boolean;
+}
+
+async function currentSharepointUser(
+  base: string,
+): Promise<{ title?: string; email?: string } | { error: string }> {
+  try {
+    const res = await fetch(`${base.replace(/\/+$/, '')}/_api/web/currentuser`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json;odata=nometadata' },
+    });
+    if (!res.ok) {
+      return { error: `Could not determine the signed-in user (HTTP ${res.status}).` };
+    }
+    const u = (await res.json()) as { Title?: string; Email?: string };
+    if (!u.Title && !u.Email) return { error: 'Signed-in user has no name/email.' };
+    return { title: u.Title, email: u.Email };
+  } catch (err) {
+    return { error: `Could not determine the signed-in user: ${String(err)}` };
+  }
+}
+
+export async function sharepointSearch(base: string, opts: SharepointSearchOptions): Promise<string> {
+  const rowlimit = Math.min(25, Math.max(1, opts.top || 10));
+  const terms = (opts.query ?? '').replace(/'/g, ' ').trim();
+
+  // Build the KQL querytext. With no terms, scope to documents so a pure
+  // "recent files" listing has something to sort.
+  const clauses: string[] = [];
+  if (terms) clauses.push(terms);
+
+  if (opts.editedByMe) {
+    const me = await currentSharepointUser(base);
+    if ('error' in me) {
+      return JSON.stringify({
+        error: `${me.error} Open a tab on ${base} and make sure you are signed in, then retry.`,
+      });
+    }
+    if (me.title) clauses.push(`Editor:"${me.title.replace(/"/g, '')}"`);
+  }
+  if (clauses.length === 0) clauses.push('IsDocument:1');
+  const queryText = clauses.join(' ');
+
+  const props =
+    'Title,Path,HitHighlightedSummary,FileType,FileExtension,LastModifiedTime,Author,Editor,EditorOWSUSER';
+  let url =
     `${base.replace(/\/+$/, '')}/_api/search/query` +
-    `?querytext='${encodeURIComponent(safeQuery)}'` +
+    `?querytext='${encodeURIComponent(queryText)}'` +
     `&rowlimit=${rowlimit}` +
     `&selectproperties='${encodeURIComponent(props)}'` +
     `&clienttype='ContentSearchRegular'`;
+  if (opts.sortBy === 'modified') {
+    url += `&sortlist='${encodeURIComponent('LastModifiedTime:descending')}'`;
+  }
+
   let res: Response;
   try {
     res = await fetch(url, {
@@ -534,12 +593,21 @@ export async function sharepointSearch(base: string, query: string, top: number)
         title: c.Title || c.Path || '(untitled)',
         url: c.Path,
         snippet: cleanSummary(c.HitHighlightedSummary),
-        fileType: c.FileType || undefined,
+        fileType: c.FileType || c.FileExtension || undefined,
+        createdBy: cleanUser(c.Author),
+        modifiedBy: cleanUser(c.Editor) || cleanUser(c.EditorOWSUSER),
         modified: c.LastModifiedTime || undefined,
       };
     })
     .filter((r) => r.url);
-  return JSON.stringify({ base, query: safeQuery, count: results.length, results });
+  return JSON.stringify({
+    base,
+    query: queryText,
+    sortBy: opts.sortBy ?? 'relevance',
+    editedByMe: Boolean(opts.editedByMe),
+    count: results.length,
+    results,
+  });
 }
 
 export async function detectAuthState(tabId: number): Promise<AuthState> {

@@ -384,14 +384,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'sharepoint_search',
       description:
-        "Search the user's SharePoint using its Search API and the current signed-in browser session (no setup or token). Returns ranked results, each with a text snippet around the matched terms and the source document URL. Use the snippets as evidence to answer the question, and cite the URLs. Good for questions about the user's internal documents.",
+        "Search the user's SharePoint using its Search API and the current signed-in browser session (no setup or token). Returns ranked results, each with a snippet, the source document URL, who created and last modified the file, and the modified date. Set sortBy:'modified' to get the most-recently-changed files first, and editedByMe:true to limit to files the signed-in user last edited (e.g. 'the last 5 files I edited'). query is optional — omit it (with sortBy:'modified') to list recent documents. Use the snippets as evidence and cite the URLs.",
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Search terms / keywords.' },
+          query: { type: 'string', description: 'Search terms / keywords. Optional — omit to list recent files.' },
           top: { type: 'number', description: 'Max results (default 10, max 25).' },
+          sortBy: {
+            type: 'string',
+            enum: ['relevance', 'modified'],
+            description: "Ranking: 'relevance' (default) or 'modified' (most recently changed first).",
+          },
+          editedByMe: {
+            type: 'boolean',
+            description: 'Limit to files last modified by the signed-in user.',
+          },
         },
-        required: ['query'],
+        required: [],
       },
     },
   },

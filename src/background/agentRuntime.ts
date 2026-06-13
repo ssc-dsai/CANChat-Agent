@@ -120,7 +120,7 @@ Working method:
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
 - Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
-- For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets around the matched terms) with source URLs. Answer from those snippets and cite the URLs. This is the way to do retrieval over the user's document store.
+- For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets) with source URLs plus who created and last modified each file and the modified date. Answer from those snippets and cite the URLs. For "recent files" or "files I edited" requests, pass sortBy:'modified' (newest first) and editedByMe:true (limit to the signed-in user) — query is optional for these. This is the way to do retrieval over the user's document store.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 
 Answer format:
@@ -1045,7 +1045,12 @@ export class AgentRuntime {
         if (!base) {
           return 'Error: no SharePoint base URL. Ask the user to set it in Settings (e.g. https://contoso.sharepoint.com) or to open a SharePoint tab, then retry.';
         }
-        return browser.sharepointSearch(base, String(args.query), Number(args.top) || 10);
+        return browser.sharepointSearch(base, {
+          query: args.query ? String(args.query) : undefined,
+          top: Number(args.top) || 10,
+          sortBy: args.sortBy === 'modified' ? 'modified' : 'relevance',
+          editedByMe: Boolean(args.editedByMe),
+        });
       }
       case 'export_data':
         return this.exportData(args);

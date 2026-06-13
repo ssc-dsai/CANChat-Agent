@@ -151,7 +151,7 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `search_web` | Search via your default search engine in a new tab (joins the conversation's tab group) | – |
 | `read_tab_group` | Read every page in a tab group, by name or the conversation's own group | – |
 | `search_known_sites` | Look up your Known Sites directory ([§5](#5-known-sites--the-agents-address-book)) | – |
-| `sharepoint_search` | Search your SharePoint via its Search API on the signed-in session; returns passages around the matched terms with source URLs | – |
+| `sharepoint_search` | Search your SharePoint via its Search API on the signed-in session; returns passages, source URLs, and created/modified-by + date. Supports sort-by-modified and an "edited by me" filter for recent/my files | – |
 | `add_to_repo` | Capture the current page (or the conversation's tab group) into a named on-device repository | – |
 | `search_repo` | Retrieve relevant passages from a named on-device repository (local embedding search) | – |
 | `list_repos` | List the on-device repositories with doc/chunk counts | – |
@@ -182,9 +182,10 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 If your documents live in SharePoint Online, the agent can do lightweight retrieval over them with **no app registration, no token, and no setup beyond being signed in**. SharePoint's own Search API authenticates with the browser session you already have, and returns a snippet of text *around your search terms* for each hit — so the agent queries it, then answers from those passages and cites the source documents.
 
 - **Enable it:** set your **SharePoint base URL** in Settings (e.g. `https://contoso.sharepoint.com`, or a specific site like `…/sites/Team` to scope the search). Leave it blank and the agent will auto-detect the tenant from an open SharePoint tab.
-- **Use it:** ask something like "search SharePoint for our incident response policy" — the agent calls `sharepoint_search`, gets ranked passages, and answers with citations to the documents.
+- **Use it:** ask something like "search SharePoint for our incident response policy" — the agent calls `sharepoint_search`, gets ranked passages, and answers with citations to the documents. Each hit now also reports **who created and last modified the file and when**.
+- **Recent / "my" files:** ask "show the last 5 files I edited on SharePoint" — the agent sorts by most-recently-modified (`sortBy:'modified'`) and limits to files you last edited (`editedByMe:true`, matched against your signed-in identity).
 
-Honest limits: it only sees what *you* can see (it's your session); SharePoint Search must be enabled/crawled for your content (it normally is); the snippets are short (a sentence or two around the term) — good for relevance and light context, not full-document analysis; and you must be signed into SharePoint in the browser. It's "poor man's" RAG by design — retrieval is the host's search, the LLM does the synthesis.
+Honest limits: it only sees what *you* can see (it's your session); SharePoint Search must be enabled/crawled for your content (it normally is); the snippets are short (a sentence or two around the term) — good for relevance and light context, not full-document analysis; and you must be signed into SharePoint in the browser. The "files I edited" filter relies on the `Editor` managed property being query-mapped (true in most tenants) and matches by display name, so it isn't a perfect identity match — if it comes back empty, the created/modified-by fields still populate on ordinary searches. It's "poor man's" RAG by design — retrieval is the host's search, the LLM does the synthesis.
 
 ## 4⅞. Local repositories — on-device RAG
 
