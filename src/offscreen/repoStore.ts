@@ -159,15 +159,18 @@ export async function repoSearch(
     throw new Error(`Query embedding dimension ${queryVector.length} does not match repo dimension ${meta.dim}.`);
   }
   const q = quantize(normalize(queryVector), meta.perDimScale);
-  const scaleSq = meta.perDimScale.map((s) => s * s);
+  const dim = meta.dim;
+  // Fold the query-constant factors (q[d] and the per-dim scale²) into one
+  // weight vector so the hot per-vector loop is a single multiply-add.
+  const qw = new Float32Array(dim);
+  for (let d = 0; d < dim; d++) qw[d] = q[d] * meta.perDimScale[d] * meta.perDimScale[d];
   const vecs = await readVectors(dir);
   const chunks = await readJson<ChunkRec[]>(dir, 'chunks.json', []);
-  const dim = meta.dim;
   const top: Array<{ i: number; score: number }> = [];
   for (let i = 0; i < meta.chunkCount; i++) {
     const base = i * dim;
     let score = 0;
-    for (let d = 0; d < dim; d++) score += vecs[base + d] * q[d] * scaleSq[d];
+    for (let d = 0; d < dim; d++) score += vecs[base + d] * qw[d];
     if (top.length < k) {
       top.push({ i, score });
       if (top.length === k) top.sort((a, b) => a.score - b.score);
