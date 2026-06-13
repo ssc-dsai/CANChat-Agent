@@ -1,7 +1,8 @@
 import * as pdfjs from 'pdfjs-dist';
 // Vite emits the worker as an asset and gives us its URL.
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import type { ExtractPdfRequest, ExtractPdfResponse } from '../shared/messages';
+import type { ExtractPdfRequest, ExtractPdfResponse, RepoRequest, RepoResponse } from '../shared/messages';
+import { repoAdd, repoDelete, repoList, repoSearch } from './repoStore';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -50,5 +51,29 @@ async function extractPdf(url: string): Promise<ExtractPdfResponse> {
 chrome.runtime.onMessage.addListener((message: ExtractPdfRequest, _sender, sendResponse) => {
   if (message?.target !== 'offscreen' || message.type !== 'extract_pdf') return undefined;
   extractPdf(message.url).then(sendResponse);
+  return true; // async response
+});
+
+async function handleRepo(req: RepoRequest): Promise<RepoResponse> {
+  try {
+    switch (req.op) {
+      case 'add':
+        return { ok: true, result: await repoAdd(req.repo, req.doc, req.chunks, req.vectors) };
+      case 'search':
+        return { ok: true, result: await repoSearch(req.repo, req.queryVector, req.k) };
+      case 'list':
+        return { ok: true, result: await repoList() };
+      case 'delete':
+        await repoDelete(req.repo);
+        return { ok: true };
+    }
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+chrome.runtime.onMessage.addListener((message: RepoRequest, _sender, sendResponse) => {
+  if (message?.target !== 'offscreen-repo') return undefined;
+  handleRepo(message).then(sendResponse);
   return true; // async response
 });

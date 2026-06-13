@@ -13,7 +13,9 @@ import type { DataExport, MemoryEntry, Settings, SiteEntry, Skill } from '../sha
 import { hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
-import { complete, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
+import { complete, embed, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
+import { repoList, repoSearch } from './offscreenClient';
+import { ingestTab } from './repoIngest';
 import {
   getMemories,
   getMemoryEnabled,
@@ -73,6 +75,8 @@ const READ_ONLY_TOOLS = new Set([
   'search_known_sites',
   'sharepoint_search',
   'read_tab_group',
+  'search_repo',
+  'list_repos',
   'use_skill',
   'set_plan',
   'update_plan',
@@ -114,6 +118,7 @@ Working method:
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
+- Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
 - For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets around the matched terms) with source URLs. Answer from those snippets and cite the URLs. This is the way to do retrieval over the user's document store.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 
@@ -831,6 +836,46 @@ export class AgentRuntime {
     }
   }
 
+  /** Capture a tab (or the conversation's tab group) into a named OPFS repo. */
+  private async ingestIntoRepo(repo: string, scope: 'tab' | 'group'): Promise<string> {
+    const name = repo.trim();
+    if (!name) return 'Error: a repository name is required.';
+    const settings = await getSettings();
+    if (!settings) return 'Error: no model configured.';
+
+    let tabs: Array<{ tabId: number; title: string; url: string }>;
+    if (scope === 'group') {
+      if (this.groupId === null) {
+        return 'Error: this conversation has no tab group yet (open or search for pages first).';
+      }
+      const groupTabs = await chrome.tabs.query({ groupId: this.groupId });
+      tabs = groupTabs
+        .filter((t) => t.id !== undefined)
+        .map((t) => ({ tabId: t.id!, title: t.title ?? '', url: t.url ?? '' }));
+    } else {
+      const active = await browser.getActiveTab();
+      tabs = [{ tabId: active.tabId, title: active.title, url: active.url }];
+    }
+    if (tabs.length === 0) return 'Error: no tabs to capture.';
+
+    let ingested = 0;
+    let chunks = 0;
+    const skipped: string[] = [];
+    for (const t of tabs) {
+      this.setStatus('acting', `Adding "${t.title || t.url}" to ${name}…`);
+      const result = await ingestTab(settings, name, t.tabId, t.title, t.url);
+      if (result.ok) {
+        ingested++;
+        chunks += result.chunks ?? 0;
+      } else {
+        skipped.push(`${t.title || t.url}${result.needsOcr ? ' (no extractable text)' : ` (${result.error})`}`);
+      }
+    }
+    const parts = [`Added ${ingested} page(s) (${chunks} chunks) to repository "${name}".`];
+    if (skipped.length) parts.push(`Skipped: ${skipped.join('; ')}.`);
+    return parts.join(' ');
+  }
+
   private maybeOfferDistill(): void {
     const substantial = (this.plan?.length ?? 0) >= 3 || this.toolCallCount >= 4;
     if (substantial) this.setDistill(true);
@@ -906,6 +951,25 @@ export class AgentRuntime {
       }
       case 'read_tab_group':
         return browser.readTabGroup(args.name ? String(args.name) : undefined, this.groupId);
+      case 'add_to_repo':
+        return this.ingestIntoRepo(String(args.repo), args.scope === 'group' ? 'group' : 'tab');
+      case 'search_repo': {
+        const settings = await getSettings();
+        if (!settings) return 'Error: no model configured.';
+        let queryVec: number[][];
+        try {
+          queryVec = await embed(settings, [String(args.query)]);
+        } catch (e) {
+          return `Error embedding the query: ${e instanceof Error ? e.message : String(e)}`;
+        }
+        const res = await repoSearch(String(args.repo), queryVec[0], Number(args.k) || 6);
+        if (!res.ok) return `Error: ${res.error}`;
+        return JSON.stringify(res.result);
+      }
+      case 'list_repos': {
+        const res = await repoList();
+        return res.ok ? JSON.stringify(res.result) : `Error: ${res.error}`;
+      }
       case 'search_known_sites':
         return searchKnownSites(await getSites(), String(args.query));
       case 'sharepoint_search': {

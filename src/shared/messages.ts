@@ -54,11 +54,20 @@ export type BackgroundEvent =
     };
 
 /** One-shot messages handled by chrome.runtime.onMessage. */
-export type RuntimeRequest = { type: 'test_connection'; settings: Settings };
+export type RuntimeRequest =
+  | { type: 'test_connection'; settings: Settings }
+  | { type: 'repo_list' }
+  | { type: 'repo_delete'; repo: string };
 
 export interface TestConnectionResponse {
   ok: boolean;
   detail: string;
+}
+
+export interface RepoInfo {
+  name: string;
+  docs: number;
+  chunks: number;
 }
 
 /** Request to the offscreen document to parse a PDF (separate sendMessage channel). */
@@ -74,6 +83,19 @@ export interface ExtractPdfResponse {
   pageCount?: number;
   truncated?: boolean;
   error?: string;
+}
+
+/** Requests to the offscreen document's OPFS RAG store. */
+export type RepoRequest =
+  | { target: 'offscreen-repo'; op: 'add'; repo: string; doc: { name: string; url: string }; chunks: string[]; vectors: number[][] }
+  | { target: 'offscreen-repo'; op: 'search'; repo: string; queryVector: number[]; k: number }
+  | { target: 'offscreen-repo'; op: 'list' }
+  | { target: 'offscreen-repo'; op: 'delete'; repo: string };
+
+export interface RepoResponse {
+  ok: boolean;
+  error?: string;
+  result?: unknown;
 }
 
 /** Requests handled by the injected content script. */

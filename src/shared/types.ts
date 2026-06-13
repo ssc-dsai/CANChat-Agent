@@ -128,6 +128,8 @@ export interface Settings {
   systemPrompt?: string;
   /** Optional SharePoint base URL for the cookie-auth search tool. */
   sharepointBaseUrl?: string;
+  /** Optional separate model id for the /embeddings route (local RAG). */
+  embeddingModel?: string;
 }
 
 export type AgentStatus =

@@ -41,6 +41,33 @@ function endpoint(settings: Settings): string {
   return settings.baseUrl.replace(/\/+$/, '') + '/chat/completions';
 }
 
+/** Embed a batch of texts via the configured OpenAI-compatible /embeddings route. */
+export async function embed(settings: Settings, texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  const url = settings.baseUrl.replace(/\/+$/, '') + '/embeddings';
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.apiKey}` },
+      body: JSON.stringify({ model: settings.embeddingModel || settings.model, input: texts }),
+    });
+  } catch (err) {
+    throw new LlmError(`Could not reach the embeddings endpoint (${url}): ${String(err)}`);
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new LlmError(
+      `Embeddings request failed (${response.status}). Does your endpoint expose /embeddings? ${text.slice(0, 300)}`,
+    );
+  }
+  const data = (await response.json()) as { data?: Array<{ embedding: number[] }> };
+  if (!data.data || data.data.length !== texts.length) {
+    throw new LlmError('Embeddings endpoint returned an unexpected response.');
+  }
+  return data.data.map((d) => d.embedding);
+}
+
 export async function complete(
   settings: Settings,
   messages: LlmMessage[],

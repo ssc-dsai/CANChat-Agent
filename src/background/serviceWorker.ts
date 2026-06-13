@@ -1,6 +1,7 @@
 import type { BackgroundEvent, RuntimeRequest, SidebarCommand, TestConnectionResponse } from '../shared/messages';
 import { AgentRuntime } from './agentRuntime';
 import { testConnection } from './llmProvider';
+import { repoDelete, repoList } from './offscreenClient';
 import { seedSkillsIfEmpty } from './storage';
 
 // Clicking the toolbar icon opens the side panel.
@@ -90,6 +91,14 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
   if (request.type === 'test_connection') {
     testConnection(request.settings).then((result: TestConnectionResponse) => sendResponse(result));
     return true; // async response
+  }
+  if (request.type === 'repo_list') {
+    repoList().then((r) => sendResponse(r.ok ? r.result : []));
+    return true;
+  }
+  if (request.type === 'repo_delete') {
+    repoDelete(request.repo).then((r) => sendResponse(r));
+    return true;
   }
   return false;
 });

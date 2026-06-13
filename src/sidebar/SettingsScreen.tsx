@@ -3,6 +3,7 @@ import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
 import { KnownSitesSection } from './KnownSitesSection';
 import { MemorySection } from './MemorySection';
+import { RepositoriesSection } from './RepositoriesSection';
 import { SkillsSection } from './SkillsSection';
 
 interface Props {
@@ -55,6 +56,7 @@ export function SettingsScreen({ onClose }: Props) {
       model: settings.model.trim(),
       systemPrompt: settings.systemPrompt?.trim() || undefined,
       sharepointBaseUrl: settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined,
+      embeddingModel: settings.embeddingModel?.trim() || undefined,
     };
     await chrome.storage.local.set({ ba_settings: trimmed });
     setSaved(true);
@@ -145,6 +147,16 @@ export function SettingsScreen({ onClose }: Props) {
         </label>
 
         <label class="field">
+          <span>Embedding model (optional) — for local repositories; defaults to the model above if blank</span>
+          <input
+            type="text"
+            placeholder="text-embedding-3-small"
+            value={settings.embeddingModel ?? ''}
+            onInput={(e) => update({ embeddingModel: (e.target as HTMLInputElement).value })}
+          />
+        </label>
+
+        <label class="field">
           <span>Custom instructions (optional) — appended to the agent's built-in instructions; applies from your next message</span>
           <textarea
             class="chat-input"
@@ -180,6 +192,10 @@ export function SettingsScreen({ onClose }: Props) {
         <hr class="settings-divider" />
 
         <MemorySection />
+
+        <hr class="settings-divider" />
+
+        <RepositoriesSection />
       </div>
     </div>
   );

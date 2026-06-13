@@ -1,4 +1,4 @@
-import type { ExtractPdfRequest, ExtractPdfResponse } from '../shared/messages';
+import type { ExtractPdfRequest, ExtractPdfResponse, RepoRequest, RepoResponse } from '../shared/messages';
 
 // pdf.js needs a DOM/worker context the service worker can't provide, so it
 // runs in an offscreen document created on demand.
@@ -37,4 +37,34 @@ export async function extractPdf(url: string): Promise<ExtractPdfResponse> {
   }
   const request: ExtractPdfRequest = { target: 'offscreen', type: 'extract_pdf', url };
   return (await chrome.runtime.sendMessage(request)) as ExtractPdfResponse;
+}
+
+async function repoRequest(req: RepoRequest): Promise<RepoResponse> {
+  try {
+    await ensureOffscreen();
+  } catch (e) {
+    return { ok: false, error: `Could not start the repository engine: ${String(e)}` };
+  }
+  return (await chrome.runtime.sendMessage(req)) as RepoResponse;
+}
+
+export function repoAdd(
+  repo: string,
+  doc: { name: string; url: string },
+  chunks: string[],
+  vectors: number[][],
+): Promise<RepoResponse> {
+  return repoRequest({ target: 'offscreen-repo', op: 'add', repo, doc, chunks, vectors });
+}
+
+export function repoSearch(repo: string, queryVector: number[], k: number): Promise<RepoResponse> {
+  return repoRequest({ target: 'offscreen-repo', op: 'search', repo, queryVector, k });
+}
+
+export function repoList(): Promise<RepoResponse> {
+  return repoRequest({ target: 'offscreen-repo', op: 'list' });
+}
+
+export function repoDelete(repo: string): Promise<RepoResponse> {
+  return repoRequest({ target: 'offscreen-repo', op: 'delete', repo });
 }

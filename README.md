@@ -152,6 +152,9 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `read_tab_group` | Read every page in a tab group, by name or the conversation's own group | – |
 | `search_known_sites` | Look up your Known Sites directory ([§5](#5-known-sites--the-agents-address-book)) | – |
 | `sharepoint_search` | Search your SharePoint via its Search API on the signed-in session; returns passages around the matched terms with source URLs | – |
+| `add_to_repo` | Capture the current page (or the conversation's tab group) into a named on-device repository | – |
+| `search_repo` | Retrieve relevant passages from a named on-device repository (local embedding search) | – |
+| `list_repos` | List the on-device repositories with doc/chunk counts | – |
 | `use_skill` | Load a skill's full instructions ([§6](#6-skills--reusable-procedures)) | – |
 | `get_element_map` | List a page's interactive elements with stable reference ids, **accessible names, ARIA roles, states, and group context** — robust targeting in complex apps | – |
 | `read_app_content` | Best-effort read of canvas-rendered content the page tools can't see (Google Docs/Sheets bodies) | – |
@@ -182,6 +185,18 @@ If your documents live in SharePoint Online, the agent can do lightweight retrie
 - **Use it:** ask something like "search SharePoint for our incident response policy" — the agent calls `sharepoint_search`, gets ranked passages, and answers with citations to the documents.
 
 Honest limits: it only sees what *you* can see (it's your session); SharePoint Search must be enabled/crawled for your content (it normally is); the snippets are short (a sentence or two around the term) — good for relevance and light context, not full-document analysis; and you must be signed into SharePoint in the browser. It's "poor man's" RAG by design — retrieval is the host's search, the LLM does the synthesis.
+
+## 4⅞. Local repositories — on-device RAG
+
+For pages that live in no searchable system — articles, references, anything you capture ad hoc — the agent can build **named repositories stored entirely on your device** (in the browser's OPFS) and answer questions from them. This is real retrieval-augmented generation: each captured page is chunked, embedded, and stored as a quantized vector; a query embeds and retrieves the most relevant passages, which the model answers from with citations.
+
+- **Capture** — "add this page to my Research repo" (`add_to_repo`) stores the active tab; `scope: group` stores every page in the conversation's tab group at once.
+- **Ask** — "what does my Research repo say about X?" (`search_repo`) embeds the question, finds the closest passages, and the agent answers citing each page's name and URL.
+- **Manage** — `list_repos`, and a **Repositories** section in Settings to see doc/chunk counts and delete repos.
+
+How it stays on-device: embeddings are computed by **your configured endpoint's `/embeddings` route** (so if that endpoint is on-prem/sovereign, nothing leaves your boundary), and the chunk text + **int8-quantized vectors** are stored in OPFS — never synced, never sent anywhere else. The `unlimitedStorage` permission keeps the store from being evicted.
+
+Honest limits: your endpoint must expose an `/embeddings` route (set a separate **embedding model** in Settings if it differs from your chat model); it's sized for a personal working set (thousands of chunks — brute-force search is milliseconds, the quantization mainly shrinks storage); and a page must yield extractable text to be captured (OCR fallback for opaque pages comes via the vision model).
 
 ## 5. Known Sites — the agent's address book
 

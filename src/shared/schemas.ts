@@ -341,6 +341,47 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'add_to_repo',
+      description:
+        "Capture the current page (or this conversation's whole tab group) into a named on-device repository for later retrieval. The page text is chunked and embedded locally (OPFS). Use when the user wants to save pages to ask about later.",
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository name (created if new).' },
+          scope: { type: 'string', enum: ['tab', 'group'], description: "'tab' (active tab, default) or 'group' (this conversation's tab group)." },
+        },
+        required: ['repo'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_repo',
+      description:
+        'Retrieve the most relevant passages from a named on-device repository for a query (local embedding search). Answer the user from the returned passages and cite each passage\'s page name and URL.',
+      parameters: {
+        type: 'object',
+        properties: {
+          repo: { type: 'string', description: 'Repository name to search.' },
+          query: { type: 'string', description: 'What to look for.' },
+          k: { type: 'number', description: 'How many passages to return (default 6).' },
+        },
+        required: ['repo', 'query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_repos',
+      description: 'List the on-device repositories with their document and chunk counts.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'sharepoint_search',
       description:
         "Search the user's SharePoint using its Search API and the current signed-in browser session (no setup or token). Returns ranked results, each with a text snippet around the matched terms and the source document URL. Use the snippets as evidence to answer the question, and cite the URLs. Good for questions about the user's internal documents.",
