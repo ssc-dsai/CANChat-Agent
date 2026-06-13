@@ -36,14 +36,18 @@ export function TabContextPanel({ context, send }: Props) {
     return () => clearInterval(t);
   }, []);
 
-  // Populate the repo dropdown with existing repository names.
-  useEffect(() => {
+  // Populate the repo dropdown with existing repository names. Re-fetched when
+  // the field is focused so deletions made in Settings are reflected.
+  const loadRepoNames = () => {
     chrome.runtime
       .sendMessage({ type: 'repo_list' })
       .then((list: Array<{ name: string }> | undefined) => {
         if (Array.isArray(list)) setRepoNames(list.map((r) => r.name));
       })
       .catch(() => {});
+  };
+  useEffect(() => {
+    loadRepoNames();
   }, []);
 
   const addToRepo = (scope: 'tab' | 'group') => {
@@ -95,14 +99,27 @@ export function TabContextPanel({ context, send }: Props) {
         </button>
       </div>
       <div class="repo-actions">
-        <input
-          class="repo-input"
-          type="text"
-          list="repo-names"
-          placeholder="Repo name"
-          value={repo}
-          onInput={(e) => setRepo((e.target as HTMLInputElement).value)}
-        />
+        <div class="repo-input-wrap">
+          <input
+            class="repo-input"
+            type="text"
+            list="repo-names"
+            placeholder="Repo name"
+            value={repo}
+            onFocus={loadRepoNames}
+            onInput={(e) => setRepo((e.target as HTMLInputElement).value)}
+          />
+          {repo && (
+            <button
+              class="repo-clear"
+              type="button"
+              title="Clear"
+              onClick={() => setRepo('')}
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <datalist id="repo-names">
           {repoNames.map((n) => (
             <option key={n} value={n} />
