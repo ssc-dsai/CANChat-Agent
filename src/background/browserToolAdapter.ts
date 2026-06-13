@@ -458,12 +458,19 @@ export async function readPdf(tabId: number | undefined, url: string | undefined
     }
   }
   if (!target) return JSON.stringify({ error: 'No URL or tab provided to read a PDF from.' });
-  const result = await extractPdf(target);
+  // Cap what we put in the model's context; ingestion (add_to_repo) reads the
+  // whole document instead.
+  const READ_PDF_CONTEXT_CHARS = 60_000;
+  const result = await extractPdf(target, READ_PDF_CONTEXT_CHARS);
   if (!result.ok) return JSON.stringify({ url: target, error: result.error });
   return JSON.stringify({
     url: target,
     pageCount: result.pageCount,
+    charCount: result.charCount,
     truncated: result.truncated,
+    note: result.truncated
+      ? `Only the first ~${READ_PDF_CONTEXT_CHARS.toLocaleString()} characters are shown (full document is ${result.charCount?.toLocaleString()} chars). To search the entire PDF, ingest it with add_to_repo and query it with search_repo.`
+      : undefined,
     text: result.text,
   });
 }

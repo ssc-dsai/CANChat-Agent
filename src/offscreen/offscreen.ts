@@ -6,9 +6,26 @@ import { repoAdd, repoDelete, repoDeleteDoc, repoDocs, repoList, repoSearch } fr
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
-const MAX_PDF_CHARS = 20000;
+// Anti-OOM ceiling on total extracted text (~hundreds of pages). Callers that
+// need a smaller, context-budget slice pass `maxChars`.
+const SAFETY_MAX = 5_000_000;
 
-async function extractPdf(url: string): Promise<ExtractPdfResponse> {
+// Build a page's text from pdf.js items, preserving line breaks via the per-item
+// `hasEOL` flag instead of flattening everything to single spaces.
+function pageItemsToText(items: Array<{ str?: string; hasEOL?: boolean }>): string {
+  let out = '';
+  for (const it of items) {
+    out += it.str ?? '';
+    if (it.hasEOL) out += '\n';
+  }
+  return out
+    .replace(/[ \t]+/g, ' ') // collapse runs of spaces/tabs, keep newlines
+    .replace(/ *\n */g, '\n') // trim spaces around line breaks
+    .replace(/\n{3,}/g, '\n\n') // collapse blank-line runs
+    .trim();
+}
+
+async function extractPdf(url: string, maxChars?: number): Promise<ExtractPdfResponse> {
   let data: ArrayBuffer;
   try {
     // credentials:'include' so cookie-gated PDFs work under the host permission.
@@ -25,23 +42,26 @@ async function extractPdf(url: string): Promise<ExtractPdfResponse> {
       disableFontFace: true,
     } as unknown as Parameters<typeof pdfjs.getDocument>[0]).promise;
     let text = '';
+    let hitSafety = false;
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
       const content = await page.getTextContent();
-      const pageText = content.items
-        .map((it) => ('str' in it ? it.str : ''))
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      text += pageText + '\n\n';
-      if (text.length > MAX_PDF_CHARS) break;
+      text += pageItemsToText(content.items as Array<{ str?: string; hasEOL?: boolean }>) + '\n\n';
+      if (text.length > SAFETY_MAX) {
+        hitSafety = true;
+        break;
+      }
     }
-    const truncated = text.length > MAX_PDF_CHARS;
+    text = text.trim();
+    const charCount = text.length;
+    const limit = maxChars ?? SAFETY_MAX;
+    const truncated = hitSafety || charCount > limit;
     return {
       ok: true,
       pageCount: doc.numPages,
       truncated,
-      text: text.slice(0, MAX_PDF_CHARS).trim(),
+      charCount,
+      text: charCount > limit ? text.slice(0, limit).trim() : text,
     };
   } catch (e) {
     return { ok: false, error: `Not a readable PDF: ${String(e)}` };
@@ -50,7 +70,7 @@ async function extractPdf(url: string): Promise<ExtractPdfResponse> {
 
 chrome.runtime.onMessage.addListener((message: ExtractPdfRequest, _sender, sendResponse) => {
   if (message?.target !== 'offscreen' || message.type !== 'extract_pdf') return undefined;
-  extractPdf(message.url).then(sendResponse);
+  extractPdf(message.url, message.maxChars).then(sendResponse);
   return true; // async response
 });
 

@@ -29,13 +29,13 @@ async function ensureOffscreen(): Promise<void> {
   await creating;
 }
 
-export async function extractPdf(url: string): Promise<ExtractPdfResponse> {
+export async function extractPdf(url: string, maxChars?: number): Promise<ExtractPdfResponse> {
   try {
     await ensureOffscreen();
   } catch (e) {
     return { ok: false, error: `Could not start the PDF reader: ${String(e)}` };
   }
-  const request: ExtractPdfRequest = { target: 'offscreen', type: 'extract_pdf', url };
+  const request: ExtractPdfRequest = { target: 'offscreen', type: 'extract_pdf', url, maxChars };
   return (await chrome.runtime.sendMessage(request)) as ExtractPdfResponse;
 }
 

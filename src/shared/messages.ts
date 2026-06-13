@@ -86,6 +86,8 @@ export interface ExtractPdfRequest {
   target: 'offscreen';
   type: 'extract_pdf';
   url: string;
+  /** Slice the extracted text to this many chars (omit = whole document). */
+  maxChars?: number;
 }
 
 export interface ExtractPdfResponse {
@@ -93,6 +95,8 @@ export interface ExtractPdfResponse {
   text?: string;
   pageCount?: number;
   truncated?: boolean;
+  /** Full extracted length before any maxChars slice. */
+  charCount?: number;
   error?: string;
 }
 
