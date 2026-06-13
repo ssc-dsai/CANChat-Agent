@@ -3,7 +3,12 @@ import type { Settings } from '../shared/types';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { complete, embed, type ContentPart } from './llmProvider';
-import { repoAdd } from './offscreenClient';
+import { extractPdf, repoAdd } from './offscreenClient';
+
+/** Heuristic: does this URL point at a PDF the pdf.js path can extract? */
+function looksLikePdf(url: string): boolean {
+  return /\.pdf(\?|#|$)/i.test(url);
+}
 
 // OCR fallback: screenshot the whole (active) tab and have the vision model
 // transcribe it. Only works for the active tab (captureVisibleTab limitation).
@@ -42,11 +47,22 @@ export async function ingestTab(
   allowOcr = false,
 ): Promise<IngestResult> {
   let text = '';
-  try {
-    const content = await browser.getTabContent(tabId);
-    if (content.text && content.text.trim().length > 50) text = content.text;
-  } catch {
-    // fall through to read_app_content
+  // PDFs: pdf.js gives clean, selectable text — try it before the DOM/OCR ladder.
+  if (looksLikePdf(url)) {
+    try {
+      const pdf = await extractPdf(url);
+      if (pdf.ok && pdf.text && pdf.text.trim().length > 30) text = pdf.text;
+    } catch {
+      // fall through to the page-content ladder
+    }
+  }
+  if (!text) {
+    try {
+      const content = await browser.getTabContent(tabId);
+      if (content.text && content.text.trim().length > 50) text = content.text;
+    } catch {
+      // fall through to read_app_content
+    }
   }
   if (!text) {
     try {

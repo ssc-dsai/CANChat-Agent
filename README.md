@@ -190,7 +190,7 @@ Honest limits: it only sees what *you* can see (it's your session); SharePoint S
 
 For pages that live in no searchable system — articles, references, anything you capture ad hoc — the agent can build **named repositories stored entirely on your device** (in the browser's OPFS) and answer questions from them. This is real retrieval-augmented generation: each captured page is chunked, embedded, and stored as a quantized vector; a query embeds and retrieves the most relevant passages, which the model answers from with citations.
 
-- **Capture** — "add this page to my Research repo" (`add_to_repo`) stores the active tab; `scope: group` stores every page in the conversation's tab group at once. There are also **+ Tab** / **+ Group** buttons (with a repo-name box) in the tab-context bar. If a page yields no text, capture falls back to **OCR** (the full-page screenshot is transcribed by the vision model).
+- **Capture** — "add this page to my Research repo" (`add_to_repo`) stores the active tab; `scope: group` stores every page in the conversation's tab group at once. There are also **+ Tab** / **+ Group** buttons (with a repo-name box) in the tab-context bar. **PDFs are extracted with pdf.js** (clean, selectable text — same engine as `read_pdf`) before the DOM is tried; if a page yields no text at all, capture falls back to **OCR** (the full-page screenshot is transcribed by the vision model).
 - **Ask** — "what does my Research repo say about X?" (`search_repo`) embeds the question, finds the closest passages, and the agent answers citing each page's name and URL.
 - **Manage** — `list_repos`, and a **Repositories** section in Settings to see doc/chunk counts and delete repos.
 
