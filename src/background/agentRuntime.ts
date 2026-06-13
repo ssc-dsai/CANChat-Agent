@@ -36,6 +36,14 @@ const MULTI_TAB_CHARS = 5000;
 const CONVERSATION_CHAR_BUDGET = 90000; // compact older tool output beyond this
 const FINDINGS_SHOWN = 20;
 
+// Single-word names for each conversation's tab group.
+const GROUP_NAMES = [
+  'Wolf', 'Otter', 'Falcon', 'Bison', 'Heron', 'Lynx', 'Moose', 'Raven', 'Seal',
+  'Fox', 'Hawk', 'Crane', 'Elk', 'Puma', 'Loon', 'Marten', 'Bear', 'Owl', 'Pike',
+  'Trout', 'Badger', 'Beaver', 'Caribou', 'Eagle', 'Ferret', 'Gull', 'Ibis',
+  'Jay', 'Kestrel', 'Mink', 'Newt', 'Osprey', 'Quail', 'Robin', 'Stoat',
+];
+
 interface PlanStep {
   text: string;
   status: PlanStepStatus;
@@ -64,6 +72,7 @@ const READ_ONLY_TOOLS = new Set([
   'wait_for_element',
   'search_known_sites',
   'sharepoint_search',
+  'read_tab_group',
   'use_skill',
   'set_plan',
   'update_plan',
@@ -92,6 +101,7 @@ Planning multi-step tasks:
 
 Working method:
 - Use search_web for open-web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
+- Tabs you open (search_web, open_url) are collected into this conversation's named tab group. When you want to gather several pages for comparison or synthesis, open each in its own tab with open_url rather than reusing one tab with navigate. Read every page in the group at once with read_tab_group. Mention the group's name to the user when you first create it (e.g. "I've collected these in the Wolf group"); the user may later refer to the group by that name.
 - NEVER use the "site:" operator (or other search-engine operators) in a search_web query — not under any circumstances. It returns stale, poorly-ranked results. To search WITHIN a specific site, always go to the site itself: (1) if a known site has a search template for that domain, use it; (2) otherwise navigate to the site and use its own search — fill_input its search box and press_keys "Enter", or load its search URL pattern directly. search_web is only for plain open-web keyword queries with no site restriction.
 - Before clicking, filling, or submitting anything, call get_element_map and act on refIds. State-changing actions require user approval; the runtime handles asking.
 - Every action that needs approval (click_element, fill_input, submit_form, run_javascript, get_all_tab_contents, save_app_playbook) takes a required "reason" argument. Always set it to a clear, plain-language explanation, written for the user, of what the action does and why it helps the task — this is what they read to decide. No jargon or refIds.
@@ -256,6 +266,9 @@ export class AgentRuntime {
   private activeTabLabel = '';
   private systemBase = '';
   private knownSiteNames: string[] = [];
+  // Per-conversation tab group (reset only on clearConversation).
+  private groupName: string | null = null;
+  private groupId: number | null = null;
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
 
@@ -445,6 +458,9 @@ export class AgentRuntime {
     this.stepsUsed = 0;
     this.toolCallCount = 0;
     this.canDistill = false;
+    // New conversation ⇒ fresh tab group (old group/tabs are left open).
+    this.groupName = null;
+    this.groupId = null;
     this.setStatus('idle');
     this.emit({ type: 'plan_update', plan: null });
     this.emit(this.fullState());
@@ -725,6 +741,28 @@ export class AgentRuntime {
       : AbortSignal.timeout(LLM_TIMEOUT_MS);
   }
 
+  // Add an agent-opened tab to this conversation's tab group, creating it
+  // (with a single-word name) on first use. Non-fatal on failure.
+  private async addToConversationGroup(tabId: number): Promise<void> {
+    if (tabId < 0) return;
+    if (!this.groupName) {
+      const shuffled = [...GROUP_NAMES].sort(() => Math.random() - 0.5);
+      let chosen = shuffled[0];
+      for (const candidate of shuffled) {
+        if (!(await browser.groupTitleTaken(candidate))) {
+          chosen = candidate;
+          break;
+        }
+      }
+      this.groupName = chosen;
+    }
+    try {
+      this.groupId = await browser.groupTab(tabId, this.groupName, this.groupId);
+    } catch {
+      // grouping unavailable — leave the tab ungrouped
+    }
+  }
+
   private async refreshActiveTabLabel(): Promise<void> {
     try {
       const tab = await browser.getActiveTab();
@@ -856,8 +894,18 @@ export class AgentRuntime {
       }
       case 'navigate':
         return JSON.stringify(await browser.navigate(tabId, String(args.url)));
-      case 'search_web':
-        return JSON.stringify(await browser.searchWeb(String(args.query)));
+      case 'search_web': {
+        const result = await browser.searchWeb(String(args.query));
+        if (result.tabId > 0) await this.addToConversationGroup(result.tabId);
+        return JSON.stringify({ ...result, group: this.groupName });
+      }
+      case 'open_url': {
+        const result = await browser.openUrl(String(args.url));
+        if (result.tabId > 0) await this.addToConversationGroup(result.tabId);
+        return JSON.stringify({ ...result, group: this.groupName });
+      }
+      case 'read_tab_group':
+        return browser.readTabGroup(args.name ? String(args.name) : undefined, this.groupId);
       case 'search_known_sites':
         return searchKnownSites(await getSites(), String(args.query));
       case 'sharepoint_search': {
@@ -1090,6 +1138,11 @@ export class AgentRuntime {
     if (this.knownSiteNames.length > 0) {
       lines.push(
         `Known sites available — prefer these over web search when the task's data could live on one (details in the Known sites directory above): ${this.knownSiteNames.slice(0, 25).join(', ')}.`,
+      );
+    }
+    if (this.groupName) {
+      lines.push(
+        `Tab group for this conversation: "${this.groupName}" — tabs you open are collected here; the user may refer to it by name (e.g. "the ${this.groupName} group").`,
       );
     }
     if (this.plan) {

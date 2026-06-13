@@ -12,7 +12,8 @@
     "storage",
     "search",
     "bookmarks",
-    "offscreen"
+    "offscreen",
+    "tabGroups"
   ],
   "host_permissions": ["<all_urls>"],
   "background": {

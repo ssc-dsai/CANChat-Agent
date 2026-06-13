@@ -126,7 +126,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'navigate',
-      description: 'Navigate an existing tab to a URL and wait for the page to load.',
+      description: 'Navigate an existing tab to a URL and wait for the page to load (reuses the tab).',
       parameters: {
         type: 'object',
         properties: {
@@ -140,9 +140,37 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'open_url',
+      description:
+        "Open a URL in a NEW tab, collected into this conversation's tab group. Use this (rather than navigate) when you want to gather several pages to compare or summarize together; read them all at once with read_tab_group.",
+      parameters: {
+        type: 'object',
+        properties: { url: { type: 'string', description: 'Absolute URL to open.' } },
+        required: ['url'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_tab_group',
+      description:
+        "Read the content of every tab in a tab group. Omit name for this conversation's own group, or pass a group name the user mentioned (e.g. 'Wolf'). Returns each page's text — use it to summarize or compare the pages in a group.",
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: "Tab-group name; omit for this conversation's group." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_web',
       description:
-        "Search the web using the browser's default search engine. Opens a new tab with the results; follow up with get_tab_content on the returned tabId to read them.",
+        "Search the web using the browser's default search engine. Opens a new tab (collected into this conversation's tab group) with the results; follow up with get_tab_content on the returned tabId to read them.",
       parameters: {
         type: 'object',
         properties: { query: { type: 'string', description: 'The search query.' } },

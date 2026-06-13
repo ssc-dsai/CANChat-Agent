@@ -14,14 +14,29 @@ import { hasAllUrlsAccess } from './permissions';
 
 const PAGE_LOAD_TIMEOUT_MS = 20000;
 
-function toTabSummary(tab: chrome.tabs.Tab): TabSummary {
+function toTabSummary(tab: chrome.tabs.Tab, groupTitles?: Map<number, string>): TabSummary {
+  const groupId = tab.groupId !== undefined && tab.groupId !== -1 ? tab.groupId : undefined;
   return {
     tabId: tab.id ?? -1,
     windowId: tab.windowId,
     url: tab.url ?? '',
     title: tab.title ?? '',
     active: tab.active,
+    groupId,
+    group: groupId !== undefined ? groupTitles?.get(groupId) : undefined,
   };
+}
+
+async function groupTitleMap(): Promise<Map<number, string>> {
+  const map = new Map<number, string>();
+  try {
+    for (const g of await chrome.tabGroups.query({})) {
+      if (g.title) map.set(g.id, g.title);
+    }
+  } catch {
+    // tabGroups may be unavailable; ignore.
+  }
+  return map;
 }
 
 function emptyContent(
@@ -64,14 +79,14 @@ async function ensureContentScript(tabId: number): Promise<void> {
 }
 
 export async function listTabs(): Promise<TabSummary[]> {
-  const tabs = await chrome.tabs.query({});
-  return tabs.filter((t) => t.id !== undefined).map(toTabSummary);
+  const [tabs, titles] = await Promise.all([chrome.tabs.query({}), groupTitleMap()]);
+  return tabs.filter((t) => t.id !== undefined).map((t) => toTabSummary(t, titles));
 }
 
 export async function getActiveTab(): Promise<TabSummary> {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab) throw new Error('No active tab found.');
-  return toTabSummary(tab);
+  return toTabSummary(tab, await groupTitleMap());
 }
 
 export async function getTabContent(tabId: number): Promise<PageContent> {
@@ -195,6 +210,105 @@ export async function searchWeb(query: string): Promise<NavigationResult> {
     title: loaded.title ?? '',
     status: complete ? 'complete' : 'timeout',
   };
+}
+
+// Open a URL in a new background tab (caller adds it to the conversation group).
+export async function openUrl(url: string): Promise<NavigationResult> {
+  let tab: chrome.tabs.Tab;
+  try {
+    tab = await chrome.tabs.create({ url, active: false });
+  } catch (err) {
+    return { tabId: -1, url, title: '', status: 'error', error: String(err) };
+  }
+  if (!tab.id) return { tabId: -1, url, title: '', status: 'error', error: 'Tab not created.' };
+  const complete = await waitForTabComplete(tab.id);
+  const loaded = await chrome.tabs.get(tab.id);
+  return {
+    tabId: tab.id,
+    url: loaded.url ?? url,
+    title: loaded.title ?? '',
+    status: complete ? 'complete' : 'timeout',
+  };
+}
+
+const GROUP_COLORS: chrome.tabGroups.ColorEnum[] = [
+  'blue', 'cyan', 'green', 'yellow', 'orange', 'red', 'pink', 'purple',
+];
+
+function colorForName(name: string): chrome.tabGroups.ColorEnum {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return GROUP_COLORS[h % GROUP_COLORS.length];
+}
+
+/**
+ * Add a tab to the conversation's group, creating the group (with title+color)
+ * if needed. Returns the live group id (may differ if a stale group was gone).
+ */
+export async function groupTab(
+  tabId: number,
+  name: string,
+  existingGroupId: number | null,
+): Promise<number | null> {
+  if (existingGroupId !== null) {
+    try {
+      await chrome.tabs.group({ tabIds: [tabId], groupId: existingGroupId });
+      return existingGroupId;
+    } catch {
+      // Group was closed — fall through and recreate.
+    }
+  }
+  try {
+    const groupId = await chrome.tabs.group({ tabIds: [tabId] });
+    await chrome.tabGroups.update(groupId, { title: name, color: colorForName(name) });
+    return groupId;
+  } catch {
+    return null; // grouping unavailable; non-fatal
+  }
+}
+
+/** True if a live tab group already uses this title (case-insensitive). */
+export async function groupTitleTaken(name: string): Promise<boolean> {
+  const lower = name.toLowerCase();
+  try {
+    return (await chrome.tabGroups.query({})).some((g) => (g.title ?? '').toLowerCase() === lower);
+  } catch {
+    return false;
+  }
+}
+
+export async function readTabGroup(name: string | undefined, groupId: number | null): Promise<string> {
+  let targetId = groupId ?? undefined;
+  if (name) {
+    const lower = name.toLowerCase();
+    try {
+      const match = (await chrome.tabGroups.query({})).find(
+        (g) => (g.title ?? '').toLowerCase() === lower,
+      );
+      targetId = match?.id;
+    } catch {
+      targetId = undefined;
+    }
+  }
+  if (targetId === undefined) {
+    return JSON.stringify({ error: `No tab group${name ? ` named "${name}"` : ''} found.` });
+  }
+  const tabs = await chrome.tabs.query({ groupId: targetId });
+  if (tabs.length === 0) return JSON.stringify({ error: 'That tab group has no tabs.' });
+  const results = await Promise.all(
+    tabs.filter((t) => t.id !== undefined).map((t) => getTabContent(t.id!)),
+  );
+  return JSON.stringify({
+    group: name,
+    count: results.length,
+    results: results.map((c) => ({
+      tabId: c.tabId,
+      url: c.url,
+      title: c.title,
+      extractionStatus: c.extractionStatus,
+      text: c.text.slice(0, 6000),
+    })),
+  });
 }
 
 export async function getElementMap(tabId: number): Promise<ElementRef[]> {

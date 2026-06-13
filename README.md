@@ -39,6 +39,8 @@ If a question refers to "the page" or "this article" without saying which, the a
 
 **Collecting data and reading PDFs.** Ask the agent to gather structured information ("collect the title and date from each of these into a table") and it builds the dataset as it reads, then drops a **download card** in the chat with CSV and JSON buttons. And because Chrome renders PDFs as a canvas the page tools can't read, the agent has a dedicated `read_pdf` that extracts a PDF's text — including one already open in the current tab, and cookie-gated PDFs you're logged into.
 
+**Tabs stay organized.** Every tab the agent opens during a conversation — web searches and pages it opens to compare — is collected into a **Chrome tab group with a single-word name** (e.g. "Wolf"), one group per conversation. You can refer to it by name — *"summarize the pages in the Wolf group"* — and the agent reads them all at once. Each new conversation gets a fresh group; previous groups and their tabs are left open for you.
+
 **How the agent plans.** For anything beyond a quick lookup, the agent works deliberately rather than reactively. It drafts a **plan** (shown live in the sidebar), keeps a running set of **findings** as it goes, and tracks a **step budget** it paces itself against. A compact working-state block — active tab, plan with per-step status, findings, remaining budget — rides at the top of its context and refreshes every step, so it stays oriented over long tasks; older raw tool output is compacted away once its key results are recorded as findings. Independent reads (e.g. several tabs at once) run in parallel. If a long task runs out of budget it extends once while the plan still has open steps, then composes a best-effort answer from its findings — it never dead-ends with "reached maximum steps." After a substantial task you can save the whole workflow as a reusable skill in one click.
 
 **How the agent controls a page.** It drives pages through the DOM: realistic pointer/keyboard event sequences (so React/Vue inputs and most click handlers respond), an **accessibility-aware element map** (each control's accessible name, ARIA role, state, and containing group — the same semantic layer screen readers use, which is richer and more stable than CSS selectors, so the agent targets "the Send button" reliably in apps like Office 365 / Outlook web), keyboard shortcuts, wait-for-element synchronization, and coordinate gestures (click/drag/wheel) for canvas and maps. For canvas-rendered *content* the DOM can't expose (a Google Doc or Sheet body), `read_app_content` makes a best-effort text extraction, falling back to snapshot + vision. For apps with a usable JavaScript API — most web maps — it can also drive the app's own objects directly via `run_javascript`, which is the most reliable path. Two honest limits: synthetic events are not browser-*trusted* (`isTrusted: false`), so a small number of apps that explicitly check for trusted input won't respond; and cross-origin iframes can't be reached. Both would require a `chrome.debugger`-based "high-fidelity mode" that we've deliberately not added (it needs a scary permission and shows a persistent debugging banner).
@@ -144,8 +146,10 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `get_active_tab` | Identify the focused tab | – |
 | `get_tab_content` | Extract a tab's readable text, headings, links, metadata | – |
 | `get_all_tab_contents` | Extract every open tab | **Yes** |
-| `navigate` | Point a tab at a URL and wait for load | – |
-| `search_web` | Search via your default search engine in a new tab | – |
+| `navigate` | Point a tab at a URL and wait for load (reuses the tab) | – |
+| `open_url` | Open a URL in a new tab, collected into the conversation's tab group | – |
+| `search_web` | Search via your default search engine in a new tab (joins the conversation's tab group) | – |
+| `read_tab_group` | Read every page in a tab group, by name or the conversation's own group | – |
 | `search_known_sites` | Look up your Known Sites directory ([§5](#5-known-sites--the-agents-address-book)) | – |
 | `sharepoint_search` | Search your SharePoint via its Search API on the signed-in session; returns passages around the matched terms with source URLs | – |
 | `use_skill` | Load a skill's full instructions ([§6](#6-skills--reusable-procedures)) | – |
@@ -397,6 +401,7 @@ The mechanics:
 - **Fallback re-grant card:** if you restrict the extension's site access manually (`chrome://extensions` → CANAgent → Details → Site access), the agent pauses with an inline **Allow this site / Allow all sites** card instead of failing.
 - **Bookmarks** (`bookmarks` permission): used read-only, only to power the `@` bookmark picker in the chat input. The extension never modifies your bookmarks.
 - **Offscreen document** (`offscreen` permission): a hidden page created on demand to run pdf.js for `read_pdf`. No data leaves the device; it fetches the PDF with your existing session so cookie-gated PDFs work.
+- **Tab groups** (`tabGroups` permission): used to collect the tabs the agent opens into a named per-conversation group. The extension never reads or closes tabs you opened yourself unless you ask.
 
 **What's stored, what isn't:**
 

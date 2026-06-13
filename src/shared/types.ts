@@ -4,6 +4,10 @@ export interface TabSummary {
   url: string;
   title: string;
   active: boolean;
+  /** Chrome tab-group id, if the tab is in a group. */
+  groupId?: number;
+  /** Tab-group title, if the tab is in a named group. */
+  group?: string;
 }
 
 export interface LinkSummary {
