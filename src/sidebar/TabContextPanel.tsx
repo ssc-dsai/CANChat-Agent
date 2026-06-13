@@ -30,9 +30,20 @@ export function TabContextPanel({ context, send }: Props) {
   // Re-render every 30s so staleness indicators stay honest.
   const [, setTick] = useState(0);
   const [repo, setRepo] = useState('');
+  const [repoNames, setRepoNames] = useState<string[]>([]);
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 30000);
     return () => clearInterval(t);
+  }, []);
+
+  // Populate the repo dropdown with existing repository names.
+  useEffect(() => {
+    chrome.runtime
+      .sendMessage({ type: 'repo_list' })
+      .then((list: Array<{ name: string }> | undefined) => {
+        if (Array.isArray(list)) setRepoNames(list.map((r) => r.name));
+      })
+      .catch(() => {});
   }, []);
 
   const addToRepo = (scope: 'tab' | 'group') => {
@@ -97,10 +108,16 @@ export function TabContextPanel({ context, send }: Props) {
         <input
           class="repo-input"
           type="text"
+          list="repo-names"
           placeholder="Repo name"
           value={repo}
           onInput={(e) => setRepo((e.target as HTMLInputElement).value)}
         />
+        <datalist id="repo-names">
+          {repoNames.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
         <button
           class="btn btn-small"
           title="Capture this tab's text into the named on-device repository (OCR fallback for opaque pages)"

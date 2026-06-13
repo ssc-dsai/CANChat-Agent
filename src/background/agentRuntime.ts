@@ -14,8 +14,9 @@ import { hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { complete, embed, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
-import { repoList, repoSearch } from './offscreenClient';
+import { repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { ingestTab } from './repoIngest';
+import { normalizeUrl } from '../shared/repoChunk';
 import {
   getMemories,
   getMemoryEnabled,
@@ -873,22 +874,63 @@ export class AgentRuntime {
     }
     if (tabs.length === 0) return 'Error: no tabs to capture.';
 
+    // Detect duplicates by normalized URL (ignoring ?query/#hash) against the
+    // repo's existing documents, so re-adding a page can replace it rather than
+    // silently piling up duplicate copies.
+    const existing = await repoDocs(name);
+    const urlToDocIds = new Map<string, string[]>();
+    if (existing.ok && Array.isArray(existing.result)) {
+      for (const d of existing.result as Array<{ id: string; url: string }>) {
+        const key = normalizeUrl(d.url);
+        const ids = urlToDocIds.get(key) ?? [];
+        ids.push(d.id);
+        urlToDocIds.set(key, ids);
+      }
+    }
+    const dupTabs = tabs.filter((t) => urlToDocIds.has(normalizeUrl(t.url)));
+
+    // One combined prompt covering every duplicate page in this batch.
+    let replaceDuplicates = false;
+    if (dupTabs.length > 0) {
+      const titles = dupTabs.map((t) => `• ${t.title || t.url}`).join('\n');
+      const n = dupTabs.length;
+      replaceDuplicates = await this.requestApproval(
+        `Replace ${n} page${n === 1 ? '' : 's'} already in "${name}"?`,
+        `${n === 1 ? 'This page is' : 'These pages are'} already in the repository:\n${titles}\n\n` +
+          'Approve to replace the existing copy; decline to keep the original and add nothing for it.',
+      );
+    }
+
     // OCR fallback only works on the active tab (captureVisibleTab limitation).
     const allowOcr = scope === 'tab';
     let ingested = 0;
+    let replaced = 0;
     let chunks = 0;
     const skipped: string[] = [];
+    const alreadyPresent: string[] = [];
     for (const t of tabs) {
+      const dupIds = urlToDocIds.get(normalizeUrl(t.url));
+      if (dupIds) {
+        if (!replaceDuplicates) {
+          alreadyPresent.push(t.title || t.url);
+          continue; // decline → keep original, add nothing
+        }
+        // Replace: remove the existing copy/copies first, then re-ingest.
+        for (const id of dupIds) await repoDeleteDoc(name, id);
+      }
       this.setStatus('acting', `Adding "${t.title || t.url}" to ${name}…`);
       const result = await ingestTab(settings, name, t.tabId, t.title, t.url, allowOcr);
       if (result.ok) {
-        ingested++;
+        if (dupIds) replaced++;
+        else ingested++;
         chunks += result.chunks ?? 0;
       } else {
         skipped.push(`${t.title || t.url}${result.needsOcr ? ' (no extractable text)' : ` (${result.error})`}`);
       }
     }
     const parts = [`Added ${ingested} page(s) (${chunks} chunks) to repository "${name}".`];
+    if (replaced) parts.push(`Replaced ${replaced} existing page(s).`);
+    if (alreadyPresent.length) parts.push(`Already present (kept): ${alreadyPresent.join('; ')}.`);
     if (skipped.length) parts.push(`Skipped: ${skipped.join('; ')}.`);
     return parts.join(' ');
   }

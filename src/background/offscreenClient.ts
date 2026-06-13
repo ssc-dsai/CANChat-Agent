@@ -68,3 +68,11 @@ export function repoList(): Promise<RepoResponse> {
 export function repoDelete(repo: string): Promise<RepoResponse> {
   return repoRequest({ target: 'offscreen-repo', op: 'delete', repo });
 }
+
+export function repoDocs(repo: string): Promise<RepoResponse> {
+  return repoRequest({ target: 'offscreen-repo', op: 'docs', repo });
+}
+
+export function repoDeleteDoc(repo: string, docId: string): Promise<RepoResponse> {
+  return repoRequest({ target: 'offscreen-repo', op: 'deleteDoc', repo, docId });
+}

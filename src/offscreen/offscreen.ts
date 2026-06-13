@@ -2,7 +2,7 @@ import * as pdfjs from 'pdfjs-dist';
 // Vite emits the worker as an asset and gives us its URL.
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { ExtractPdfRequest, ExtractPdfResponse, RepoRequest, RepoResponse } from '../shared/messages';
-import { repoAdd, repoDelete, repoList, repoSearch } from './repoStore';
+import { repoAdd, repoDelete, repoDeleteDoc, repoDocs, repoList, repoSearch } from './repoStore';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -66,6 +66,10 @@ async function handleRepo(req: RepoRequest): Promise<RepoResponse> {
       case 'delete':
         await repoDelete(req.repo);
         return { ok: true };
+      case 'docs':
+        return { ok: true, result: await repoDocs(req.repo) };
+      case 'deleteDoc':
+        return { ok: true, result: await repoDeleteDoc(req.repo, req.docId) };
     }
   } catch (e) {
     return { ok: false, error: String(e) };

@@ -24,3 +24,22 @@ export function chunkText(text: string): string[] {
   }
   return chunks;
 }
+
+/**
+ * Canonicalize a URL for duplicate detection: drop ?query and #hash, lowercase
+ * the host, and strip a trailing slash. Falls back to a trimmed string for
+ * non-URL inputs.
+ */
+export function normalizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.search = '';
+    u.hash = '';
+    u.hostname = u.hostname.toLowerCase();
+    let s = u.toString();
+    if (s.endsWith('/')) s = s.slice(0, -1);
+    return s;
+  } catch {
+    return url.trim();
+  }
+}

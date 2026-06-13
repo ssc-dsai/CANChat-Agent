@@ -1018,3 +1018,63 @@ body {
   border-radius: 8px;
   padding: 10px;
 }
+
+.repo-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.repo-toggle {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+  max-width: 45%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.repo-toggle:hover {
+  color: var(--accent, var(--text));
+}
+
+.repo-docs {
+  list-style: none;
+  margin: 0 0 4px 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.repo-doc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.repo-doc-name {
+  flex-shrink: 0;
+  max-width: 45%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.repo-doc-meta {
+  flex: 1;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

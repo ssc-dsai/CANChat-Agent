@@ -72,6 +72,14 @@ async function appendVectors(dir: FileSystemDirectoryHandle, data: Int8Array): P
   await w.close();
 }
 
+/** Overwrite vectors.bin wholesale (truncates) — used when rebuilding after a delete. */
+async function writeVectors(dir: FileSystemDirectoryHandle, data: Int8Array): Promise<void> {
+  const handle = await dir.getFileHandle('vectors.bin', { create: true });
+  const w = await handle.createWritable(); // no keepExistingData → truncates to 0 first
+  await w.write({ type: 'write', position: 0, data: data as unknown as BufferSource });
+  await w.close();
+}
+
 function normalize(v: number[]): number[] {
   let n = 0;
   for (const x of v) n += x * x;
@@ -194,4 +202,52 @@ export async function repoList(): Promise<Array<{ name: string; docs: number; ch
 export async function repoDelete(repo: string): Promise<void> {
   const dir = await reposDir();
   await dir.removeEntry(repo, { recursive: true });
+}
+
+/** List the documents in a repo (for duplicate detection and the Settings UI). */
+export async function repoDocs(repo: string): Promise<DocMeta[]> {
+  const dir = await repoDir(repo);
+  const meta = await readJson<RepoMeta | null>(dir, 'meta.json', null);
+  return meta?.docs ?? [];
+}
+
+/** Remove one document from a repo, rebuilding vectors.bin + chunks.json + meta. */
+export async function repoDeleteDoc(repo: string, docId: string): Promise<{ removed: number; chunkCount: number }> {
+  const dir = await repoDir(repo);
+  const meta = await readJson<RepoMeta | null>(dir, 'meta.json', null);
+  if (!meta) return { removed: 0, chunkCount: 0 };
+  const doc = meta.docs.find((d) => d.id === docId);
+  if (!doc) return { removed: 0, chunkCount: meta.chunkCount };
+
+  const dim = meta.dim;
+  const start = doc.chunkStart;
+  const end = doc.chunkStart + doc.chunkCount;
+
+  // Rebuild vectors.bin: drop the doc's contiguous [start,end) rows of `dim` bytes.
+  const vecs = await readVectors(dir);
+  const kept = new Int8Array((meta.chunkCount - doc.chunkCount) * dim);
+  kept.set(vecs.subarray(0, start * dim), 0);
+  kept.set(vecs.subarray(end * dim, meta.chunkCount * dim), start * dim);
+  await writeVectors(dir, kept);
+
+  // Rebuild chunks.json by index.
+  const allChunks = await readJson<ChunkRec[]>(dir, 'chunks.json', []);
+  allChunks.splice(start, doc.chunkCount);
+  await writeJson(dir, 'chunks.json', allChunks);
+
+  // Drop the doc and re-sequence every remaining doc's chunkStart.
+  meta.docs = meta.docs.filter((d) => d.id !== docId);
+  let cursor = 0;
+  for (const d of meta.docs) {
+    d.chunkStart = cursor;
+    cursor += d.chunkCount;
+  }
+  meta.chunkCount = cursor;
+  // Emptied repo: reset calibration so a later add can recalibrate (e.g. new model).
+  if (meta.chunkCount === 0) {
+    meta.dim = 0;
+    meta.perDimScale = [];
+  }
+  await writeJson(dir, 'meta.json', meta);
+  return { removed: doc.chunkCount, chunkCount: meta.chunkCount };
 }

@@ -58,7 +58,9 @@ export type BackgroundEvent =
 export type RuntimeRequest =
   | { type: 'test_connection'; settings: Settings }
   | { type: 'repo_list' }
-  | { type: 'repo_delete'; repo: string };
+  | { type: 'repo_delete'; repo: string }
+  | { type: 'repo_docs'; repo: string }
+  | { type: 'repo_doc_delete'; repo: string; docId: string };
 
 export interface TestConnectionResponse {
   ok: boolean;
@@ -69,6 +71,14 @@ export interface RepoInfo {
   name: string;
   docs: number;
   chunks: number;
+}
+
+export interface RepoDoc {
+  id: string;
+  name: string;
+  url: string;
+  capturedAt: string;
+  chunkCount: number;
 }
 
 /** Request to the offscreen document to parse a PDF (separate sendMessage channel). */
@@ -91,7 +101,9 @@ export type RepoRequest =
   | { target: 'offscreen-repo'; op: 'add'; repo: string; doc: { name: string; url: string }; chunks: string[]; vectors: number[][] }
   | { target: 'offscreen-repo'; op: 'search'; repo: string; queryVector: number[]; k: number }
   | { target: 'offscreen-repo'; op: 'list' }
-  | { target: 'offscreen-repo'; op: 'delete'; repo: string };
+  | { target: 'offscreen-repo'; op: 'delete'; repo: string }
+  | { target: 'offscreen-repo'; op: 'docs'; repo: string }
+  | { target: 'offscreen-repo'; op: 'deleteDoc'; repo: string; docId: string };
 
 export interface RepoResponse {
   ok: boolean;
