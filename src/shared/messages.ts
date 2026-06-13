@@ -9,7 +9,7 @@ import type {
 
 /** Commands sent from the sidebar to the background over a long-lived port. */
 export type SidebarCommand =
-  | { type: 'user_message'; text: string }
+  | { type: 'user_message'; text: string; mentions?: Array<{ kind: 'bookmark' | 'repo'; value: string }> }
   | { type: 'stop_task' }
   | { type: 'clear_conversation' }
   | { type: 'distill_skill' }

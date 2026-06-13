@@ -319,6 +319,8 @@ export function ChatPanel({
     const bold = document.createElement('span');
     bold.className = 'mention-bold';
     bold.textContent = value;
+    bold.dataset.kind = found.kind; // 'bookmark' | 'repo' — read back on submit
+    bold.dataset.value = value;
     del.insertNode(space);
     del.insertNode(bold);
     // Caret into the (normal-weight) space node so typing continues unbolded.
@@ -351,10 +353,30 @@ export function ChatPanel({
 
   const busy = status === 'thinking' || status === 'acting' || status === 'awaiting_approval' || status === 'auth_required';
 
+  // Collect tagged mentions (@bookmark / #repo) so the agent acts on them
+  // explicitly, since the bold styling is lost when the text is flattened.
+  const collectMentions = (): Array<{ kind: 'bookmark' | 'repo'; value: string }> => {
+    const el = editorRef.current;
+    if (!el) return [];
+    const seen = new Set<string>();
+    const out: Array<{ kind: 'bookmark' | 'repo'; value: string }> = [];
+    el.querySelectorAll<HTMLElement>('.mention-bold[data-kind]').forEach((span) => {
+      const kind = span.dataset.kind;
+      const value = span.dataset.value ?? '';
+      if ((kind !== 'bookmark' && kind !== 'repo') || !value) return;
+      const key = `${kind}:${value}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ kind, value });
+    });
+    return out;
+  };
+
   const submit = () => {
     const message = getEditorText().trim();
     if (!message || disabled || busy) return;
-    send({ type: 'user_message', text: message });
+    const mentions = collectMentions();
+    send({ type: 'user_message', text: message, mentions: mentions.length ? mentions : undefined });
     clearEditor();
   };
 

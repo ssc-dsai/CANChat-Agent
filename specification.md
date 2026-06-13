@@ -412,10 +412,14 @@ name, so the "me" filter isn't a perfect identity match.
 the panel shows a sign-in notice, and resuming re-fetches the page.
 
 **Composer mentions.** The composer is a `contenteditable` that rewrites a typed
-token into a **bold** node. Two triggers share one menu/insert mechanism: `@` opens a
-**bookmark** picker (`chrome.bookmarks`) and inserts the chosen URL; `#` opens a
-**repository** picker (`repo_list`) and inserts the chosen repo name (so the user can
-reference a repo to search, e.g. `#Research`).
+token into a **bold** node carrying `data-kind`/`data-value`. Two triggers share one
+menu/insert mechanism: `@` opens a **bookmark** picker (`chrome.bookmarks`) and inserts
+the chosen URL; `#` opens a **repository** picker (`repo_list`) and inserts the chosen
+repo name. Because the bold styling is lost when the message is flattened to text, the
+mentions are also collected as **structured data** (`user_message.mentions:
+{kind,value}[]`) and the runtime appends an explicit directive to the model-facing text
+— so the agent acts on them directly: `search_repo` that exact repository, or open and
+read that exact bookmarked URL (not a web search).
 
 ---
 
@@ -449,7 +453,8 @@ on first run with no settings, prompt the user to configure an endpoint.
 
 ## 11. Messaging protocol (`messages.ts`)
 
-- **Panel → worker** (`SidebarCommand`, over the `Port`): `user_message`,
+- **Panel → worker** (`SidebarCommand`, over the `Port`): `user_message`
+  (with optional `mentions: {kind,value}[]`),
   `stop_task`, `clear_conversation`, `distill_skill`, `dismiss_distill`,
   `pause_agent`, `resume_agent`, `approval_response`, `include_active_tab`,
   `include_all_tabs`, `refresh_context`, `attach_snapshot`, `discard_snapshots`,

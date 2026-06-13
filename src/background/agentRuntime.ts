@@ -87,6 +87,20 @@ const READ_ONLY_TOOLS = new Set([
   'read_app_content',
 ]);
 
+/** Turn inserted @bookmark / #repo mentions into an explicit, act-on-it directive. */
+function buildMentionDirective(
+  mentions?: Array<{ kind: 'bookmark' | 'repo'; value: string }>,
+): string {
+  if (!mentions || mentions.length === 0) return '';
+  const lines = mentions.map((m) => {
+    const v = m.value.replace(/"/g, '');
+    return m.kind === 'repo'
+      ? `- Local repository "${v}": call search_repo with repo="${v}" to answer this request; that repository is the intended source.`
+      : `- Web page ${v}: open it with open_url (or navigate) and read it directly to answer — this is the exact page the user means; do not web-search for it.`;
+  });
+  return `\n\n[The user referenced these with @/# — act on them directly for this request:]\n${lines.join('\n')}`;
+}
+
 const SYSTEM_PROMPT = `You are a browser agent running in a Chrome extension side panel. The browser is your primary tool environment.
 
 Decision policy:
@@ -120,6 +134,7 @@ Working method:
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
 - Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
+- The user can reference a repository (typing #) or a bookmarked page (typing @) in their message; when they do, an explicit instruction is attached — act on it directly: search_repo that exact repository, or open and read that exact URL rather than web-searching for it.
 - For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets) with source URLs plus who created and last modified each file and the modified date. Answer from those snippets and cite the URLs. For "recent files" or "files I edited" requests, pass sortBy:'modified' (newest first) and editedByMe:true (limit to the signed-in user) — query is optional for these. This is the way to do retrieval over the user's document store.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 
@@ -328,7 +343,10 @@ export class AgentRuntime {
 
   // ----- sidebar commands -----
 
-  async handleUserMessage(text: string): Promise<void> {
+  async handleUserMessage(
+    text: string,
+    mentions?: Array<{ kind: 'bookmark' | 'repo'; value: string }>,
+  ): Promise<void> {
     if (this.running) {
       this.emit({ type: 'error', message: 'A task is already running. Stop it first or wait for it to finish.' });
       return;
@@ -376,6 +394,11 @@ export class AgentRuntime {
           `User input: ${slash[2].trim() || '(none)'}`;
       }
     }
+
+    // Inserted @bookmark / #repo mentions become an explicit directive so the
+    // agent acts on them directly (open that page / search that repo).
+    const directive = buildMentionDirective(mentions);
+    if (directive) taskText += directive;
 
     // Consume any pending snapshots: shown on the user's message and sent
     // to the model as image content parts.

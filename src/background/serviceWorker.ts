@@ -33,7 +33,7 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onMessage.addListener((command: SidebarCommand) => {
     switch (command.type) {
       case 'user_message':
-        void runtime.handleUserMessage(command.text);
+        void runtime.handleUserMessage(command.text, command.mentions);
         break;
       case 'stop_task':
         runtime.stop();
