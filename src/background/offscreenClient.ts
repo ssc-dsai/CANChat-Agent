@@ -1,4 +1,11 @@
-import type { ExtractPdfRequest, ExtractPdfResponse, RepoRequest, RepoResponse } from '../shared/messages';
+import type {
+  ExtractOfficeRequest,
+  ExtractOfficeResponse,
+  ExtractPdfRequest,
+  ExtractPdfResponse,
+  RepoRequest,
+  RepoResponse,
+} from '../shared/messages';
 
 // pdf.js needs a DOM/worker context the service worker can't provide, so it
 // runs in an offscreen document created on demand.
@@ -37,6 +44,16 @@ export async function extractPdf(url: string, maxChars?: number): Promise<Extrac
   }
   const request: ExtractPdfRequest = { target: 'offscreen', type: 'extract_pdf', url, maxChars };
   return (await chrome.runtime.sendMessage(request)) as ExtractPdfResponse;
+}
+
+export async function extractOffice(url: string, maxChars?: number): Promise<ExtractOfficeResponse> {
+  try {
+    await ensureOffscreen();
+  } catch (e) {
+    return { ok: false, error: `Could not start the document reader: ${String(e)}` };
+  }
+  const request: ExtractOfficeRequest = { target: 'offscreen', type: 'extract_office', url, maxChars };
+  return (await chrome.runtime.sendMessage(request)) as ExtractOfficeResponse;
 }
 
 async function repoRequest(req: RepoRequest): Promise<RepoResponse> {

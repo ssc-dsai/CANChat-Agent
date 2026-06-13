@@ -84,6 +84,7 @@ const READ_ONLY_TOOLS = new Set([
   'record_finding',
   'export_data',
   'read_pdf',
+  'read_office_document',
   'read_app_content',
 ]);
 
@@ -133,6 +134,7 @@ Working method:
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
+- To read a Microsoft Office file (.docx Word, .pptx PowerPoint, .xlsx Excel) — including one the browser just downloaded instead of displaying — call read_office_document, not get_tab_content.
 - Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
 - The user can reference a repository (typing #) or a bookmarked page (typing @) in their message; when they do, an explicit instruction is attached — act on it directly: search_repo that exact repository, or open and read that exact URL rather than web-searching for it.
 - For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets) with source URLs plus who created and last modified each file and the modified date. Answer from those snippets and cite the URLs. For "recent files" or "files I edited" requests, pass sortBy:'modified' (newest first) and editedByMe:true (limit to the signed-in user) — query is optional for these. This is the way to do retrieval over the user's document store.
@@ -1194,6 +1196,11 @@ export class AgentRuntime {
         return JSON.stringify(await browser.scrollWheel(tabId, Number(args.x), Number(args.y), Number(args.deltaY)));
       case 'read_pdf':
         return browser.readPdf(
+          args.tabId !== undefined ? Number(args.tabId) : undefined,
+          args.url ? String(args.url) : undefined,
+        );
+      case 'read_office_document':
+        return browser.readOfficeDocument(
           args.tabId !== undefined ? Number(args.tabId) : undefined,
           args.url ? String(args.url) : undefined,
         );

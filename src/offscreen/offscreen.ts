@@ -1,7 +1,15 @@
+import { strFromU8, unzipSync } from 'fflate';
 import * as pdfjs from 'pdfjs-dist';
 // Vite emits the worker as an asset and gives us its URL.
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import type { ExtractPdfRequest, ExtractPdfResponse, RepoRequest, RepoResponse } from '../shared/messages';
+import type {
+  ExtractOfficeRequest,
+  ExtractOfficeResponse,
+  ExtractPdfRequest,
+  ExtractPdfResponse,
+  RepoRequest,
+  RepoResponse,
+} from '../shared/messages';
 import { repoAdd, repoDelete, repoDeleteDoc, repoDocs, repoList, repoSearch } from './repoStore';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -71,6 +79,165 @@ async function extractPdf(url: string, maxChars?: number): Promise<ExtractPdfRes
 chrome.runtime.onMessage.addListener((message: ExtractPdfRequest, _sender, sendResponse) => {
   if (message?.target !== 'offscreen' || message.type !== 'extract_pdf') return undefined;
   extractPdf(message.url, message.maxChars).then(sendResponse);
+  return true; // async response
+});
+
+// ----- Office (OOXML) extraction: .docx / .pptx / .xlsx are ZIP-of-XML. -----
+
+type ZipFiles = Record<string, Uint8Array>;
+type OfficeFormat = 'docx' | 'pptx' | 'xlsx';
+
+function parseXml(bytes: Uint8Array): Document {
+  return new DOMParser().parseFromString(strFromU8(bytes), 'application/xml');
+}
+
+function detectOfficeFormat(files: ZipFiles): OfficeFormat | null {
+  if (files['word/document.xml']) return 'docx';
+  if (Object.keys(files).some((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))) return 'pptx';
+  if (files['xl/workbook.xml']) return 'xlsx';
+  return null;
+}
+
+function csvEscape(v: string): string {
+  return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
+function extractDocx(files: ZipFiles): string {
+  const doc = parseXml(files['word/document.xml']);
+  const paras = doc.getElementsByTagName('w:p');
+  const lines: string[] = [];
+  for (let i = 0; i < paras.length; i++) {
+    // Walk descendants in document order so tabs/breaks land in the right place.
+    const nodes = paras[i].getElementsByTagName('*');
+    let line = '';
+    for (let j = 0; j < nodes.length; j++) {
+      const tag = nodes[j].tagName;
+      if (tag === 'w:t') line += nodes[j].textContent ?? '';
+      else if (tag === 'w:tab') line += '\t';
+      else if (tag === 'w:br' || tag === 'w:cr') line += '\n';
+    }
+    lines.push(line);
+  }
+  return lines.join('\n');
+}
+
+function extractPptx(files: ZipFiles): string {
+  const slideNum = (n: string) => Number(/slide(\d+)\.xml$/.exec(n)?.[1] ?? '0');
+  const slides = Object.keys(files)
+    .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+    .sort((a, b) => slideNum(a) - slideNum(b));
+  const out: string[] = [];
+  slides.forEach((name, idx) => {
+    const doc = parseXml(files[name]);
+    const paras = doc.getElementsByTagName('a:p');
+    const lines: string[] = [];
+    for (let i = 0; i < paras.length; i++) {
+      const ts = paras[i].getElementsByTagName('a:t');
+      let line = '';
+      for (let j = 0; j < ts.length; j++) line += ts[j].textContent ?? '';
+      if (line.trim()) lines.push(line);
+    }
+    out.push(`--- Slide ${idx + 1} ---\n${lines.join('\n')}`.trim());
+  });
+  return out.join('\n\n');
+}
+
+function extractXlsx(files: ZipFiles): string {
+  // Shared-string table: cells with t="s" index into this.
+  const shared: string[] = [];
+  if (files['xl/sharedStrings.xml']) {
+    const sdoc = parseXml(files['xl/sharedStrings.xml']);
+    const sis = sdoc.getElementsByTagName('si');
+    for (let i = 0; i < sis.length; i++) {
+      const ts = sis[i].getElementsByTagName('t');
+      let s = '';
+      for (let j = 0; j < ts.length; j++) s += ts[j].textContent ?? '';
+      shared.push(s);
+    }
+  }
+  // Map each sheet's display name to its worksheet part via the workbook rels.
+  const relMap: Record<string, string> = {};
+  if (files['xl/_rels/workbook.xml.rels']) {
+    const rels = parseXml(files['xl/_rels/workbook.xml.rels']).getElementsByTagName('Relationship');
+    for (let i = 0; i < rels.length; i++) {
+      relMap[rels[i].getAttribute('Id') ?? ''] = rels[i].getAttribute('Target') ?? '';
+    }
+  }
+  const sheetEls = parseXml(files['xl/workbook.xml']).getElementsByTagName('sheet');
+  const out: string[] = [];
+  for (let i = 0; i < sheetEls.length; i++) {
+    const name = sheetEls[i].getAttribute('name') || `Sheet${i + 1}`;
+    const rid = sheetEls[i].getAttribute('r:id') || '';
+    let target = relMap[rid] || `worksheets/sheet${i + 1}.xml`;
+    target = target.replace(/^\//, '');
+    if (!target.startsWith('xl/')) target = `xl/${target}`;
+    const bytes = files[target] || files[`xl/worksheets/sheet${i + 1}.xml`];
+    if (!bytes) continue;
+    out.push(`# ${name}\n${sheetToCsv(parseXml(bytes), shared)}`);
+  }
+  return out.join('\n\n');
+}
+
+function sheetToCsv(doc: Document, shared: string[]): string {
+  const rows = doc.getElementsByTagName('row');
+  const lines: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const cells = rows[i].getElementsByTagName('c');
+    const vals: string[] = [];
+    for (let j = 0; j < cells.length; j++) {
+      const c = cells[j];
+      const t = c.getAttribute('t');
+      let v = '';
+      if (t === 's') {
+        const idx = Number(c.getElementsByTagName('v')[0]?.textContent ?? '');
+        v = shared[idx] ?? '';
+      } else if (t === 'inlineStr') {
+        v = c.getElementsByTagName('t')[0]?.textContent ?? '';
+      } else {
+        v = c.getElementsByTagName('v')[0]?.textContent ?? '';
+      }
+      vals.push(csvEscape(v));
+    }
+    lines.push(vals.join(','));
+  }
+  return lines.join('\n');
+}
+
+async function extractOffice(url: string, maxChars?: number): Promise<ExtractOfficeResponse> {
+  let data: ArrayBuffer;
+  try {
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) return { ok: false, error: `Could not fetch the file (HTTP ${res.status}).` };
+    data = await res.arrayBuffer();
+  } catch (e) {
+    return { ok: false, error: `Could not fetch the file: ${String(e)}` };
+  }
+  let files: ZipFiles;
+  try {
+    files = unzipSync(new Uint8Array(data));
+  } catch {
+    return { ok: false, error: 'Not a readable Office file (could not unzip — legacy .doc/.xls/.ppt are not supported).' };
+  }
+  const format = detectOfficeFormat(files);
+  if (!format) {
+    return { ok: false, error: 'Unrecognized Office file (only .docx, .pptx, .xlsx are supported).' };
+  }
+  let text: string;
+  try {
+    text = format === 'docx' ? extractDocx(files) : format === 'pptx' ? extractPptx(files) : extractXlsx(files);
+  } catch (e) {
+    return { ok: false, error: `Could not parse the ${format} file: ${String(e)}` };
+  }
+  text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  const charCount = text.length;
+  const limit = maxChars ?? SAFETY_MAX;
+  const truncated = charCount > limit;
+  return { ok: true, format, charCount, truncated, text: truncated ? text.slice(0, limit).trim() : text };
+}
+
+chrome.runtime.onMessage.addListener((message: ExtractOfficeRequest, _sender, sendResponse) => {
+  if (message?.target !== 'offscreen' || message.type !== 'extract_office') return undefined;
+  extractOffice(message.url, message.maxChars).then(sendResponse);
   return true; // async response
 });
 

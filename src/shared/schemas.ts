@@ -581,6 +581,22 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'read_office_document',
+      description:
+        "Extract the text of a Microsoft Office file (.docx Word, .pptx PowerPoint, .xlsx Excel). Use this for Office files the browser downloads instead of displaying — get_tab_content cannot see them. Provide a url, or omit it (and tabId) to use the active tab. Spreadsheets return raw cell values per sheet; legacy .doc/.xls/.ppt are not supported.",
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Office file URL. Omit to use the active tab.' },
+          tabId: { type: 'number', description: 'Tab to take the file URL from (optional).' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'wait_for_page_state',
       description: 'Wait until a tab finishes loading (or times out after 20s).',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },

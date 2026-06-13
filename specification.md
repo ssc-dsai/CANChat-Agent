@@ -46,6 +46,7 @@ tool name, a default), it is stated exactly.
   - `package.json` build script: `vite build && vite build --config vite.content.config.ts`.
 - **Markdown:** `marked` + `dompurify` (render assistant messages safely).
 - **PDF:** `pdfjs-dist` v6 (runs in the offscreen document; worker emitted as an asset).
+- **Office (OOXML):** `fflate` (~8KB, pure JS — unzip `.docx`/`.pptx`/`.xlsx`) + `DOMParser`, in the offscreen document.
 - **Runtime/tasks:** **mise** pins Node 26 and exposes tasks:
   `mise run install` (npm install), `mise run build`, `mise run typecheck` (`tsc --noEmit`).
 - **Target:** Chromium ≥ 116 (side panel + offscreen APIs). No test suite (post-MVP).
@@ -123,8 +124,9 @@ and is load-bearing:
   build the ARIA element map, and perform in-page actions/gestures. Built as IIFE.
 - **Offscreen document** (`src/offscreen/`): a hidden page (reason `WORKERS`)
   created on demand, because the service worker can't host pdf.js or the async OPFS
-  API. Hosts **PDF text extraction** and the **OPFS vector store**. Two message
-  channels distinguished by a `target` field: `'offscreen'` (PDF) and
+  API. Hosts **PDF text extraction**, **Office (OOXML) extraction** (`fflate`
+  unzip + `DOMParser`), and the **OPFS vector store**. Two message channels
+  distinguished by a `target` field: `'offscreen'` (PDF / Office, by `type`) and
   `'offscreen-repo'` (RAG).
 
 ### File responsibilities
@@ -184,7 +186,8 @@ and is load-bearing:
 - `readabilityExtractor.ts` — main-content text extraction.
 
 **`src/offscreen/`**
-- `offscreen.ts` — pdf.js `extractPdf(url, maxChars?)` and the `offscreen-repo`
+- `offscreen.ts` — pdf.js `extractPdf(url, maxChars?)`, OOXML `extractOffice(url,
+  maxChars?)` (fflate unzip → per-format XML text), and the `offscreen-repo`
   router into `repoStore`.
 - `repoStore.ts` — the OPFS vector store (below).
 
@@ -253,6 +256,9 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
 - `read_app_content {tabId?}` — best-effort text from canvas/app surfaces via the
   selection model and copy-event interception (no clipboard permission needed).
 - `get_all_tab_contents` — read every tab (**approval-gated**).
+- `read_office_document {url?, tabId?}` — extract text from a `.docx`/`.pptx`/`.xlsx`
+  via the offscreen `extractOffice` (fflate unzip + DOMParser); 60k context cap like
+  `read_pdf`. For Office files the browser downloads instead of displaying. OOXML only.
 - `read_pdf {url?, tabId?}` — extract PDF text via pdf.js; returns up to ~60k chars
   to context with `pageCount`/`charCount`/`truncated` and a note pointing to
   `add_to_repo` for the full document.
@@ -351,6 +357,7 @@ embedding, calibrate a **per-dimension scale** from the first batch
 1. **PDF** (URL matches `*.pdf`): pdf.js whole-document extraction (no char cap for
    ingestion — the entire PDF is chunked/embedded; reading order preserved via the
    per-item `hasEOL` flag).
+1b. **Office** (URL matches `*.docx/.pptx/.xlsx`): `extractOffice` whole-document.
 2. **DOM** (`getTabContent`).
 3. **App content** (`readAppContent`).
 4. **OCR** (only on the active-tab `+ Tab` path): `captureFullPage` → vision
@@ -467,8 +474,9 @@ on first run with no settings, prompt the user to configure an endpoint.
   `repo_list`, `repo_delete`, `repo_docs`, `repo_doc_delete`.
 - **Offscreen:** `ExtractPdfRequest {target:'offscreen', type:'extract_pdf', url,
   maxChars?}` → `ExtractPdfResponse {ok, text?, pageCount?, charCount?, truncated?,
-  error?}`; and the `RepoRequest` union on `target:'offscreen-repo'` →
-  `RepoResponse {ok, result?, error?}`.
+  error?}`; `ExtractOfficeRequest {…, type:'extract_office', url, maxChars?}` →
+  `ExtractOfficeResponse {ok, text?, format?, charCount?, truncated?, error?}`; and the
+  `RepoRequest` union on `target:'offscreen-repo'` → `RepoResponse {ok, result?, error?}`.
 
 ---
 

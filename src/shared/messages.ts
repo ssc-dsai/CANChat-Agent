@@ -100,6 +100,24 @@ export interface ExtractPdfResponse {
   error?: string;
 }
 
+export interface ExtractOfficeRequest {
+  target: 'offscreen';
+  type: 'extract_office';
+  url: string;
+  /** Slice the extracted text to this many chars (omit = whole document). */
+  maxChars?: number;
+}
+
+export interface ExtractOfficeResponse {
+  ok: boolean;
+  text?: string;
+  format?: 'docx' | 'pptx' | 'xlsx';
+  truncated?: boolean;
+  /** Full extracted length before any maxChars slice. */
+  charCount?: number;
+  error?: string;
+}
+
 /** Requests to the offscreen document's OPFS RAG store. */
 export type RepoRequest =
   | { target: 'offscreen-repo'; op: 'add'; repo: string; doc: { name: string; url: string }; chunks: string[]; vectors: number[][] }

@@ -9,7 +9,7 @@ import type {
   TabSummary,
 } from '../shared/types';
 import { analyzeAuthState } from './authDetector';
-import { extractPdf } from './offscreenClient';
+import { extractOffice, extractPdf } from './offscreenClient';
 import { hasAllUrlsAccess } from './permissions';
 
 const PAGE_LOAD_TIMEOUT_MS = 20000;
@@ -470,6 +470,38 @@ export async function readPdf(tabId: number | undefined, url: string | undefined
     truncated: result.truncated,
     note: result.truncated
       ? `Only the first ~${READ_PDF_CONTEXT_CHARS.toLocaleString()} characters are shown (full document is ${result.charCount?.toLocaleString()} chars). To search the entire PDF, ingest it with add_to_repo and query it with search_repo.`
+      : undefined,
+    text: result.text,
+  });
+}
+
+export async function readOfficeDocument(
+  tabId: number | undefined,
+  url: string | undefined,
+): Promise<string> {
+  let target = url;
+  if (!target) {
+    try {
+      const tab = tabId
+        ? await chrome.tabs.get(tabId)
+        : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+      target = tab?.url;
+    } catch {
+      // fall through
+    }
+  }
+  if (!target) return JSON.stringify({ error: 'No URL or tab provided to read an Office file from.' });
+  // Cap context like read_pdf; ingestion (add_to_repo) reads the whole document.
+  const READ_DOC_CONTEXT_CHARS = 60_000;
+  const result = await extractOffice(target, READ_DOC_CONTEXT_CHARS);
+  if (!result.ok) return JSON.stringify({ url: target, error: result.error });
+  return JSON.stringify({
+    url: target,
+    format: result.format,
+    charCount: result.charCount,
+    truncated: result.truncated,
+    note: result.truncated
+      ? `Only the first ~${READ_DOC_CONTEXT_CHARS.toLocaleString()} characters are shown (full document is ${result.charCount?.toLocaleString()} chars). To search the entire document, ingest it with add_to_repo and query it with search_repo.`
       : undefined,
     text: result.text,
   });

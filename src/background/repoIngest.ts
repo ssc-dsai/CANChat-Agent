@@ -3,11 +3,16 @@ import type { Settings } from '../shared/types';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { complete, embed, type ContentPart } from './llmProvider';
-import { extractPdf, repoAdd } from './offscreenClient';
+import { extractOffice, extractPdf, repoAdd } from './offscreenClient';
 
 /** Heuristic: does this URL point at a PDF the pdf.js path can extract? */
 function looksLikePdf(url: string): boolean {
   return /\.pdf(\?|#|$)/i.test(url);
+}
+
+/** Heuristic: does this URL point at an OOXML Office file we can extract? */
+function looksLikeOffice(url: string): boolean {
+  return /\.(docx|pptx|xlsx)(\?|#|$)/i.test(url);
 }
 
 // OCR fallback: screenshot the whole (active) tab and have the vision model
@@ -52,6 +57,15 @@ export async function ingestTab(
     try {
       const pdf = await extractPdf(url);
       if (pdf.ok && pdf.text && pdf.text.trim().length > 30) text = pdf.text;
+    } catch {
+      // fall through to the page-content ladder
+    }
+  }
+  // Office files (.docx/.pptx/.xlsx): extract the whole document before the ladder.
+  if (!text && looksLikeOffice(url)) {
+    try {
+      const office = await extractOffice(url);
+      if (office.ok && office.text && office.text.trim().length > 30) text = office.text;
     } catch {
       // fall through to the page-content ladder
     }
