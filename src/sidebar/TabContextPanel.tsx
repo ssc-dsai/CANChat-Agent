@@ -29,10 +29,16 @@ async function downscale(dataUrl: string, maxWidth: number): Promise<string> {
 export function TabContextPanel({ context, send }: Props) {
   // Re-render every 30s so staleness indicators stay honest.
   const [, setTick] = useState(0);
+  const [repo, setRepo] = useState('');
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 30000);
     return () => clearInterval(t);
   }, []);
+
+  const addToRepo = (scope: 'tab' | 'group') => {
+    if (!repo.trim()) return;
+    send({ type: 'capture_to_repo', repo: repo.trim(), scope });
+  };
 
   // Host access to all sites is granted at install, so these are direct commands.
   const useAllTabs = () => send({ type: 'include_all_tabs' });
@@ -85,6 +91,31 @@ export function TabContextPanel({ context, send }: Props) {
           disabled={!context}
         >
           Refresh
+        </button>
+      </div>
+      <div class="repo-actions">
+        <input
+          class="repo-input"
+          type="text"
+          placeholder="Repo name"
+          value={repo}
+          onInput={(e) => setRepo((e.target as HTMLInputElement).value)}
+        />
+        <button
+          class="btn btn-small"
+          title="Capture this tab's text into the named on-device repository (OCR fallback for opaque pages)"
+          disabled={!repo.trim()}
+          onClick={() => addToRepo('tab')}
+        >
+          + Tab
+        </button>
+        <button
+          class="btn btn-small"
+          title="Capture every page in this conversation's tab group into the named repository"
+          disabled={!repo.trim()}
+          onClick={() => addToRepo('group')}
+        >
+          + Group
         </button>
       </div>
       {context && (

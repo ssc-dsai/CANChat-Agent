@@ -1,8 +1,29 @@
 import { chunkText } from '../shared/repoChunk';
 import type { Settings } from '../shared/types';
 import * as browser from './browserToolAdapter';
-import { embed } from './llmProvider';
+import { captureFullPage } from './fullPageCapture';
+import { complete, embed, type ContentPart } from './llmProvider';
 import { repoAdd } from './offscreenClient';
+
+// OCR fallback: screenshot the whole (active) tab and have the vision model
+// transcribe it. Only works for the active tab (captureVisibleTab limitation).
+async function ocrTabText(settings: Settings, tabId: number): Promise<string> {
+  const cap = await captureFullPage(tabId, 12);
+  if (cap.error || cap.frames.length === 0) return '';
+  const parts: ContentPart[] = [
+    {
+      type: 'text',
+      text: 'Transcribe ALL readable text from these screenshots of a web page, top to bottom in reading order. Output only the transcribed text — no commentary, headings, or markup.',
+    },
+    ...cap.frames.map((url): ContentPart => ({ type: 'image_url', image_url: { url } })),
+  ];
+  try {
+    const reply = await complete(settings, [{ role: 'user', content: parts }]);
+    return (reply.content ?? '').trim();
+  } catch {
+    return '';
+  }
+}
 
 export interface IngestResult {
   ok: boolean;
@@ -18,6 +39,7 @@ export async function ingestTab(
   tabId: number,
   title: string,
   url: string,
+  allowOcr = false,
 ): Promise<IngestResult> {
   let text = '';
   try {
@@ -33,6 +55,9 @@ export async function ingestTab(
     } catch {
       // no app content
     }
+  }
+  if (!text && allowOcr) {
+    text = await ocrTabText(settings, tabId); // vision transcription (active tab only)
   }
   if (!text || text.trim().length < 30) {
     return { ok: false, needsOcr: true, error: 'No extractable text from this page.' };

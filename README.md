@@ -190,13 +190,13 @@ Honest limits: it only sees what *you* can see (it's your session); SharePoint S
 
 For pages that live in no searchable system — articles, references, anything you capture ad hoc — the agent can build **named repositories stored entirely on your device** (in the browser's OPFS) and answer questions from them. This is real retrieval-augmented generation: each captured page is chunked, embedded, and stored as a quantized vector; a query embeds and retrieves the most relevant passages, which the model answers from with citations.
 
-- **Capture** — "add this page to my Research repo" (`add_to_repo`) stores the active tab; `scope: group` stores every page in the conversation's tab group at once.
+- **Capture** — "add this page to my Research repo" (`add_to_repo`) stores the active tab; `scope: group` stores every page in the conversation's tab group at once. There are also **+ Tab** / **+ Group** buttons (with a repo-name box) in the tab-context bar. If a page yields no text, capture falls back to **OCR** (the full-page screenshot is transcribed by the vision model).
 - **Ask** — "what does my Research repo say about X?" (`search_repo`) embeds the question, finds the closest passages, and the agent answers citing each page's name and URL.
 - **Manage** — `list_repos`, and a **Repositories** section in Settings to see doc/chunk counts and delete repos.
 
 How it stays on-device: embeddings are computed by **your configured endpoint's `/embeddings` route** (so if that endpoint is on-prem/sovereign, nothing leaves your boundary), and the chunk text + **int8-quantized vectors** are stored in OPFS — never synced, never sent anywhere else. The `unlimitedStorage` permission keeps the store from being evicted.
 
-Honest limits: your endpoint must expose an `/embeddings` route (set a separate **embedding model** in Settings if it differs from your chat model); it's sized for a personal working set (thousands of chunks — brute-force search is milliseconds, the quantization mainly shrinks storage); and a page must yield extractable text to be captured (OCR fallback for opaque pages comes via the vision model).
+Honest limits: your endpoint must expose an `/embeddings` route (set a separate **embedding model** in Settings if it differs from your chat model); it's sized for a personal working set (thousands of chunks — brute-force search is milliseconds, the quantization mainly shrinks storage); and the OCR fallback (for opaque pages with no extractable text) needs a vision-capable model and applies to the active tab only.
 
 ## 5. Known Sites — the agent's address book
 

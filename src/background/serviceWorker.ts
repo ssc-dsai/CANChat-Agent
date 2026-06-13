@@ -74,6 +74,9 @@ chrome.runtime.onConnect.addListener((port) => {
       case 'capture_page':
         void runtime.capturePageToThread();
         break;
+      case 'capture_to_repo':
+        void runtime.captureToRepo(command.repo, command.scope);
+        break;
       case 'get_state':
         port.postMessage(runtime.fullState());
         break;

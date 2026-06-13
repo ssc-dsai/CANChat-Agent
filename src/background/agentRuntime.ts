@@ -836,6 +836,21 @@ export class AgentRuntime {
     }
   }
 
+  /** Sidebar "Add to repo" button: capture into a repo and report in the chat. */
+  async captureToRepo(repo: string, scope: 'tab' | 'group'): Promise<void> {
+    if (this.running) {
+      this.emit({ type: 'error', message: 'Wait for the current task to finish before capturing.' });
+      return;
+    }
+    if (!repo.trim()) {
+      this.emit({ type: 'error', message: 'Enter a repository name first.' });
+      return;
+    }
+    const summary = await this.ingestIntoRepo(repo, scope);
+    this.notice(summary);
+    this.setStatus('idle');
+  }
+
   /** Capture a tab (or the conversation's tab group) into a named OPFS repo. */
   private async ingestIntoRepo(repo: string, scope: 'tab' | 'group'): Promise<string> {
     const name = repo.trim();
@@ -858,12 +873,14 @@ export class AgentRuntime {
     }
     if (tabs.length === 0) return 'Error: no tabs to capture.';
 
+    // OCR fallback only works on the active tab (captureVisibleTab limitation).
+    const allowOcr = scope === 'tab';
     let ingested = 0;
     let chunks = 0;
     const skipped: string[] = [];
     for (const t of tabs) {
       this.setStatus('acting', `Adding "${t.title || t.url}" to ${name}…`);
-      const result = await ingestTab(settings, name, t.tabId, t.title, t.url);
+      const result = await ingestTab(settings, name, t.tabId, t.title, t.url, allowOcr);
       if (result.ok) {
         ingested++;
         chunks += result.chunks ?? 0;

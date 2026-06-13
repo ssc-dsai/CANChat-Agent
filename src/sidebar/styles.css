@@ -187,6 +187,26 @@ body {
   flex-wrap: wrap;
 }
 
+.repo-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.repo-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.repo-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .context-tabs {
   list-style: none;
   margin: 8px 0 0;

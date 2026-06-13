@@ -23,6 +23,7 @@ export type SidebarCommand =
   | { type: 'attach_snapshot'; dataUrl: string; title: string; url: string }
   | { type: 'discard_snapshots' }
   | { type: 'capture_page' }
+  | { type: 'capture_to_repo'; repo: string; scope: 'tab' | 'group' }
   | { type: 'get_state' }
   | { type: 'ping' };
 
