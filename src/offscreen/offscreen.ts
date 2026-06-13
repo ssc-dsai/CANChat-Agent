@@ -10,7 +10,16 @@ import type {
   RepoRequest,
   RepoResponse,
 } from '../shared/messages';
-import { repoAdd, repoDelete, repoDeleteDoc, repoDocs, repoList, repoSearch } from './repoStore';
+import {
+  repoAdd,
+  repoDelete,
+  repoDeleteDoc,
+  repoDocs,
+  repoExportAll,
+  repoImportAll,
+  repoList,
+  repoSearch,
+} from './repoStore';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -257,6 +266,10 @@ async function handleRepo(req: RepoRequest): Promise<RepoResponse> {
         return { ok: true, result: await repoDocs(req.repo) };
       case 'deleteDoc':
         return { ok: true, result: await repoDeleteDoc(req.repo, req.docId) };
+      case 'export':
+        return { ok: true, result: await repoExportAll() };
+      case 'import':
+        return { ok: true, result: await repoImportAll(req.repos) };
     }
   } catch (e) {
     return { ok: false, error: String(e) };

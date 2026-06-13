@@ -60,7 +60,9 @@ export type RuntimeRequest =
   | { type: 'repo_list' }
   | { type: 'repo_delete'; repo: string }
   | { type: 'repo_docs'; repo: string }
-  | { type: 'repo_doc_delete'; repo: string; docId: string };
+  | { type: 'repo_doc_delete'; repo: string; docId: string }
+  | { type: 'repo_export' }
+  | { type: 'repo_import'; repos: ExportedRepo[] };
 
 export interface TestConnectionResponse {
   ok: boolean;
@@ -119,13 +121,23 @@ export interface ExtractOfficeResponse {
 }
 
 /** Requests to the offscreen document's OPFS RAG store. */
+/** A single repository serialized for backup (vectors base64-encoded). */
+export interface ExportedRepo {
+  name: string;
+  meta: unknown;
+  chunks: unknown;
+  vectorsB64: string;
+}
+
 export type RepoRequest =
   | { target: 'offscreen-repo'; op: 'add'; repo: string; doc: { name: string; url: string }; chunks: string[]; vectors: number[][] }
   | { target: 'offscreen-repo'; op: 'search'; repo: string; queryVector: number[]; k: number }
   | { target: 'offscreen-repo'; op: 'list' }
   | { target: 'offscreen-repo'; op: 'delete'; repo: string }
   | { target: 'offscreen-repo'; op: 'docs'; repo: string }
-  | { target: 'offscreen-repo'; op: 'deleteDoc'; repo: string; docId: string };
+  | { target: 'offscreen-repo'; op: 'deleteDoc'; repo: string; docId: string }
+  | { target: 'offscreen-repo'; op: 'export' }
+  | { target: 'offscreen-repo'; op: 'import'; repos: ExportedRepo[] };
 
 export interface RepoResponse {
   ok: boolean;

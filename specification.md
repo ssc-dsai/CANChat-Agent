@@ -450,8 +450,12 @@ read that exact bookmarked URL (not a web search).
 - **Settings** (`SettingsScreen.tsx`): endpoint base URL, API key (password),
   model; temperature / max-tokens; **embedding model**; SharePoint base URL; custom
   instructions; a **Test connection** button; then sections for **Known sites**,
-  **Skills**, **Memory**, and **Repositories** (expand a repo to delete individual
-  documents, or delete the whole repo).
+  **Skills**, **Memory**, **Repositories** (expand a repo to delete individual
+  documents, or delete the whole repo), and **Backup & Restore**
+  (`BackupRestoreSection.tsx`) — export all config (the `ba_*` storage keys) plus
+  every repository (`repo_export`, vectors base64-encoded) to one JSON file, and
+  restore it (overwrites storage keys; replaces same-name repos via `repo_import`).
+  An "Include API key" toggle (default on) controls whether the credential is in the file.
 
 **Defaults & behaviors:** assume "the page" means the active tab; render Markdown;
 on first run with no settings, prompt the user to configure an endpoint.
@@ -471,7 +475,8 @@ on first run with no settings, prompt the user to configure an endpoint.
   `pending_snapshots`, `plan_update`, `distill_offer`, `error`, and a `full_state`
   snapshot sent on connect.
 - **One-shot** (`RuntimeRequest` via `chrome.runtime.onMessage`): `test_connection`,
-  `repo_list`, `repo_delete`, `repo_docs`, `repo_doc_delete`.
+  `repo_list`, `repo_delete`, `repo_docs`, `repo_doc_delete`, `repo_export`,
+  `repo_import`.
 - **Offscreen:** `ExtractPdfRequest {target:'offscreen', type:'extract_pdf', url,
   maxChars?}` → `ExtractPdfResponse {ok, text?, pageCount?, charCount?, truncated?,
   error?}`; `ExtractOfficeRequest {…, type:'extract_office', url, maxChars?}` →

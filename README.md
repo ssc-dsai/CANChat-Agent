@@ -200,6 +200,15 @@ How it stays on-device: embeddings are computed by **your configured endpoint's 
 
 Honest limits: your endpoint must expose an `/embeddings` route (set a separate **embedding model** in Settings if it differs from your chat model); it's sized for a personal working set (thousands of chunks — brute-force search is milliseconds, the quantization mainly shrinks storage); and the OCR fallback (for opaque pages with no extractable text) needs a vision-capable model and applies to the active tab only.
 
+## 4⅞½. Backup & restore
+
+Everything CANAgent stores on your device — your **endpoint settings**, **known sites**, **skills/app playbooks**, **memory**, and all your **repositories** (text + vectors) — can be saved to a single JSON file and restored later or on another machine. Use it before reinstalling, to move your setup to a new device, or to share a starter configuration with a colleague.
+
+- **Settings → Backup & Restore → Export backup** downloads `canagent-backup-<date>.json`. By default it includes your **API key**, so the file holds a live credential — store it securely. Untick **Include API key** to export everything except the key.
+- **Restore from file…** reads a backup and **overwrites** your current settings, known sites, skills, and memory, and **replaces any repository with the same name** (others are left alone). You're asked to confirm first; the panel reloads when it's done.
+
+It's a plain JSON file with no backend — nothing is uploaded; the only network traffic CANAgent ever makes is to your model endpoint.
+
 ## 5. Known Sites — the agent's address book
 
 ### 5.1 What it is and why

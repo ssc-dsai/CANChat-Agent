@@ -983,6 +983,23 @@ body {
   margin: 6px 0;
 }
 
+.backup-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  margin: 4px 0;
+  cursor: pointer;
+}
+.settings-note.warn {
+  color: var(--warn, #d9822b);
+}
+.btn-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* Known sites directory */
 .sites-section {
   display: flex;

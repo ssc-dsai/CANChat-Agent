@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
+import { BackupRestoreSection } from './BackupRestoreSection';
 import { KnownSitesSection } from './KnownSitesSection';
 import { MemorySection } from './MemorySection';
 import { RepositoriesSection } from './RepositoriesSection';
@@ -196,6 +197,10 @@ export function SettingsScreen({ onClose }: Props) {
         <hr class="settings-divider" />
 
         <RepositoriesSection />
+
+        <hr class="settings-divider" />
+
+        <BackupRestoreSection />
       </div>
     </div>
   );

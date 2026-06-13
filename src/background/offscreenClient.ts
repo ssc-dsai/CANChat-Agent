@@ -1,4 +1,5 @@
 import type {
+  ExportedRepo,
   ExtractOfficeRequest,
   ExtractOfficeResponse,
   ExtractPdfRequest,
@@ -92,4 +93,12 @@ export function repoDocs(repo: string): Promise<RepoResponse> {
 
 export function repoDeleteDoc(repo: string, docId: string): Promise<RepoResponse> {
   return repoRequest({ target: 'offscreen-repo', op: 'deleteDoc', repo, docId });
+}
+
+export function repoExport(): Promise<RepoResponse> {
+  return repoRequest({ target: 'offscreen-repo', op: 'export' });
+}
+
+export function repoImport(repos: ExportedRepo[]): Promise<RepoResponse> {
+  return repoRequest({ target: 'offscreen-repo', op: 'import', repos });
 }

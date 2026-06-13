@@ -2,6 +2,8 @@
 // quantized embedding vectors. Runs in the offscreen document (Window context),
 // so it uses the async OPFS API (no sync access handles, which are Worker-only).
 
+import type { ExportedRepo } from '../shared/messages';
+
 const QUANT = 127;
 
 interface DocMeta {
@@ -205,6 +207,63 @@ export async function repoList(): Promise<Array<{ name: string; docs: number; ch
 export async function repoDelete(repo: string): Promise<void> {
   const dir = await reposDir();
   await dir.removeEntry(repo, { recursive: true });
+}
+
+// ----- backup / restore -----
+
+function u8ToB64(u8: Uint8Array): string {
+  let s = '';
+  const CHUNK = 0x8000; // avoid call-stack limits on large vectors
+  for (let i = 0; i < u8.length; i += CHUNK) {
+    s += String.fromCharCode(...u8.subarray(i, i + CHUNK));
+  }
+  return btoa(s);
+}
+
+function b64ToU8(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+}
+
+/** Serialize every repository (meta + chunks + base64 vectors) for backup. */
+export async function repoExportAll(): Promise<ExportedRepo[]> {
+  const out: ExportedRepo[] = [];
+  const dir = await reposDir();
+  // @ts-expect-error - entries() exists on FileSystemDirectoryHandle in Chrome
+  for await (const [name, handle] of dir.entries()) {
+    if (handle.kind !== 'directory') continue;
+    const d = handle as FileSystemDirectoryHandle;
+    const meta = await readJson<RepoMeta | null>(d, 'meta.json', null);
+    if (!meta) continue;
+    const chunks = await readJson<ChunkRec[]>(d, 'chunks.json', []);
+    const vecs = await readVectors(d);
+    const bytes = new Uint8Array(vecs.buffer, vecs.byteOffset, vecs.byteLength);
+    out.push({ name, meta, chunks, vectorsB64: u8ToB64(bytes) });
+  }
+  return out;
+}
+
+/** Restore repositories from a backup, overwriting any with the same name. */
+export async function repoImportAll(repos: ExportedRepo[]): Promise<{ imported: number }> {
+  const root = await reposDir();
+  let imported = 0;
+  for (const r of repos) {
+    if (!r?.name) continue;
+    try {
+      await root.removeEntry(r.name, { recursive: true });
+    } catch {
+      // no existing repo by that name
+    }
+    const d = await root.getDirectoryHandle(r.name, { create: true });
+    await writeJson(d, 'meta.json', r.meta);
+    await writeJson(d, 'chunks.json', Array.isArray(r.chunks) ? r.chunks : []);
+    const u8 = b64ToU8(r.vectorsB64 ?? '');
+    await writeVectors(d, new Int8Array(u8.buffer, u8.byteOffset, u8.byteLength));
+    imported++;
+  }
+  return { imported };
 }
 
 /** List the documents in a repo (for duplicate detection and the Settings UI). */
