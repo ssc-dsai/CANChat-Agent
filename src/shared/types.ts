@@ -108,6 +108,10 @@ export interface Skill {
    * whenever the active tab's host matches.
    */
   origin?: string;
+  /** When true, show a quick-launch button for this skill in the toolbar. */
+  showButton?: boolean;
+  /** Display text for the quick-launch button; falls back to /name if empty. */
+  buttonLabel?: string;
 }
 
 /** One durable fact about the user, kept only when memory is enabled. */

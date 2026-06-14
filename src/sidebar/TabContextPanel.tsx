@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { SidebarCommand } from '../shared/messages';
-import type { TabContextSummary } from '../shared/types';
+import type { Skill, TabContextSummary } from '../shared/types';
 
 interface Props {
   context: TabContextSummary | null;
   send: (command: SidebarCommand) => void;
+  /** True while the agent is running, to disable quick-launch buttons. */
+  busy: boolean;
 }
 
 const STALE_AFTER_MS = 5 * 60 * 1000;
@@ -26,14 +28,31 @@ async function downscale(dataUrl: string, maxWidth: number): Promise<string> {
   });
 }
 
-export function TabContextPanel({ context, send }: Props) {
+export function TabContextPanel({ context, send, busy }: Props) {
   // Re-render every 30s so staleness indicators stay honest.
   const [, setTick] = useState(0);
   const [repo, setRepo] = useState('');
   const [repoNames, setRepoNames] = useState<string[]>([]);
+  const [buttonSkills, setButtonSkills] = useState<Skill[]>([]);
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 30000);
     return () => clearInterval(t);
+  }, []);
+
+  // Skills pinned as toolbar buttons. Re-loaded live when skills change.
+  useEffect(() => {
+    const load = () => {
+      chrome.storage.local.get('ba_skills').then((r) => {
+        const all = Array.isArray(r.ba_skills) ? (r.ba_skills as Skill[]) : [];
+        setButtonSkills(all.filter((s) => s.showButton));
+      });
+    };
+    load();
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if ('ba_skills' in changes) load();
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
   }, []);
 
   // Populate the repo dropdown with existing repository names. Re-fetched when
@@ -88,7 +107,7 @@ export function TabContextPanel({ context, send }: Props) {
           title="OCR the WHOLE page by scrolling top to bottom — captures it as images for the vision model to read (opaque/long pages)"
           onClick={() => send({ type: 'capture_page' })}
         >
-          OCR Page
+          Snapshot Page
         </button>
         <button
           class="btn btn-small"
@@ -97,6 +116,17 @@ export function TabContextPanel({ context, send }: Props) {
         >
           Refresh
         </button>
+        {buttonSkills.map((s) => (
+          <button
+            key={s.id}
+            class="btn btn-small"
+            title={s.description}
+            disabled={busy}
+            onClick={() => send({ type: 'user_message', text: `/${s.name}` })}
+          >
+            {s.buttonLabel?.trim() || `/${s.name}`}
+          </button>
+        ))}
       </div>
       <div class="repo-actions">
         <div class="repo-input-wrap">

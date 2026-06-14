@@ -9,6 +9,7 @@ import type {
   ToolActivity,
 } from '../shared/types';
 import { ChatPanel } from './ChatPanel';
+import { exportConversationHtml } from './conversationExport';
 import { PlanPanel } from './PlanPanel';
 import { SettingsScreen } from './SettingsScreen';
 import { TabContextPanel } from './TabContextPanel';
@@ -167,6 +168,14 @@ export function Sidebar() {
         </span>
         <button
           class="icon-btn"
+          title="Save conversation as HTML"
+          onClick={() => exportConversationHtml(messages)}
+          disabled={messages.length === 0}
+        >
+          💾
+        </button>
+        <button
+          class="icon-btn"
           title="Clear conversation"
           onClick={() => send({ type: 'clear_conversation' })}
           disabled={messages.length === 0}
@@ -196,7 +205,11 @@ export function Sidebar() {
         </div>
       )}
 
-      <TabContextPanel context={context} send={send} />
+      <TabContextPanel
+        context={context}
+        send={send}
+        busy={status === 'thinking' || status === 'acting' || status === 'awaiting_approval' || status === 'auth_required'}
+      />
 
       <PlanPanel plan={plan} />
 

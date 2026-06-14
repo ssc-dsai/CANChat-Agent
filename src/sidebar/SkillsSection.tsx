@@ -3,7 +3,14 @@ import { CURATED_PLAYBOOKS, type CuratedPlaybook } from '../shared/curatedPlaybo
 import type { Skill } from '../shared/types';
 import { normalizeHost } from '../shared/url';
 
-const EMPTY_FORM: Omit<Skill, 'id'> = { name: '', description: '', body: '', origin: '' };
+const EMPTY_FORM: Omit<Skill, 'id'> = {
+  name: '',
+  description: '',
+  body: '',
+  origin: '',
+  buttonLabel: '',
+  showButton: false,
+};
 
 const NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -56,6 +63,8 @@ export function SkillsSection() {
       description: form.description.trim(),
       body: form.body.trim(),
       origin: form.origin?.trim() ? normalizeHost(form.origin) : undefined,
+      showButton: form.showButton || undefined,
+      buttonLabel: form.buttonLabel?.trim() || undefined,
     };
     const next = editingId ? skills.map((s) => (s.id === editingId ? entry : s)) : [...skills, entry];
     await save(next);
@@ -84,6 +93,8 @@ export function SkillsSection() {
       description: skill.description,
       body: skill.body,
       origin: skill.origin ?? '',
+      buttonLabel: skill.buttonLabel ?? '',
+      showButton: skill.showButton ?? false,
     });
     setEditingId(skill.id);
     setShowForm(true);
@@ -134,6 +145,8 @@ export function SkillsSection() {
         description: e.description.trim(),
         body: e.body.trim(),
         origin: typeof e.origin === 'string' && e.origin.trim() ? normalizeHost(e.origin) : undefined,
+        showButton: e.showButton ? true : undefined,
+        buttonLabel: typeof e.buttonLabel === 'string' && e.buttonLabel.trim() ? e.buttonLabel.trim() : undefined,
       });
     }
     // Merge by name: imported skills replace same-named existing ones.
@@ -163,6 +176,7 @@ export function SkillsSection() {
             <li key={s.id} class="site-row" title={s.body}>
               <span class="site-name">/{s.name}</span>
               {s.origin && <span class="stale-tag">app: {s.origin}</span>}
+              {s.showButton && <span class="stale-tag">button</span>}
               <span class="site-desc">{s.description}</span>
               <button class="icon-btn" title="Edit" onClick={() => edit(s)}>
                 ✎
@@ -206,6 +220,23 @@ export function SkillsSection() {
               value={form.origin ?? ''}
               onInput={(e) => setForm({ ...form, origin: (e.target as HTMLInputElement).value })}
             />
+          </label>
+          <label class="field">
+            <span>Button label (optional) — shown on the toolbar button; defaults to /name</span>
+            <input
+              type="text"
+              placeholder="Triage"
+              value={form.buttonLabel ?? ''}
+              onInput={(e) => setForm({ ...form, buttonLabel: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+          <label class="backup-check">
+            <input
+              type="checkbox"
+              checked={form.showButton ?? false}
+              onChange={(e) => setForm({ ...form, showButton: (e.target as HTMLInputElement).checked })}
+            />
+            Show as a button in the toolbar
           </label>
           <label class="field">
             <span>Instructions (markdown)</span>
