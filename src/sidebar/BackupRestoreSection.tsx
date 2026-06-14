@@ -32,6 +32,12 @@ export function BackupRestoreSection() {
           transcriptionApiKey: '',
         };
       }
+      if (!includeKey && Array.isArray(storage.ba_sites)) {
+        // MCP server tokens live in the hints directory — scrub them too.
+        storage.ba_sites = (storage.ba_sites as Array<Record<string, unknown>>).map((s) =>
+          s && s.mcpToken ? { ...s, mcpToken: '' } : s,
+        );
+      }
       const repos = (await chrome.runtime.sendMessage({ type: 'repo_export' })) as ExportedRepo[];
       const backup: Backup = {
         app: 'CANAgent',

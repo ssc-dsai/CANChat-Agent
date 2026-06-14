@@ -83,14 +83,19 @@ export interface PageStateResult {
   url: string;
 }
 
-/** A user-curated known site the agent can consult when planning tasks. */
+/** A user-curated known site (or MCP server) the agent can consult when planning tasks. */
 export interface SiteEntry {
   id: string;
   name: string;
+  /** Website URL. Optional when this entry is an MCP server (mcpUrl set). */
   url: string;
   description: string;
   /** Optional deep-link search URL containing a {query} placeholder. */
   searchUrlTemplate?: string;
+  /** When set, this hint is an MCP server: its HTTP (Streamable-HTTP) endpoint. */
+  mcpUrl?: string;
+  /** Optional bearer token for the MCP server. */
+  mcpToken?: string;
 }
 
 /** A reusable named procedure the agent can apply to tasks (Claude Code-style). */

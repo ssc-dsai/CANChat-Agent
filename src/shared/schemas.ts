@@ -409,7 +409,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'search_known_sites',
       description:
-        "Search the user's curated directory of known sites (names, URLs, descriptions, optional search-URL templates) for sites likely to contain the data a task needs. Check this before falling back to a generic web search.",
+        "Search the user's curated directory of known sites (names, URLs, descriptions, optional search-URL templates) for sites likely to contain the data a task needs. Check this before falling back to a generic web search. Some entries are MCP servers (they have an mcpUrl) — for those, use list_mcp_tools/call_mcp_tool instead of opening a URL.",
       parameters: {
         type: 'object',
         properties: {
@@ -419,6 +419,43 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           },
         },
         required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_mcp_tools',
+      description:
+        "List the methods (tools) an MCP server exposes that could help with the current task. An MCP server is a known-site hint with an mcpUrl. Pass the hint's name (or the MCP URL directly), optionally a query to filter the methods. Returns each method's name, description, and inputSchema; then call the right one with call_mcp_tool.",
+      parameters: {
+        type: 'object',
+        properties: {
+          server: { type: 'string', description: 'The MCP hint name, or the MCP server URL.' },
+          query: { type: 'string', description: 'Optional keywords to filter the methods.' },
+        },
+        required: ['server'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'call_mcp_tool',
+      description:
+        'Invoke one method on an MCP server discovered via list_mcp_tools. The arguments object must match that method\'s inputSchema. State-changing / external: requires user approval.',
+      parameters: {
+        type: 'object',
+        properties: {
+          server: { type: 'string', description: 'The MCP hint name, or the MCP server URL.' },
+          name: { type: 'string', description: 'The method name from list_mcp_tools.' },
+          arguments: {
+            type: 'object',
+            description: "The method's arguments, matching its inputSchema.",
+          },
+          ...reasonParam,
+        },
+        required: ['server', 'name', 'arguments', 'reason'],
       },
     },
   },

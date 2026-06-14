@@ -13,6 +13,7 @@ import type { DataExport, MemoryEntry, Settings, SiteEntry, Skill } from '../sha
 import { hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
+import { mcpCallTool, mcpListTools } from './mcpClient';
 import { complete, embed, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { ingestTab } from './repoIngest';
@@ -63,6 +64,7 @@ const APPROVAL_REQUIRED = new Set([
   'drag', // drag can reorder/drop — gated
   'save_app_playbook', // persists a reusable playbook — confirm before storing
   'get_all_tab_contents', // reading all tabs needs explicit approval per spec
+  'call_mcp_tool', // invokes an external MCP method — gated like any outbound action
 ]);
 
 /** Read-only / local tools that are safe to run concurrently within one turn. */
@@ -74,6 +76,7 @@ const READ_ONLY_TOOLS = new Set([
   'detect_auth_state',
   'wait_for_element',
   'search_known_sites',
+  'list_mcp_tools',
   'sharepoint_search',
   'read_tab_group',
   'search_repo',
@@ -219,6 +222,28 @@ function buildLearnTask(focus: string, existing?: Skill): string {
     (focus ? `\nFocus the exploration on: ${focus}\n` : '') +
     `\nDo not perform destructive actions while exploring; prefer read-only inspection.`
   );
+}
+
+function mcpPromptBlock(sites: SiteEntry[]): string {
+  const servers = sites.filter((s) => s.mcpUrl);
+  if (servers.length === 0) return '';
+  return (
+    `\n\nMCP servers — tool providers the user has registered (hints with an MCP endpoint). When a task matches one, call list_mcp_tools with its name to discover its methods, then call_mcp_tool to invoke the right method (its arguments must match the method's inputSchema). Prefer these for the capabilities they describe:\n` +
+    servers.map((s) => `- ${s.name} — ${s.description}`).join('\n')
+  );
+}
+
+/** Resolve an MCP server reference (hint name or raw URL) to its endpoint + token. */
+function resolveMcpServer(sites: SiteEntry[], server: string): { endpoint: string; token?: string } | null {
+  const ref = server.trim();
+  if (!ref) return null;
+  const byName = sites.find((s) => s.mcpUrl && s.name.toLowerCase() === ref.toLowerCase());
+  if (byName) return { endpoint: byName.mcpUrl!, token: byName.mcpToken };
+  if (/^https?:\/\//i.test(ref)) {
+    const byUrl = sites.find((s) => s.mcpUrl === ref);
+    return { endpoint: ref, token: byUrl?.mcpToken };
+  }
+  return null;
 }
 
 function searchKnownSites(sites: SiteEntry[], query: string): string {
@@ -656,6 +681,7 @@ export class AgentRuntime {
     this.systemBase =
       SYSTEM_PROMPT +
       sitesPromptBlock(sites) +
+      mcpPromptBlock(sites) +
       skillsPromptBlock(await getSkills(), this.activeHost) +
       (memoryEnabled ? memoryPromptBlock(await getMemories()) : '') +
       customInstructions;
@@ -1073,6 +1099,41 @@ export class AgentRuntime {
       }
       case 'search_known_sites':
         return searchKnownSites(await getSites(), String(args.query));
+      case 'list_mcp_tools': {
+        const resolved = resolveMcpServer(await getSites(), String(args.server));
+        if (!resolved) {
+          return `Error: no MCP server hint named "${String(args.server)}". Add one in Settings → Hints (set an MCP endpoint URL), or pass the full MCP URL.`;
+        }
+        try {
+          let tools = await mcpListTools(resolved.endpoint, resolved.token);
+          const q = String(args.query ?? '').trim().toLowerCase();
+          if (q) {
+            const terms = q.split(/\s+/).filter((t) => t.length > 1);
+            tools = tools
+              .map((t) => {
+                const hay = `${t.name} ${t.description ?? ''}`.toLowerCase();
+                return { t, score: terms.filter((term) => hay.includes(term)).length };
+              })
+              .filter((x) => x.score > 0)
+              .sort((a, b) => b.score - a.score)
+              .map((x) => x.t);
+          }
+          if (tools.length === 0) return 'The MCP server exposed no matching methods.';
+          return JSON.stringify(tools);
+        } catch (err) {
+          return `Error listing MCP methods: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+      case 'call_mcp_tool': {
+        const resolved = resolveMcpServer(await getSites(), String(args.server));
+        if (!resolved) return `Error: no MCP server "${String(args.server)}".`;
+        const toolArgs = (args.arguments ?? {}) as Record<string, unknown>;
+        try {
+          return await mcpCallTool(resolved.endpoint, resolved.token, String(args.name), toolArgs);
+        } catch (err) {
+          return `Error calling MCP method "${String(args.name)}": ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
       case 'sharepoint_search': {
         const settings = await getSettings();
         let base = settings?.sharepointBaseUrl?.trim();
@@ -1459,6 +1520,8 @@ export class AgentRuntime {
         return `Drag (${args.fromX}, ${args.fromY}) → (${args.toX}, ${args.toY}) on tab ${args.tabId}`;
       case 'save_app_playbook':
         return `Save app playbook "${args.name}" for ${normalizeHost(String(args.origin))}:\n${String(args.body).slice(0, 200)}`;
+      case 'call_mcp_tool':
+        return `Call MCP method "${args.name}" on server "${args.server}" with ${JSON.stringify(args.arguments ?? {}).slice(0, 200)}`;
       default:
         return `${name} ${JSON.stringify(args).slice(0, 120)}`;
     }
