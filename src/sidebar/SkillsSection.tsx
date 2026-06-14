@@ -196,18 +196,31 @@ export function SkillsSection() {
             <input
               type="text"
               placeholder="jira-triage"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck={false}
               value={form.name}
               onInput={(e) => setForm({ ...form, name: (e.target as HTMLInputElement).value })}
+              onChange={(e) => setForm({ ...form, name: (e.target as HTMLInputElement).value })}
             />
           </label>
           {nameTaken && <div class="banner banner-error">A skill with this name already exists.</div>}
+          {!nameTaken && form.name.trim() && !NAME_PATTERN.test(form.name.trim()) && (
+            <div class="settings-note warn">
+              Use lowercase letters, numbers, and hyphens — e.g. jira-triage.
+            </div>
+          )}
           <label class="field">
             <span>Description — when should the agent use this?</span>
             <input
               type="text"
               placeholder="Triage new Jira tickets and produce a priority report"
+              autocomplete="off"
               value={form.description}
               onInput={(e) =>
+                setForm({ ...form, description: (e.target as HTMLInputElement).value })
+              }
+              onChange={(e) =>
                 setForm({ ...form, description: (e.target as HTMLInputElement).value })
               }
             />
@@ -217,6 +230,7 @@ export function SkillsSection() {
             <input
               type="text"
               placeholder="marinetraffic.com"
+              autocomplete="off"
               value={form.origin ?? ''}
               onInput={(e) => setForm({ ...form, origin: (e.target as HTMLInputElement).value })}
             />
@@ -226,6 +240,7 @@ export function SkillsSection() {
             <input
               type="text"
               placeholder="Triage"
+              autocomplete="off"
               value={form.buttonLabel ?? ''}
               onInput={(e) => setForm({ ...form, buttonLabel: (e.target as HTMLInputElement).value })}
             />
@@ -243,9 +258,11 @@ export function SkillsSection() {
             <textarea
               class="chat-input skill-body"
               rows={8}
+              autocomplete="off"
               placeholder={'1. Navigate to ...\n2. Extract ...\n3. Format the answer as ...'}
               value={form.body}
               onInput={(e) => setForm({ ...form, body: (e.target as HTMLTextAreaElement).value })}
+              onChange={(e) => setForm({ ...form, body: (e.target as HTMLTextAreaElement).value })}
             />
           </label>
           <div class="settings-actions">
