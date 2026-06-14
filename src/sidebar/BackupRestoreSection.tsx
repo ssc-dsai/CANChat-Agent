@@ -50,7 +50,7 @@ export function BackupRestoreSection() {
       const n = backup.repos.length;
       setMessage({
         ok: true,
-        text: `Exported settings, known sites, skills, memory${n ? `, and ${n} repositor${n === 1 ? 'y' : 'ies'}` : ''}.`,
+        text: `Exported settings, hints, skills, memory${n ? `, and ${n} repositor${n === 1 ? 'y' : 'ies'}` : ''}.`,
       });
     } catch (e) {
       setMessage({ ok: false, text: `Export failed: ${String(e)}` });
@@ -67,7 +67,7 @@ export function BackupRestoreSection() {
         throw new Error('Not a CANAgent backup file.');
       }
       const ok = window.confirm(
-        'Restore will overwrite your current settings, known sites, skills, and memory, and replace any repositories with the same name. Continue?',
+        'Restore will overwrite your current settings, hints, skills, and memory, and replace any repositories with the same name. Continue?',
       );
       if (!ok) {
         setBusy(false);
@@ -93,7 +93,7 @@ export function BackupRestoreSection() {
         <strong>Backup &amp; Restore</strong>
       </div>
       <p class="settings-note">
-        Export your configuration — endpoint settings, known sites, skills, memory, and on-device
+        Export your configuration — endpoint settings, hints, skills, memory, and on-device
         repositories — to a single JSON file, and restore it on this or another device.
       </p>
       <label class="backup-check">

@@ -133,7 +133,7 @@ export function KnownSitesSection() {
   return (
     <div class="sites-section">
       <div class="settings-header">
-        <strong>Known sites</strong>
+        <strong>Hints</strong>
         <span class="sites-count">{sites.length}</span>
       </div>
       <p class="settings-note">
