@@ -13,6 +13,7 @@ export default defineConfig({
       input: {
         sidebar: 'sidebar.html',
         offscreen: 'offscreen.html',
+        microphone: 'microphone.html',
         serviceWorker: 'src/background/serviceWorker.ts',
       },
       output: {

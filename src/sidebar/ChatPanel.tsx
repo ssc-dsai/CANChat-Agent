@@ -387,6 +387,9 @@ export function ChatPanel({
     clearEditor();
   };
 
+  const openMicPermission = () =>
+    void chrome.tabs.create({ url: chrome.runtime.getURL('microphone.html') });
+
   // Push-to-talk: first click records, second click stops and transcribes via
   // the configured endpoint, appending the result to the composer.
   const stopRecording = () => recorderRef.current?.state === 'recording' && recorderRef.current.stop();
@@ -402,7 +405,12 @@ export function ChatPanel({
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      setMicError('Microphone access was blocked. Allow it for this extension to use voice prompts.');
+      // Chrome won't show the mic prompt inside the side panel; grant it once
+      // from a normal extension tab, then the side panel can record.
+      setMicError(
+        "The microphone can't be enabled from the side panel. I've opened a tab where you can allow it — then come back and tap the mic again.",
+      );
+      openMicPermission();
       return;
     }
     const recorder = new MediaRecorder(stream);
@@ -666,7 +674,14 @@ export function ChatPanel({
             }
           }}
         />
-        {micError && <div class="banner banner-error mic-error">{micError}</div>}
+        {micError && (
+          <div class="banner banner-error mic-error">
+            <span>{micError}</span>
+            <button class="btn btn-small" onClick={openMicPermission}>
+              Enable microphone
+            </button>
+          </div>
+        )}
         <div class="chat-buttons">
           <button class="btn btn-primary" onClick={submit} disabled={disabled || busy || !text.trim()}>
             Send

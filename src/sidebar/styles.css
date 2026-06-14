@@ -697,6 +697,10 @@ body {
 
 .mic-error {
   margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 /* Snapshot images in messages and pending row */
