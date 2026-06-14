@@ -130,6 +130,11 @@ export function ChatPanel({
   const [text, setText] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
+  // Voice prompts: available only when a transcription model is configured.
+  const [hasTranscription, setHasTranscription] = useState(false);
+  const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
+  const [micError, setMicError] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   // @-mention of browser bookmarks and #-mention of local repositories.
@@ -165,12 +170,14 @@ export function ChatPanel({
 
   useEffect(() => {
     const load = () =>
-      chrome.storage.local.get('ba_skills').then((r) => {
+      chrome.storage.local.get(['ba_skills', 'ba_settings']).then((r) => {
         setSkills(Array.isArray(r.ba_skills) ? (r.ba_skills as Skill[]) : []);
+        const s = r.ba_settings as { transcriptionModel?: string } | undefined;
+        setHasTranscription(Boolean(s?.transcriptionModel?.trim()));
       });
     load();
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>) => {
-      if ('ba_skills' in changes) load();
+      if ('ba_skills' in changes || 'ba_settings' in changes) load();
     };
     chrome.storage.onChanged.addListener(onChanged);
     return () => chrome.storage.onChanged.removeListener(onChanged);
@@ -378,6 +385,67 @@ export function ChatPanel({
     const mentions = collectMentions();
     send({ type: 'user_message', text: message, mentions: mentions.length ? mentions : undefined });
     clearEditor();
+  };
+
+  // Push-to-talk: first click records, second click stops and transcribes via
+  // the configured endpoint, appending the result to the composer.
+  const stopRecording = () => recorderRef.current?.state === 'recording' && recorderRef.current.stop();
+
+  const toggleMic = async () => {
+    setMicError(null);
+    if (micState === 'recording') {
+      stopRecording();
+      return;
+    }
+    if (micState === 'transcribing') return;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setMicError('Microphone access was blocked. Allow it for this extension to use voice prompts.');
+      return;
+    }
+    const recorder = new MediaRecorder(stream);
+    recorderRef.current = recorder;
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      recorderRef.current = null;
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+      if (blob.size === 0) {
+        setMicState('idle');
+        return;
+      }
+      setMicState('transcribing');
+      try {
+        const audioDataUrl: string = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        const res = (await chrome.runtime.sendMessage({ type: 'transcribe_audio', audioDataUrl })) as {
+          ok: boolean;
+          text?: string;
+          error?: string;
+        };
+        if (res?.ok && res.text) {
+          const existing = getEditorText().trim();
+          setEditorText(existing ? `${existing} ${res.text}` : res.text);
+        } else if (res?.ok) {
+          setMicError('No speech detected.');
+        } else {
+          setMicError(res?.error ?? 'Transcription failed.');
+        }
+      } catch (err) {
+        setMicError(String(err));
+      } finally {
+        setMicState('idle');
+      }
+    };
+    recorder.start();
+    setMicState('recording');
   };
 
   return (
@@ -598,10 +666,27 @@ export function ChatPanel({
             }
           }}
         />
+        {micError && <div class="banner banner-error mic-error">{micError}</div>}
         <div class="chat-buttons">
           <button class="btn btn-primary" onClick={submit} disabled={disabled || busy || !text.trim()}>
             Send
           </button>
+          {hasTranscription && (
+            <button
+              class={`btn mic-btn${micState === 'recording' ? ' mic-recording' : ''}`}
+              title={
+                micState === 'recording'
+                  ? 'Stop recording and transcribe'
+                  : micState === 'transcribing'
+                    ? 'Transcribing…'
+                    : 'Record a voice prompt'
+              }
+              onClick={toggleMic}
+              disabled={disabled || busy || micState === 'transcribing'}
+            >
+              {micState === 'recording' ? '● Stop' : micState === 'transcribing' ? '…' : '🎤'}
+            </button>
+          )}
           {status === 'paused' ? (
             <button class="btn" onClick={() => send({ type: 'resume_agent' })}>
               Resume

@@ -679,6 +679,26 @@ body {
   gap: 6px;
 }
 
+.mic-btn {
+  padding-inline: 10px;
+}
+
+.mic-btn.mic-recording {
+  background: #d92d20;
+  border-color: #d92d20;
+  color: #fff;
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+.mic-error {
+  margin-bottom: 6px;
+}
+
 /* Snapshot images in messages and pending row */
 .msg-images {
   display: flex;

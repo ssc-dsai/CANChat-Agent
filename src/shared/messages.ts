@@ -62,11 +62,18 @@ export type RuntimeRequest =
   | { type: 'repo_docs'; repo: string }
   | { type: 'repo_doc_delete'; repo: string; docId: string }
   | { type: 'repo_export' }
-  | { type: 'repo_import'; repos: ExportedRepo[] };
+  | { type: 'repo_import'; repos: ExportedRepo[] }
+  | { type: 'transcribe_audio'; audioDataUrl: string };
 
 export interface TestConnectionResponse {
   ok: boolean;
   detail: string;
+}
+
+export interface TranscribeResponse {
+  ok: boolean;
+  text?: string;
+  error?: string;
 }
 
 export interface RepoInfo {

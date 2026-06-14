@@ -1,8 +1,8 @@
 import type { BackgroundEvent, RuntimeRequest, SidebarCommand, TestConnectionResponse } from '../shared/messages';
 import { AgentRuntime } from './agentRuntime';
-import { testConnection } from './llmProvider';
+import { LlmError, testConnection, transcribe } from './llmProvider';
 import { repoDelete, repoDeleteDoc, repoDocs, repoExport, repoImport, repoList } from './offscreenClient';
-import { seedSkillsIfEmpty } from './storage';
+import { getSettings, seedSkillsIfEmpty } from './storage';
 
 // Clicking the toolbar icon opens the side panel.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -117,6 +117,22 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
   }
   if (request.type === 'repo_import') {
     repoImport(request.repos).then((r) => sendResponse(r));
+    return true;
+  }
+  if (request.type === 'transcribe_audio') {
+    (async () => {
+      const settings = await getSettings();
+      if (!settings) return { ok: false, error: 'No endpoint configured. Open Settings first.' };
+      if (!settings.transcriptionModel) {
+        return { ok: false, error: 'No transcription model set. Add one in Settings to use voice prompts.' };
+      }
+      try {
+        const text = await transcribe(settings, request.audioDataUrl);
+        return { ok: true, text };
+      } catch (err) {
+        return { ok: false, error: err instanceof LlmError ? err.message : String(err) };
+      }
+    })().then(sendResponse);
     return true;
   }
   return false;

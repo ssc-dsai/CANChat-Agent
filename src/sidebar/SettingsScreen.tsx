@@ -58,6 +58,7 @@ export function SettingsScreen({ onClose }: Props) {
       systemPrompt: settings.systemPrompt?.trim() || undefined,
       sharepointBaseUrl: settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       embeddingModel: settings.embeddingModel?.trim() || undefined,
+      transcriptionModel: settings.transcriptionModel?.trim() || undefined,
     };
     await chrome.storage.local.set({ ba_settings: trimmed });
     setSaved(true);
@@ -144,6 +145,16 @@ export function SettingsScreen({ onClose }: Props) {
             placeholder="text-embedding-3-small"
             value={settings.embeddingModel ?? ''}
             onInput={(e) => update({ embeddingModel: (e.target as HTMLInputElement).value })}
+          />
+        </label>
+
+        <label class="field">
+          <span>Transcription model (optional) — enables voice prompts (mic button); must be a speech-to-text model your endpoint exposes at /audio/transcriptions</span>
+          <input
+            type="text"
+            placeholder="whisper-1"
+            value={settings.transcriptionModel ?? ''}
+            onInput={(e) => update({ transcriptionModel: (e.target as HTMLInputElement).value })}
           />
         </label>
 
