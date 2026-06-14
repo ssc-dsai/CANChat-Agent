@@ -23,7 +23,8 @@ interface RpcMessage {
   method?: string;
 }
 
-function parseBody(raw: string, contentType: string): RpcMessage[] {
+// Exported for unit testing of the JSON / SSE response parsing.
+export function parseBody(raw: string, contentType: string): RpcMessage[] {
   if (/text\/event-stream/i.test(contentType)) {
     // Collect the JSON payloads from `data:` lines of the SSE stream.
     const out: RpcMessage[] = [];

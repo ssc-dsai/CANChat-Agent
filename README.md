@@ -486,11 +486,30 @@ extension/
     shared/                   Types, message protocol, tool schemas
 ```
 
-Stack: **TypeScript + Preact + Vite** (two build passes: app, then content script as a single IIFE).
+Stack: **TypeScript + Preact + Vite** (three build passes: app, content script, and the WebMCP bridge as single IIFEs).
 
 ```bash
 mise run typecheck   # tsc --noEmit
+mise run test        # vitest unit tests
 mise run build       # rebuild dist/
+mise run ci          # typecheck + test + build (the CI gate)
 ```
 
 After rebuilding, reload the extension in `chrome://extensions`.
+
+### 9.1 Tests
+
+Unit tests use **[Vitest](https://vitest.dev)** and live next to the code they cover as
+`*.test.ts`. They target the pure-logic modules that don't need `chrome.*` or a real browser —
+URL/host normalization (`src/shared/url.ts`), repo chunking and dedup (`src/shared/repoChunk.ts`),
+the tool-definition contract (`src/shared/schemas.ts`), and the MCP transport parsing
+(`src/background/mcpClient.ts`). Run them with `mise run test` (or `npm test`); `npm run
+test:watch` for a watch loop and `npm run test:coverage` for a coverage report.
+
+CI runs the full gate (`typecheck → test → build`) on every push to `main` and every pull
+request via GitHub Actions (`.github/workflows/ci.yml`), using the Node version pinned in
+`mise.toml`.
+
+> Scope: these are unit tests for the pure logic. The `chrome.*`-bound surface (service worker,
+> content scripts, offscreen DOM/OPFS) is exercised by build + manual verification today;
+> browser-level integration tests (e.g. Playwright) are a separate, larger effort.

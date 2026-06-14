@@ -12,3 +12,11 @@ run = "npm run build"
 [tasks.typecheck]
 description = "Type-check the project"
 run = "npm run typecheck"
+
+[tasks.test]
+description = "Run unit tests"
+run = "npm test"
+
+[tasks.ci]
+description = "Run the full CI gate: typecheck, tests, build"
+run = ["npm run typecheck", "npm test", "npm run build"]
