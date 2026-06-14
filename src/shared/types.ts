@@ -134,8 +134,16 @@ export interface Settings {
   sharepointBaseUrl?: string;
   /** Optional separate model id for the /embeddings route (local RAG). */
   embeddingModel?: string;
+  /** Optional separate endpoint base URL for embeddings; blank = use baseUrl. */
+  embeddingBaseUrl?: string;
+  /** Optional separate API key for embeddings; blank = use apiKey. */
+  embeddingApiKey?: string;
   /** Optional speech-to-text model id for the /audio/transcriptions route (voice prompts). */
   transcriptionModel?: string;
+  /** Optional separate endpoint base URL for transcription; blank = use baseUrl. */
+  transcriptionBaseUrl?: string;
+  /** Optional separate API key for transcription; blank = use apiKey. */
+  transcriptionApiKey?: string;
 }
 
 export type AgentStatus =

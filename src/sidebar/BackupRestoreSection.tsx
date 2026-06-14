@@ -24,7 +24,13 @@ export function BackupRestoreSection() {
     try {
       const storage = (await chrome.storage.local.get(STORAGE_KEYS)) as Record<string, unknown>;
       if (!includeKey && storage.ba_settings && typeof storage.ba_settings === 'object') {
-        storage.ba_settings = { ...(storage.ba_settings as object), apiKey: '' };
+        // Strip the main key and the optional per-service override keys.
+        storage.ba_settings = {
+          ...(storage.ba_settings as object),
+          apiKey: '',
+          embeddingApiKey: '',
+          transcriptionApiKey: '',
+        };
       }
       const repos = (await chrome.runtime.sendMessage({ type: 'repo_export' })) as ExportedRepo[];
       const backup: Backup = {

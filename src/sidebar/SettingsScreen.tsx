@@ -58,7 +58,11 @@ export function SettingsScreen({ onClose }: Props) {
       systemPrompt: settings.systemPrompt?.trim() || undefined,
       sharepointBaseUrl: settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       embeddingModel: settings.embeddingModel?.trim() || undefined,
+      embeddingBaseUrl: settings.embeddingBaseUrl?.trim().replace(/\/+$/, '') || undefined,
+      embeddingApiKey: settings.embeddingApiKey?.trim() || undefined,
       transcriptionModel: settings.transcriptionModel?.trim() || undefined,
+      transcriptionBaseUrl: settings.transcriptionBaseUrl?.trim().replace(/\/+$/, '') || undefined,
+      transcriptionApiKey: settings.transcriptionApiKey?.trim() || undefined,
     };
     await chrome.storage.local.set({ ba_settings: trimmed });
     setSaved(true);
@@ -148,6 +152,27 @@ export function SettingsScreen({ onClose }: Props) {
           />
         </label>
 
+        <div class="field-row">
+          <label class="field">
+            <span>Embedding endpoint base URL (optional) — blank uses the main endpoint above</span>
+            <input
+              type="url"
+              placeholder="https://embeddings.example.com/v1"
+              value={settings.embeddingBaseUrl ?? ''}
+              onInput={(e) => update({ embeddingBaseUrl: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+          <label class="field">
+            <span>Embedding API key (optional) — blank uses the main key</span>
+            <input
+              type="password"
+              placeholder="sk-…"
+              value={settings.embeddingApiKey ?? ''}
+              onInput={(e) => update({ embeddingApiKey: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+        </div>
+
         <label class="field">
           <span>Transcription model (optional) — enables voice prompts (mic button); must be a speech-to-text model your endpoint exposes at /audio/transcriptions</span>
           <input
@@ -157,6 +182,27 @@ export function SettingsScreen({ onClose }: Props) {
             onInput={(e) => update({ transcriptionModel: (e.target as HTMLInputElement).value })}
           />
         </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Transcription endpoint base URL (optional) — blank uses the main endpoint above</span>
+            <input
+              type="url"
+              placeholder="https://stt.example.com/v1"
+              value={settings.transcriptionBaseUrl ?? ''}
+              onInput={(e) => update({ transcriptionBaseUrl: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+          <label class="field">
+            <span>Transcription API key (optional) — blank uses the main key</span>
+            <input
+              type="password"
+              placeholder="sk-…"
+              value={settings.transcriptionApiKey ?? ''}
+              onInput={(e) => update({ transcriptionApiKey: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+        </div>
 
         <label class="field">
           <span>SharePoint base URL (optional) — enables search over your SharePoint via the signed-in session; blank = auto-detect from an open SharePoint tab</span>

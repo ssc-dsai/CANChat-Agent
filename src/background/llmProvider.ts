@@ -37,19 +37,46 @@ export interface LlmResponseMessage {
 
 export class LlmError extends Error {}
 
+/**
+ * Resolve the base URL and API key for a given service. Embeddings and
+ * transcription can each override the primary endpoint/key; blank falls back.
+ */
+function resolve(settings: Settings, kind: 'chat' | 'embedding' | 'transcription'): {
+  base: string;
+  key: string;
+} {
+  const base =
+    kind === 'embedding'
+      ? settings.embeddingBaseUrl
+      : kind === 'transcription'
+        ? settings.transcriptionBaseUrl
+        : undefined;
+  const key =
+    kind === 'embedding'
+      ? settings.embeddingApiKey
+      : kind === 'transcription'
+        ? settings.transcriptionApiKey
+        : undefined;
+  return {
+    base: (base?.trim() || settings.baseUrl).replace(/\/+$/, ''),
+    key: key?.trim() || settings.apiKey,
+  };
+}
+
 function endpoint(settings: Settings): string {
-  return settings.baseUrl.replace(/\/+$/, '') + '/chat/completions';
+  return resolve(settings, 'chat').base + '/chat/completions';
 }
 
 /** Embed a batch of texts via the configured OpenAI-compatible /embeddings route. */
 export async function embed(settings: Settings, texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
-  const url = settings.baseUrl.replace(/\/+$/, '') + '/embeddings';
+  const { base, key } = resolve(settings, 'embedding');
+  const url = base + '/embeddings';
   let response: Response;
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.apiKey}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({ model: settings.embeddingModel || settings.model, input: texts }),
     });
   } catch (err) {
@@ -77,7 +104,8 @@ export async function transcribe(settings: Settings, audioDataUrl: string): Prom
   if (!settings.transcriptionModel) {
     throw new LlmError('No transcription model configured. Set one in Settings to use voice prompts.');
   }
-  const url = settings.baseUrl.replace(/\/+$/, '') + '/audio/transcriptions';
+  const { base, key } = resolve(settings, 'transcription');
+  const url = base + '/audio/transcriptions';
   const blob = await (await fetch(audioDataUrl)).blob();
   const form = new FormData();
   // OpenAI/Whisper-style endpoints infer the format from the filename extension.
@@ -88,7 +116,7 @@ export async function transcribe(settings: Settings, audioDataUrl: string): Prom
     // Do NOT set Content-Type — the runtime adds the multipart boundary.
     response = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${settings.apiKey}` },
+      headers: { Authorization: `Bearer ${key}` },
       body: form,
     });
   } catch (err) {
