@@ -1,3 +1,10 @@
+// =============================================================================
+// Offscreen client — the service-worker side of the channel to the offscreen
+// document. Ensures the offscreen page exists, then exposes typed wrappers
+// (PDF/Office extraction, and the repository store ops) that post a request and
+// await the matching response. The receiving end is `offscreen.ts`/`repoStore`.
+// =============================================================================
+
 import type {
   ExportedRepo,
   ExtractOfficeRequest,

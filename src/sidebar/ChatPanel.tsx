@@ -1,3 +1,13 @@
+// =============================================================================
+// ChatPanel — the conversation surface: transcript, inline cards (data exports,
+// snapshots), the approval/auth/permission prompts, and the composer. The
+// composer is a contenteditable so inserted @bookmark / #repo mentions can
+// render as styled chips; `text` mirrors its plain text for button state while
+// the element itself stays uncontrolled (never re-rendered from state). Skills
+// load from storage (live via onChanged) to power /command hints and the mic
+// button. All user actions leave through the `send` prop — see Sidebar.
+// =============================================================================
+
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SidebarCommand } from '../shared/messages';
 import type { AgentStatus, ChatMessageView, DataExport, Skill } from '../shared/types';

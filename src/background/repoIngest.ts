@@ -1,3 +1,13 @@
+// =============================================================================
+// Repository ingestion — turn a tab (or a whole tab group) into searchable RAG
+// content. For each page it picks the best text source in a ladder: native PDF
+// extraction, Office extraction, normal DOM content, app-content fallback, then
+// OCR/vision as a last resort. The text is chunked (`chunkText`), embedded
+// (`embed`), and written to the OPFS store via `offscreenClient.repoAdd`.
+// Called by `agentRuntime` for both the `add_to_repo` tool and the panel's
+// "+ Tab / + Group" buttons.
+// =============================================================================
+
 import { chunkText } from '../shared/repoChunk';
 import type { Settings } from '../shared/types';
 import * as browser from './browserToolAdapter';

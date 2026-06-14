@@ -1,3 +1,15 @@
+// =============================================================================
+// DOM primitives — the actual page reading and acting, all executed inside the
+// page by `contentScript`. Two families:
+//   - Reading: `extractPage` (text/links/headings/metadata, with main-content
+//     selection from `readabilityExtractor`), `buildElementMap` (interactive
+//     elements with stable refIds + accessible names/roles for reliable
+//     targeting), and `readAppContent` for canvas-rendered apps.
+//   - Acting: click/fill/submit/press/scroll/drag, addressed by the refIds the
+//     element map hands out.
+// The limits below bound how much is shipped back to the model per call.
+// =============================================================================
+
 import type {
   ActionResult,
   ElementRef,

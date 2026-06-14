@@ -1,3 +1,14 @@
+// =============================================================================
+// Sidebar — the side panel's root component and the UI half of the message
+// protocol. It opens the long-lived Port to the service worker, mirrors the
+// agent's broadcast events into local state (status, messages, plan, tool
+// activity, approvals…), and renders the child panels. Commands flow out
+// through `send`; nothing here runs agent logic — the background owns that.
+//
+// The Port is also kept warm with a periodic `ping` so the MV3 worker isn't
+// evicted mid-task.
+// =============================================================================
+
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { BackgroundEvent, SidebarCommand } from '../shared/messages';
 import type {

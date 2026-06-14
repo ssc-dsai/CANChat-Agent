@@ -1,3 +1,10 @@
+// =============================================================================
+// Persistence — thin typed accessors over `chrome.storage.local` for the four
+// durable collections (settings, hints/sites, skills, memory). These `ba_*`
+// keys are exactly what Backup & Restore exports/imports. Everything is
+// device-local and never synced; the API key in particular never leaves here.
+// =============================================================================
+
 import type { MemoryEntry, Settings, SiteEntry, Skill } from '../shared/types';
 
 const SETTINGS_KEY = 'ba_settings';

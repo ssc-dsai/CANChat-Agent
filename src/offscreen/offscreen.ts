@@ -1,3 +1,15 @@
+// =============================================================================
+// Offscreen document — a hidden DOM context the service worker spins up for
+// work that needs Window APIs it lacks (DOMParser, pdf.js, the async OPFS file
+// system). It owns three jobs, routed by message `target`/`type`:
+//   - `extract_pdf`: pull text from a PDF with pdf.js.
+//   - `extract_office`: unzip .docx/.pptx/.xlsx (fflate) and parse the OOXML.
+//   - RAG (`offscreen-repo`): delegate to `repoStore` (OPFS-backed vector store).
+// The service worker reaches these via `offscreenClient`; this file is the
+// receiving end of that channel. Heavy/binary work lives here so it can't stall
+// the worker and so it has a real Window to use.
+// =============================================================================
+
 import { strFromU8, unzipSync } from 'fflate';
 import * as pdfjs from 'pdfjs-dist';
 // Vite emits the worker as an asset and gives us its URL.

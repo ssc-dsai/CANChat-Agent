@@ -1,3 +1,15 @@
+// =============================================================================
+// Content script — the in-page message handler. Injected on demand by
+// `browserToolAdapter` (via `chrome.scripting.executeScript`) into the page's
+// ISOLATED world, where it can read/drive the DOM but not the page's own JS
+// globals (that's what the MAIN-world `run_javascript`/WebMCP paths are for).
+//
+// It listens for `ContentRequest` messages and delegates each to the primitives
+// in `domExtractor` (extract page, build element map, click/fill/submit, scroll,
+// wait). Built as a single self-contained IIFE (see `vite.content.config.ts`)
+// because injected scripts can't have runtime imports.
+// =============================================================================
+
 import type { ContentRequest } from '../shared/messages';
 import {
   buildElementMap,
