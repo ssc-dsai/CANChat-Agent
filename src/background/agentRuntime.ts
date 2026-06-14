@@ -108,7 +108,7 @@ Decision policy:
 - Answer from your own knowledge when the question is general and stable and browser access would not materially improve the answer.
 - Use browser tools when the user asks about the current page, open tabs, recent or site-specific information, data on websites, or authenticated systems (Jira, dashboards, etc.).
 - Whenever an operation can be done through the browser, do it through the browser.
-- When the user refers to "the page", "this article", "the site", or a web page without saying which one, assume they mean the currently active tab: call get_active_tab, then get_tab_content on it.
+- When the user refers to "the page", "this article", "the site", "this tab", or a web page without saying which one, assume they mean the currently active tab: call get_active_tab, then get_tab_content on it. ALWAYS fetch it fresh for each such request — do NOT reuse page text fetched earlier in the conversation. The user surfs between pages in the same tab without starting a new thread, so earlier page content in this conversation may be from a different URL than the tab now shows; the live URL is in the working-state block's "Active tab" line.
 
 Planning multi-step tasks:
 - For any task that needs more than two or three tool calls, FIRST call set_plan with an ordered list of steps. Keep exactly one step in_progress (update_plan), and mark steps done as you finish them. Revise with set_plan if the situation changes.
@@ -287,6 +287,9 @@ export class AgentRuntime {
   private lastUserText = '';
   private activeHost = '';
   private activeTabLabel = '';
+  // Active-tab URL captured at the previous user turn, to detect navigation
+  // within a thread (so the agent re-reads a tab the user has surfed away from).
+  private lastTaskUrl = '';
   private systemBase = '';
   private knownSiteNames: string[] = [];
   // Per-conversation tab group (reset only on clearConversation).
@@ -489,6 +492,7 @@ export class AgentRuntime {
     this.stepsUsed = 0;
     this.toolCallCount = 0;
     this.canDistill = false;
+    this.lastTaskUrl = '';
     // New conversation ⇒ fresh tab group (old group/tabs are left open).
     this.groupName = null;
     this.groupId = null;
@@ -626,10 +630,22 @@ export class AgentRuntime {
     // Active tab host drives app-playbook auto-activation.
     this.activeHost = '';
     this.activeTabLabel = '';
+    // Detect navigation since the previous user turn: if the active tab has
+    // moved to a new URL, any page text already in this thread is stale and the
+    // agent must re-read before answering about "this page".
+    let navigationNotice = '';
     try {
       const tab = await browser.getActiveTab();
       this.activeHost = normalizeHost(tab.url);
       this.activeTabLabel = `${tab.url} "${tab.title}"`;
+      if (this.lastTaskUrl && this.lastTaskUrl !== tab.url) {
+        navigationNotice =
+          `[The active tab has navigated to ${tab.url} "${tab.title}" since your previous ` +
+          `message. Any page content earlier in this conversation is from a different page and ` +
+          `is now stale — call get_tab_content on the active tab before answering anything about ` +
+          `"this page"/"this tab".]\n\n`;
+      }
+      this.lastTaskUrl = tab.url;
     } catch {
       // No active tab (or restricted); playbooks just won't auto-activate.
     }
@@ -650,6 +666,7 @@ export class AgentRuntime {
 
     const contextBlock = this.buildContextBlock();
     let textContent = contextBlock ? `${contextBlock}\n\n${userText}` : userText;
+    if (navigationNotice) textContent = `${navigationNotice}${textContent}`;
     if (snapshots.length === 0) {
       this.conversation.push({ role: 'user', content: textContent });
     } else {
@@ -1291,7 +1308,10 @@ export class AgentRuntime {
   private buildStateBlock(): string {
     const remaining = Math.max(0, this.stepBudget - this.stepsUsed);
     const lines: string[] = ['\n\n=== Working state (updated each step) ==='];
-    if (this.activeTabLabel) lines.push(`Active tab: ${this.activeTabLabel}`);
+    if (this.activeTabLabel)
+      lines.push(
+        `Active tab (live URL): ${this.activeTabLabel} — page text fetched earlier in this conversation may be from a different URL; re-read with get_tab_content when answering about the current page.`,
+      );
     lines.push(`Steps: ${this.stepsUsed}/${this.stepBudget} used (${remaining} left).`);
     if (this.knownSiteNames.length > 0) {
       lines.push(
