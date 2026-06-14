@@ -84,6 +84,20 @@ body {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent);
 }
+
+/* Per-letter "ransom note" status animation. Colour is left to the pill;
+   font family, weight, italics, and size are randomised in JS (Sidebar.tsx).
+   Keep the pill from resizing as letters grow by anchoring the line box. */
+.status-anim {
+  display: inline-flex;
+  align-items: baseline;
+  line-height: 1;
+}
+.status-char {
+  display: inline-block;
+  white-space: pre;
+  transition: font-size 0.18s ease;
+}
 .status-paused,
 .status-auth_required,
 .status-awaiting_approval {

@@ -25,6 +25,56 @@ const STATUS_LABELS: Record<AgentStatus, string> = {
   error: 'Error',
 };
 
+// Pools the per-letter animation randomly draws from. Colour is intentionally
+// left untouched (inherited from the status pill).
+const FUNK_FONTS = [
+  'inherit',
+  'Georgia, serif',
+  '"Courier New", monospace',
+  'Verdana, sans-serif',
+  '"Comic Sans MS", "Comic Sans", cursive',
+];
+const FUNK_WEIGHTS = [400, 500, 600, 700, 800];
+const BASE_FONT_PX = 13; // matches .status font-size; vary up to +2pt.
+
+const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+/** Per-letter "funky" animated label, shown while the agent is working. */
+function StatusLabel({ status }: { status: AgentStatus }) {
+  const label = STATUS_LABELS[status];
+  const active = status === 'thinking' || status === 'acting';
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!active) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const el = ref.current;
+    if (!el) return;
+    const tick = () => {
+      el.querySelectorAll<HTMLElement>('.status-char').forEach((c) => {
+        c.style.fontFamily = pick(FUNK_FONTS);
+        c.style.fontWeight = String(pick(FUNK_WEIGHTS));
+        c.style.fontStyle = Math.random() < 0.3 ? 'italic' : 'normal';
+        c.style.fontSize = `${(BASE_FONT_PX + Math.random() * 2).toFixed(1)}px`;
+      });
+    };
+    tick();
+    const id = setInterval(tick, 230);
+    return () => clearInterval(id);
+  }, [active, label]);
+
+  if (!active) return <>{label}</>;
+  return (
+    <span ref={ref} class="status-anim">
+      {label.split('').map((ch, i) => (
+        <span key={i} class="status-char">
+          {ch === ' ' ? ' ' : ch}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function Sidebar() {
   const portRef = useRef<chrome.runtime.Port | null>(null);
   const [status, setStatus] = useState<AgentStatus>('idle');
@@ -154,7 +204,9 @@ export function Sidebar() {
     <div class="sidebar">
       <header class="header">
         <span class="title">CANAgent</span>
-        <span class={`status status-${status}`}>{STATUS_LABELS[status]}</span>
+        <span class={`status status-${status}`}>
+          <StatusLabel status={status} />
+        </span>
         <span class="scale-ctl">
           <button class="scale-btn" title="Smaller text" onClick={() => applyScale(uiScale - 0.1)}>
             A−
