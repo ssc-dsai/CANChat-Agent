@@ -181,6 +181,12 @@ Ordered roughly by how likely they are to bite as usage grows.
 - **Why noted:** GC/managed browsers may block loading an unpacked extension.
 - **Fix:** package and distribute via an enterprise/allowlisted channel rather than Developer Mode.
 
+### 8.4 WebMCP bridge is an always-on MAIN-world content script
+- **Where:** `src/content/webmcpBridge.ts` + the `content_scripts` entry in `public/manifest.json` (`<all_urls>`, `document_start`, `world: "MAIN"`).
+- **Why OK now:** it's tiny and passive — it only shims `navigator.modelContext` and records tools a page voluntarily registers; it reads no page content. Capturing must happen at load, so it can't be lazy.
+- **Trigger:** privacy/footprint review, or wanting to inject only where WebMCP is actually used.
+- **Fix:** gate via dynamic `chrome.scripting.registerContentScripts` (toggleable in settings), and revisit when the `navigator.modelContext` spec stabilizes (the shim targets the current proposal shape and may drift). Also: tool results must be JSON-serializable across the MAIN-world boundary.
+
 ---
 
 ## 9. Code hygiene (minor)

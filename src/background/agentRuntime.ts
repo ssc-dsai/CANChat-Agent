@@ -65,6 +65,7 @@ const APPROVAL_REQUIRED = new Set([
   'save_app_playbook', // persists a reusable playbook — confirm before storing
   'get_all_tab_contents', // reading all tabs needs explicit approval per spec
   'call_mcp_tool', // invokes an external MCP method — gated like any outbound action
+  'call_webmcp_tool', // invokes an in-page tool with the user's session — gated
 ]);
 
 /** Read-only / local tools that are safe to run concurrently within one turn. */
@@ -77,6 +78,7 @@ const READ_ONLY_TOOLS = new Set([
   'wait_for_element',
   'search_known_sites',
   'list_mcp_tools',
+  'list_webmcp_tools',
   'sharepoint_search',
   'read_tab_group',
   'search_repo',
@@ -138,6 +140,7 @@ Working method:
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
 - To read a Microsoft Office file (.docx Word, .pptx PowerPoint, .xlsx Excel) — including one the browser just downloaded instead of displaying — call read_office_document, not get_tab_content.
+- Some web pages expose their own in-page tools via WebMCP (navigator.modelContext). On the active tab, call list_webmcp_tools to discover them; when one matches the task, prefer call_webmcp_tool over hand-driving the page UI.
 - Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
 - The user can reference a repository (typing #) or a bookmarked page (typing @) in their message; when they do, an explicit instruction is attached — act on it directly: search_repo that exact repository, or open and read that exact URL rather than web-searching for it.
 - For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets) with source URLs plus who created and last modified each file and the modified date. Answer from those snippets and cite the URLs. For "recent files" or "files I edited" requests, pass sortBy:'modified' (newest first) and editedByMe:true (limit to the signed-in user) — query is optional for these. This is the way to do retrieval over the user's document store.
@@ -1134,6 +1137,15 @@ export class AgentRuntime {
           return `Error calling MCP method "${String(args.name)}": ${err instanceof Error ? err.message : String(err)}`;
         }
       }
+      case 'list_webmcp_tools': {
+        const tabId = args.tabId !== undefined ? Number(args.tabId) : (await browser.getActiveTab()).tabId;
+        return browser.listWebmcpTools(tabId);
+      }
+      case 'call_webmcp_tool': {
+        const tabId = args.tabId !== undefined ? Number(args.tabId) : (await browser.getActiveTab()).tabId;
+        const toolArgs = (args.arguments ?? {}) as Record<string, unknown>;
+        return browser.callWebmcpTool(tabId, String(args.name), toolArgs);
+      }
       case 'sharepoint_search': {
         const settings = await getSettings();
         let base = settings?.sharepointBaseUrl?.trim();
@@ -1522,6 +1534,8 @@ export class AgentRuntime {
         return `Save app playbook "${args.name}" for ${normalizeHost(String(args.origin))}:\n${String(args.body).slice(0, 200)}`;
       case 'call_mcp_tool':
         return `Call MCP method "${args.name}" on server "${args.server}" with ${JSON.stringify(args.arguments ?? {}).slice(0, 200)}`;
+      case 'call_webmcp_tool':
+        return `Call the page's in-page tool "${args.name}" with ${JSON.stringify(args.arguments ?? {}).slice(0, 200)}`;
       default:
         return `${name} ${JSON.stringify(args).slice(0, 120)}`;
     }

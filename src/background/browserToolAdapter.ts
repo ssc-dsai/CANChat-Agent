@@ -445,6 +445,92 @@ export async function runJavascript(tabId: number, code: string): Promise<string
   return out;
 }
 
+// Runs in the page's MAIN world: read the WebMCP registry the bridge populated.
+function webmcpListRunner(): string {
+  try {
+    const reg = (window as unknown as { __CANAGENT_WEBMCP__?: { tools?: Map<string, unknown> } })
+      .__CANAGENT_WEBMCP__;
+    const tools = reg?.tools ? Array.from(reg.tools.values()) : [];
+    return JSON.stringify(
+      tools.map((t) => {
+        const tool = t as { name?: string; description?: string; inputSchema?: unknown };
+        return { name: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema ?? null };
+      }),
+    );
+  } catch (e) {
+    return JSON.stringify({ __error: String(e) });
+  }
+}
+
+// Runs in the page's MAIN world: invoke a registered WebMCP tool's handler.
+function webmcpCallRunner(name: string, args: unknown): Promise<string> {
+  return (async () => {
+    try {
+      const reg = (window as unknown as { __CANAGENT_WEBMCP__?: { tools?: Map<string, unknown> } })
+        .__CANAGENT_WEBMCP__;
+      const tool = reg?.tools?.get(name) as { execute?: (a: unknown) => unknown } | undefined;
+      if (!tool || typeof tool.execute !== 'function') {
+        return JSON.stringify({ __error: `No WebMCP tool named "${name}" on this page.` });
+      }
+      const result = await tool.execute(args);
+      return JSON.stringify(result ?? null);
+    } catch (e) {
+      return JSON.stringify({ __error: String(e) });
+    }
+  })();
+}
+
+export async function listWebmcpTools(tabId: number): Promise<string> {
+  let tab: chrome.tabs.Tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {
+    return JSON.stringify({ __error: 'Tab no longer exists.' });
+  }
+  if (isRestrictedUrl(tab.url ?? '')) {
+    return JSON.stringify({ __error: 'Cannot inspect browser-internal pages.' });
+  }
+  try {
+    const injection = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: webmcpListRunner,
+    });
+    return injection[0]?.result ?? '[]';
+  } catch (err) {
+    return JSON.stringify({ __error: String(err) });
+  }
+}
+
+export async function callWebmcpTool(
+  tabId: number,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<string> {
+  let tab: chrome.tabs.Tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {
+    return JSON.stringify({ __error: 'Tab no longer exists.' });
+  }
+  if (isRestrictedUrl(tab.url ?? '')) {
+    return JSON.stringify({ __error: 'Cannot run scripts on browser-internal pages.' });
+  }
+  try {
+    const injection = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: webmcpCallRunner,
+      args: [name, args ?? {}],
+    });
+    let out = injection[0]?.result ?? 'null';
+    if (out.length > MAX_JS_RESULT_CHARS) out = out.slice(0, MAX_JS_RESULT_CHARS) + ' …[truncated]';
+    return out;
+  } catch (err) {
+    return JSON.stringify({ __error: String(err) });
+  }
+}
+
 export async function readPdf(tabId: number | undefined, url: string | undefined): Promise<string> {
   let target = url;
   if (!target) {

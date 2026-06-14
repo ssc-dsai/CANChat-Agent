@@ -462,6 +462,39 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'list_webmcp_tools',
+      description:
+        'List the in-page tools the current web page exposes via WebMCP (the navigator.modelContext API). These run inside the page with the user\'s session. Omit tabId for the active tab. Returns each tool\'s name, description, and inputSchema; an empty list means the page offers none.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tabId: { type: 'number', description: 'Tab to inspect; omit for the active tab.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'call_webmcp_tool',
+      description:
+        "Invoke one of the page's in-page WebMCP tools discovered via list_webmcp_tools. arguments must match that tool's inputSchema. Runs in the page with the user's session. Prefer this over hand-driving the UI when a matching tool exists. State-changing: requires user approval.",
+      parameters: {
+        type: 'object',
+        properties: {
+          tabId: { type: 'number', description: 'Tab to act on; omit for the active tab.' },
+          name: { type: 'string', description: 'The tool name from list_webmcp_tools.' },
+          arguments: { type: 'object', description: "The tool's arguments, matching its inputSchema." },
+          ...reasonParam,
+        },
+        required: ['name', 'arguments', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'save_app_playbook',
       description:
         "Persist a reusable playbook for operating a specific web app, scoped to its site origin. The body auto-loads whenever the user returns to that site. Use at the end of a /learn exploration to record how to drive the app (navigation, search, reading data) with concrete code snippets or element references. Requires user approval.",

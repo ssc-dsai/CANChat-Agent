@@ -17,6 +17,15 @@
     "unlimitedStorage"
   ],
   "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["webmcpBridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    }
+  ],
   "background": {
     "service_worker": "serviceWorker.js",
     "type": "module"
