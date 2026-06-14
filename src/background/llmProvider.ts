@@ -1,7 +1,20 @@
 import type { Settings } from '../shared/types';
 
-// OpenAI-compatible chat completions adapter. The user supplies the endpoint,
-// key, and model through the settings screen; nothing ships configured.
+// =============================================================================
+// OpenAI-compatible network adapter — the only module that talks to a model
+// endpoint. Everything here runs in the service worker (cross-origin fetch is
+// allowed there via the manifest's <all_urls> host permission).
+//
+// The user supplies the endpoint, key, and model in Settings; nothing ships
+// configured. Embeddings and transcription may each override the primary
+// endpoint/key (see `resolve`), so a deployment can split chat, RAG, and STT
+// across different hosts.
+//
+// Callers: `agentRuntime` (chat `complete`), `repoIngest`/`offscreen` RAG flow
+// (`embed`), the service-worker transcription handler (`transcribe`), and the
+// settings screen (`testConnection`). All failures surface as `LlmError` with a
+// human-readable message the UI shows verbatim.
+// =============================================================================
 
 export interface LlmToolCall {
   id: string;
@@ -132,6 +145,15 @@ export async function transcribe(settings: Settings, audioDataUrl: string): Prom
   return (data.text ?? '').trim();
 }
 
+/**
+ * One chat-completion round-trip — the agent loop calls this once per step.
+ *
+ * Returns the assistant message, which may carry `tool_calls` (the loop then
+ * executes them and calls back) or plain content (the final answer). `signal`
+ * lets the runtime abort an in-flight request on stop/pause. An `AbortError`/
+ * `TimeoutError` is rethrown as-is so the loop can distinguish cancellation
+ * from a genuine endpoint failure (which becomes an `LlmError`).
+ */
 export async function complete(
   settings: Settings,
   messages: LlmMessage[],
@@ -180,6 +202,11 @@ export async function complete(
   return message;
 }
 
+/**
+ * Settings-screen probe: a trivial one-shot completion that confirms the
+ * endpoint, key, and model all work together. Never throws — it converts any
+ * failure into `{ ok: false, detail }` for display.
+ */
 export async function testConnection(settings: Settings): Promise<{ ok: boolean; detail: string }> {
   try {
     const message = await complete(settings, [

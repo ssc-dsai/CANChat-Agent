@@ -1,3 +1,23 @@
+// =============================================================================
+// Background service worker — the extension's central hub.
+//
+// Responsibilities:
+//   1. Own the single AgentRuntime instance and broadcast its events to every
+//      connected side panel.
+//   2. Route long-lived `SidebarCommand`s (over a Port) to the runtime.
+//   3. Answer one-shot request/response calls (settings "test connection",
+//      transcription, repository management) that don't belong to a task.
+//
+// Collaborators: the side panel connects here over a Port and via
+// `chrome.runtime.sendMessage`; this module delegates work to `AgentRuntime`
+// (the agent loop), `llmProvider` (network calls), and `offscreenClient` (the
+// OPFS repository store hosted in the offscreen document).
+//
+// Note on lifecycle: in MV3 this worker is ephemeral and may be evicted when
+// idle. State lives in `AgentRuntime`/storage and is rebuildable; the panel
+// sends periodic `ping`s to reset the idle timer during long tasks.
+// =============================================================================
+
 import type { BackgroundEvent, RuntimeRequest, SidebarCommand, TestConnectionResponse } from '../shared/messages';
 import { AgentRuntime } from './agentRuntime';
 import { LlmError, testConnection, transcribe } from './llmProvider';
@@ -11,8 +31,13 @@ chrome.runtime.onInstalled.addListener(() => {
   void seedSkillsIfEmpty();
 });
 
+// Every connected side panel holds a Port here. There is usually one, but the
+// set tolerates several (e.g. panels in multiple windows) and self-heals when a
+// post fails against a port that has gone away.
 const ports = new Set<chrome.runtime.Port>();
 
+// Fan an agent event out to all panels. Passed to AgentRuntime as its sole
+// output channel, so the runtime never talks to chrome.* directly.
 function broadcast(event: BackgroundEvent): void {
   for (const port of ports) {
     try {
@@ -23,8 +48,14 @@ function broadcast(event: BackgroundEvent): void {
   }
 }
 
+// One runtime for the whole extension — a single conversation/agent loop shared
+// by whichever panel is open.
 const runtime = new AgentRuntime(broadcast);
 
+// A panel connects: register its port, immediately replay the full current
+// state (so a reconnecting panel re-paints), then translate each command into a
+// runtime method call. This switch is the authoritative list of actions the UI
+// can trigger.
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'sidebar') return;
   ports.add(port);
@@ -89,7 +120,10 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => ports.delete(port));
 });
 
-// One-shot requests (settings screen "test connection").
+// One-shot request/response calls that aren't part of a running task: the
+// settings screen's "test connection", voice transcription, and repository
+// management. Each handler returns `true` to keep the message channel open for
+// the async `sendResponse` (a Chrome messaging requirement).
 chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResponse) => {
   if (request.type === 'test_connection') {
     testConnection(request.settings).then((result: TestConnectionResponse) => sendResponse(result));

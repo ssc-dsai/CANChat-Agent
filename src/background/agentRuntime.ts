@@ -1,3 +1,26 @@
+// =============================================================================
+// AgentRuntime — the agent loop and the brain of the extension.
+//
+// One instance lives in the service worker (created in `serviceWorker.ts`) and
+// drives a single conversation. The core is `runLoop`: it repeatedly asks the
+// model (`llmProvider.complete`) what to do, executes any tool calls it returns
+// (dispatching to `browserToolAdapter`, `mcpClient`, the offscreen RAG store,
+// etc.), feeds the results back, and stops when the model returns a tool-free
+// answer or the step budget is exhausted.
+//
+// Cross-cutting concerns this class owns:
+//   - Working state injected into the model each step (active tab, plan,
+//     findings, remaining budget) — see `buildStateBlock`/`refreshSystemMessage`.
+//   - Human-in-the-loop gates: approval for state-changing tools, pause/stop,
+//     and login waits — see `executeToolCall` and the `*Wait` fields.
+//   - Step budgeting to bound cost (`SOFT_STEP_BUDGET` → `HARD_STEP_CEILING`).
+//   - Context compaction so long tasks don't overflow the model window.
+//
+// It never touches `chrome.*` for output: every UI update is emitted through the
+// `emit` callback the service worker supplies (`broadcast`), keeping the runtime
+// testable in principle and decoupled from the panel.
+// =============================================================================
+
 import type { BackgroundEvent } from '../shared/messages';
 import { MEMORY_TOOL_DEFINITIONS, TOOL_DEFINITIONS } from '../shared/schemas';
 import type {
@@ -376,6 +399,14 @@ export class AgentRuntime {
 
   // ----- sidebar commands -----
 
+  /**
+   * Entry point for a user turn (called by the service worker on a
+   * `user_message` command). Rejects if a task is already running, expands any
+   * leading `/skill` slash command and inserted @/# mentions into the task
+   * text, records the user message, then hands off to `runLoop`. The `mentions`
+   * come from the composer's bookmark/repository chips and become explicit
+   * directives so the agent acts on the exact target the user picked.
+   */
   async handleUserMessage(
     text: string,
     mentions?: Array<{ kind: 'bookmark' | 'repo'; value: string }>,
@@ -643,6 +674,15 @@ export class AgentRuntime {
 
   // ----- agent loop -----
 
+  /**
+   * The agent loop. Builds the system message (instructions + live working
+   * state), appends the user turn, then iterates: ask the model, and either
+   * finish (no tool calls) or run the requested tools and loop again. Each
+   * iteration first checks the stop/pause flags and the step budget, refreshes
+   * the active-tab label, and compacts old tool output. Extends the budget
+   * while the plan still has open steps, up to `HARD_STEP_CEILING`; past that it
+   * forces a final answer via `wrapUp`.
+   */
   private async runLoop(
     userText: string,
     snapshots: Array<{ dataUrl: string; title: string; url: string }> = [],
@@ -850,6 +890,13 @@ export class AgentRuntime {
   }
 
   /** Run a turn's tool calls: read-only ones concurrently, the rest in order. */
+  /**
+   * Run the tool calls from one model turn. Read-only tools (per
+   * `READ_ONLY_TOOLS`) run concurrently for speed; the rest run sequentially in
+   * declared order so state-changing actions stay deterministic. Results are
+   * appended to the conversation in the model's original call order regardless
+   * of completion order, which the chat-completions protocol requires.
+   */
   private async executeToolCalls(calls: LlmToolCall[]): Promise<void> {
     this.toolCallCount += calls.length;
     const results = new Map<string, string>();
@@ -893,7 +940,14 @@ export class AgentRuntime {
     return 0;
   }
 
-  /** Shrink the oldest tool outputs when the conversation grows too large. */
+  /**
+   * Keep the conversation under `CONVERSATION_CHAR_BUDGET` by replacing the
+   * oldest, bulkiest tool outputs with a short placeholder. Safe because the
+   * agent is told to persist anything important via `record_finding`, and the
+   * plan + findings are re-injected every step in the working-state block — so
+   * compacting raw history doesn't lose the thread. The most recent few messages
+   * are left intact so the model retains immediate context.
+   */
   private compactConversation(): void {
     let total = this.conversation.reduce((n, m) => n + AgentRuntime.messageLen(m), 0);
     if (total <= CONVERSATION_CHAR_BUDGET) return;
@@ -1006,11 +1060,25 @@ export class AgentRuntime {
     return parts.join(' ');
   }
 
+  /**
+   * After a task finishes, offer to save it as a reusable skill — but only if it
+   * was substantial enough to be worth generalizing. "Substantial" = a real plan
+   * (3+ steps) or at least 4 tool calls; trivial one-shot answers don't prompt.
+   */
   private maybeOfferDistill(): void {
     const substantial = (this.plan?.length ?? 0) >= 3 || this.toolCallCount >= 4;
     if (substantial) this.setDistill(true);
   }
 
+  /**
+   * Execute a single tool call and return its result as the string the model
+   * will see. This is the central dispatch switch — one `case` per tool in
+   * `TOOL_DEFINITIONS`, mostly delegating to `browserToolAdapter`, `mcpClient`,
+   * or the offscreen RAG store. Before running, it logs a UI activity row and,
+   * for any tool in `APPROVAL_REQUIRED`, blocks on `requestApproval` using the
+   * model-supplied `reason` (declining returns a sentinel the model can react
+   * to). Tools return strings, never throw, so the loop always gets a result.
+   */
   private async executeToolCall(call: LlmToolCall): Promise<string> {
     const name = call.function.name;
     let args: Record<string, unknown>;
@@ -1354,6 +1422,12 @@ export class AgentRuntime {
 
   // ----- approvals and pause -----
 
+  /**
+   * Pause the loop and ask the user to approve a state-changing action. Returns
+   * a promise that stays pending until the panel sends an `approval_response`
+   * (routed to `approvalResponse`, which resolves it). The `description` is the
+   * model's plain-language `reason`; `detail` is the concrete action summary.
+   */
   private requestApproval(description: string, detail: string): Promise<boolean> {
     this.setStatus('awaiting_approval', description);
     const requestId = `appr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

@@ -1,3 +1,16 @@
+// =============================================================================
+// Tool catalogue — the JSON-Schema definitions advertised to the model on every
+// turn. This is the single source of truth for what the agent can do; each tool
+// here has a matching `case` in `agentRuntime`'s dispatch switch, and may also
+// appear in that file's `READ_ONLY_TOOLS` (safe to run concurrently) or
+// `APPROVAL_REQUIRED` (gated) sets. Memory tools are split out so they're only
+// offered when the user has enabled persistent memory.
+//
+// Convention: any tool whose effect is state-changing or outward-facing takes a
+// required `reason` (see `reasonParam`) — the plain-language string shown on the
+// approval card. `src/shared/schemas.test.ts` enforces these invariants.
+// =============================================================================
+
 import type { ToolDefinition } from '../background/llmProvider';
 
 const tabIdParam = {

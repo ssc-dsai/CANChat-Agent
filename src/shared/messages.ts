@@ -1,3 +1,16 @@
+// =============================================================================
+// Message protocol — the typed contract between the side panel (UI) and the
+// background service worker. Three channels:
+//   - `SidebarCommand`: UI → background over the long-lived Port (user actions).
+//   - `BackgroundEvent`: background → UI over the same Port (state/streaming).
+//   - `RuntimeRequest` + matching responses: one-shot request/response calls
+//     via `chrome.runtime.sendMessage` (test connection, transcription, repos).
+// Plus the offscreen-document request/response shapes for PDF/Office/RAG work.
+//
+// Keeping these as discriminated unions means the `switch` statements in
+// `serviceWorker.ts` and `Sidebar.tsx` are exhaustively type-checked.
+// =============================================================================
+
 import type {
   AgentStatus,
   ChatMessageView,

@@ -1,3 +1,10 @@
+// =============================================================================
+// Shared domain types used across the UI, the service worker, and the offscreen
+// document. Pure data shapes only — no behaviour — so both ends of the message
+// protocol agree on what they're exchanging. Persisted shapes (Settings,
+// SiteEntry, Skill, MemoryEntry) are also what Backup & Restore serializes.
+// =============================================================================
+
 export interface TabSummary {
   tabId: number;
   windowId: number;

@@ -1,3 +1,22 @@
+// =============================================================================
+// Browser tool adapter — the bridge between the agent's abstract tools and the
+// real `chrome.*` APIs. Every entry here is the implementation of one tool that
+// `agentRuntime`'s dispatch switch invokes (e.g. `get_tab_content`,
+// `navigate`, `click_element`, `run_javascript`, `list_webmcp_tools`).
+//
+// Two execution styles appear throughout:
+//   - Tab/navigation/group queries go straight through `chrome.tabs` etc.
+//   - DOM reads and page actions are injected into the page with
+//     `chrome.scripting.executeScript`. Plain inspection runs the bundled
+//     `contentScript.js` (isolated world); anything that must see the page's
+//     own JS (run_javascript, WebMCP) runs a `func` in `world: 'MAIN'` and can
+//     only return JSON-serializable values across that boundary.
+//
+// Convention: functions return either typed results or, for the script-injected
+// tools, a JSON string whose `{ __error }` shape signals failure without
+// throwing — so the agent loop always gets a readable tool result.
+// =============================================================================
+
 import type { ContentRequest } from '../shared/messages';
 import type {
   ActionResult,
