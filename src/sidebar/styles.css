@@ -987,6 +987,21 @@ body {
   align-items: center;
 }
 
+/* Pin the overlay's top line while its body scrolls. Scoped to the card's
+   direct child so nested section headers (Hints, Skills, Backup…) still scroll. */
+.settings-card > .settings-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-panel);
+  /* Pull out over the card's 16px padding so scrolling content can't show
+     through above or beside the pinned header. */
+  margin: -16px -16px 0;
+  padding: 16px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 12px 12px 0 0;
+}
+
 .settings-note {
   margin: 0;
   font-size: 12px;
