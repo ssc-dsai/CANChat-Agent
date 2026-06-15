@@ -19,6 +19,8 @@ import type {
   ExtractOfficeResponse,
   ExtractPdfRequest,
   ExtractPdfResponse,
+  GenerateDocumentRequest,
+  GenerateDocumentResponse,
   RepoRequest,
   RepoResponse,
 } from '../shared/messages';
@@ -100,6 +102,27 @@ async function extractPdf(url: string, maxChars?: number): Promise<ExtractPdfRes
 chrome.runtime.onMessage.addListener((message: ExtractPdfRequest, _sender, sendResponse) => {
   if (message?.target !== 'offscreen' || message.type !== 'extract_pdf') return undefined;
   extractPdf(message.url, message.maxChars).then(sendResponse);
+  return true; // async response
+});
+
+// ----- Document generation: markdown → .docx (create_word_document tool). -----
+
+chrome.runtime.onMessage.addListener((message: GenerateDocumentRequest, _sender, sendResponse) => {
+  if (message?.target !== 'offscreen' || message.type !== 'generate_document') return undefined;
+  (async () => {
+    try {
+      // Lazy import so the docx library only loads when generation is requested.
+      const { markdownToDocxBase64 } = await import('./docGen');
+      const dataBase64 = await markdownToDocxBase64(message.title, message.markdown);
+      sendResponse({
+        ok: true,
+        dataBase64,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      } satisfies GenerateDocumentResponse);
+    } catch (e) {
+      sendResponse({ ok: false, error: String(e) } satisfies GenerateDocumentResponse);
+    }
+  })();
   return true; // async response
 });
 

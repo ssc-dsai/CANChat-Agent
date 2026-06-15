@@ -558,6 +558,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'create_word_document',
+      description:
+        'Generate a downloadable Microsoft Word (.docx) file from markdown. Use when the user wants a Word document, report, letter, or formatted write-up they can save. The markdown supports headings, paragraphs, bold/italic, bulleted/numbered lists, tables, and code blocks. The user gets a download card.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Document title, shown as the heading and used for the filename.' },
+          markdown: { type: 'string', description: 'The document body as markdown.' },
+          filename: { type: 'string', description: 'Optional filename (without extension); defaults to a slug of the title.' },
+        },
+        required: ['title', 'markdown'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_plan',
       description:
         'Lay out (or replace) your step-by-step plan for a multi-step task. Call this first whenever a task needs more than a couple of tool calls, and call it again to revise the plan if something changes. The plan is shown to the user.',

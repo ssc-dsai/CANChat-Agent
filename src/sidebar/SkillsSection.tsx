@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { CURATED_PLAYBOOKS, type CuratedPlaybook } from '../shared/curatedPlaybooks';
+import { detectIncompatibility, parseSkillFrontmatter, rawGithubUrl } from '../shared/skillImport';
 import type { Skill } from '../shared/types';
 import { normalizeHost } from '../shared/url';
 
@@ -34,6 +35,9 @@ export function SkillsSection() {
   const [showForm, setShowForm] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [jsonText, setJsonText] = useState('');
+  const [showUrl, setShowUrl] = useState(false);
+  const [urlText, setUrlText] = useState('');
+  const [importing, setImporting] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
 
@@ -156,6 +160,55 @@ export function SkillsSection() {
     await save(next);
     setFeedback({ ok: true, text: `Imported ${incoming.length} skills (now ${next.length} total).` });
     setShowJson(false);
+  };
+
+  // Fetch a Claude Agent Skill's SKILL.md from a GitHub URL and add it. Only the
+  // instructions transfer; skills that lean on bundled scripts are imported with
+  // a warning since this agent has no filesystem/shell to run them.
+  const importFromUrl = async () => {
+    setFeedback(null);
+    const url = rawGithubUrl(urlText);
+    if (!/^https?:\/\//.test(url)) {
+      setFeedback({ ok: false, text: 'Enter a GitHub URL to a SKILL.md file.' });
+      return;
+    }
+    setImporting(true);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        setFeedback({ ok: false, text: `Could not fetch the skill (HTTP ${res.status}).` });
+        return;
+      }
+      const text = await res.text();
+      const parsed = parseSkillFrontmatter(text);
+      if (!parsed.body.trim()) {
+        setFeedback({ ok: false, text: 'That file has no skill instructions.' });
+        return;
+      }
+      const name = parsed.name || 'imported-skill';
+      const entry: Skill = {
+        id: skills.find((s) => s.name === name)?.id ?? newId(),
+        name,
+        description: parsed.description.trim() || `Imported skill: ${name}`,
+        body: parsed.body.trim(),
+      };
+      // Replace any same-named skill (merge by name, like JSON import).
+      const next = skills.some((s) => s.name === name)
+        ? skills.map((s) => (s.name === name ? entry : s))
+        : [...skills, entry];
+      await save(next);
+      const warn = detectIncompatibility(text);
+      setFeedback({
+        ok: true,
+        text: warn ? `Added /${name}. Note: ${warn}` : `Added /${name}.`,
+      });
+      setUrlText('');
+      setShowUrl(false);
+    } catch (e) {
+      setFeedback({ ok: false, text: `Import failed: ${String(e)}` });
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
@@ -286,6 +339,9 @@ export function SkillsSection() {
           <button class="btn btn-small" onClick={() => setShowForm(true)}>
             Add skill
           </button>
+          <button class="btn btn-small" onClick={() => setShowUrl(!showUrl)}>
+            Import from URL
+          </button>
           <button class="btn btn-small" onClick={() => setShowJson(!showJson)}>
             Import JSON
           </button>
@@ -317,6 +373,32 @@ export function SkillsSection() {
             );
           })}
         </ul>
+      )}
+
+      {showUrl && (
+        <div class="site-form">
+          <p class="settings-note">
+            Paste a link to a Claude Agent Skill’s <code>SKILL.md</code> (e.g. from
+            github.com/ComposioHQ/awesome-claude-skills). The instructions are imported as a skill;
+            skills that rely on bundled scripts can’t run here and are flagged.
+          </p>
+          <input
+            type="url"
+            class="chat-input"
+            placeholder="https://github.com/owner/repo/blob/main/skill/SKILL.md"
+            autocomplete="off"
+            value={urlText}
+            onInput={(e) => setUrlText((e.target as HTMLInputElement).value)}
+          />
+          <div class="settings-actions">
+            <button class="btn" onClick={() => setShowUrl(false)}>
+              Close
+            </button>
+            <button class="btn btn-primary" onClick={importFromUrl} disabled={importing || !urlText.trim()}>
+              {importing ? 'Importing…' : 'Import'}
+            </button>
+          </div>
+        </div>
       )}
 
       {showJson && (

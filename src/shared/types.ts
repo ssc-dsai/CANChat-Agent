@@ -199,6 +199,16 @@ export interface ChatMessageView {
   images?: string[];
   /** A downloadable table attached to this message. */
   dataExport?: DataExport;
+  /** A downloadable binary file (e.g. a generated .docx) attached to this message. */
+  fileArtifact?: FileArtifact;
+}
+
+/** A generated binary document offered to the user as a download. */
+export interface FileArtifact {
+  filename: string;
+  mimeType: string;
+  /** File bytes, base64-encoded (binary can't cross the message port directly). */
+  dataBase64: string;
 }
 
 /**

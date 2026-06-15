@@ -146,6 +146,24 @@ export interface ExtractOfficeResponse {
   error?: string;
 }
 
+/** Ask the offscreen document to generate a binary document from markdown. */
+export interface GenerateDocumentRequest {
+  target: 'offscreen';
+  type: 'generate_document';
+  /** Output format. Only 'docx' in v1; PDF/XLSX/PPTX can extend this union. */
+  format: 'docx';
+  title: string;
+  markdown: string;
+}
+
+export interface GenerateDocumentResponse {
+  ok: boolean;
+  /** Generated file bytes, base64-encoded. */
+  dataBase64?: string;
+  mimeType?: string;
+  error?: string;
+}
+
 /** Requests to the offscreen document's OPFS RAG store. */
 /** A single repository serialized for backup (vectors base64-encoded). */
 export interface ExportedRepo {

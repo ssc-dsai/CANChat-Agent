@@ -11,6 +11,8 @@ import type {
   ExtractOfficeResponse,
   ExtractPdfRequest,
   ExtractPdfResponse,
+  GenerateDocumentRequest,
+  GenerateDocumentResponse,
   RepoRequest,
   RepoResponse,
 } from '../shared/messages';
@@ -52,6 +54,20 @@ export async function extractPdf(url: string, maxChars?: number): Promise<Extrac
   }
   const request: ExtractPdfRequest = { target: 'offscreen', type: 'extract_pdf', url, maxChars };
   return (await chrome.runtime.sendMessage(request)) as ExtractPdfResponse;
+}
+
+export async function generateDocument(
+  format: 'docx',
+  title: string,
+  markdown: string,
+): Promise<GenerateDocumentResponse> {
+  try {
+    await ensureOffscreen();
+  } catch (e) {
+    return { ok: false, error: `Could not start the document generator: ${String(e)}` };
+  }
+  const request: GenerateDocumentRequest = { target: 'offscreen', type: 'generate_document', format, title, markdown };
+  return (await chrome.runtime.sendMessage(request)) as GenerateDocumentResponse;
 }
 
 export async function extractOffice(url: string, maxChars?: number): Promise<ExtractOfficeResponse> {
