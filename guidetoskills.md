@@ -64,6 +64,10 @@ keeps the agent fast even if you have many skills.
    CANAgent "knows how to drive" Gmail, Outlook, MarineTraffic, etc. when you're on those
    sites.
 
+4. **As a toolbar button.** Give a skill a **button label** and tick **"Show as a button"** in
+   its editor, and it appears as a one-click button in the tab-context bar — clicking it runs the
+   skill (equivalent to typing `/name`).
+
 You don't have to write every skill by hand. Two built-in helpers generate them for you:
 
 - **`/learn`** — while you're on a web app, type `/learn` (optionally `/learn focus on the
@@ -107,9 +111,10 @@ tool roster; you don't install or import any of it.
 - `drag` **(approval)** — drag between two coordinates (pan a map, move a slider).
 - `scroll_wheel` — dispatch a wheel event (zoom a map, trigger lazy-loading). *No approval needed.*
 
-### Documents
+### Documents & media
 - `read_pdf` — extract a PDF's text (the page tools can't see PDFs). Scanned image-only PDFs yield nothing.
 - `read_office_document` — extract a `.docx` / `.pptx` / `.xlsx` file, including ones the browser just downloaded. (Legacy `.doc/.xls/.ppt` not supported.)
+- `get_video_transcript` — read a video's existing captions (YouTube, or any page with a WebVTT track) instead of watching it.
 
 ### On-device repositories (local RAG)
 - `add_to_repo` — capture the current page (or this conversation's tab group) into a named local repository.
@@ -118,7 +123,11 @@ tool roster; you don't install or import any of it.
 
 ### Organisational search
 - `sharepoint_search` — search your SharePoint via the signed-in session (snippets, source URLs, who created/modified, modified date). Supports `sortBy: 'modified'` and `editedByMe: true` for "recent files" / "files I edited".
-- `search_known_sites` — search your curated directory of known sites before falling back to a generic web search.
+- `search_known_sites` — search your curated **Hints** directory (formerly Known Sites) before falling back to a generic web search.
+
+### Tool servers (MCP & WebMCP)
+- `list_mcp_tools` / `call_mcp_tool` **(call: approval)** — discover and invoke the methods of an MCP server you've added as a Hint (HTTP endpoint).
+- `list_webmcp_tools` / `call_webmcp_tool` **(call: approval)** — discover and invoke the in-page tools a web page exposes via WebMCP (`navigator.modelContext`).
 
 ### Skills & playbooks
 - `use_skill` — load another skill's instructions by name (how automatic triggering works).

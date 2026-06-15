@@ -12,7 +12,7 @@ You bring your own model: any OpenAI-compatible endpoint works, from OpenAI's AP
 2. [Installation](#2-installation)
 3. [Connecting a model](#3-connecting-a-model)
 4. [A tour of the sidebar](#4-a-tour-of-the-sidebar)
-5. [Known Sites — the agent's address book](#5-known-sites--the-agents-address-book)
+5. [Hints — the agent's address book](#5-hints--the-agents-address-book)
 6. [Skills — reusable procedures](#6-skills--reusable-procedures)
 7. [Permissions and safety](#7-permissions-and-safety)
 8. [Troubleshooting](#8-troubleshooting)
@@ -38,6 +38,16 @@ Three principles shape the design:
 If a question refers to "the page" or "this article" without saying which, the agent assumes you mean the currently active tab.
 
 **Collecting data and reading PDFs & Office files.** Ask the agent to gather structured information ("collect the title and date from each of these into a table") and it builds the dataset as it reads, then drops a **download card** in the chat with CSV and JSON buttons. And because Chrome renders PDFs as a canvas the page tools can't read — and downloads Office files instead of showing them — the agent has dedicated readers: `read_pdf` extracts a PDF's text, and `read_office_document` extracts the text of Word (`.docx`), PowerPoint (`.pptx`), and Excel (`.xlsx`) files. Both work on a file open in the current tab and on cookie-gated files you're logged into.
+
+**Video transcripts.** Instead of trying to watch or listen, the agent reads a video's **existing captions** with `get_video_transcript` — YouTube's caption track, or any page that exposes a WebVTT subtitle track — so you can summarize, search, or ask about a video instantly. (Not every video has captions.)
+
+**Voice prompts.** A **🎤 mic button** in the composer lets you dictate. Audio is transcribed by a speech-to-text model on *your* configured endpoint (`/audio/transcriptions`) — set a transcription model in Settings to enable it. The first use opens a one-time page to grant the microphone (Chrome can't prompt for it inside the side panel).
+
+**MCP & WebMCP — calling tools.** A Hint can be an **MCP server** (HTTP): the agent lists its methods (`list_mcp_tools`) and calls the right one (`call_mcp_tool`). Separately, a web page can expose its **own in-page tools** via the WebMCP `navigator.modelContext` proposal; the agent discovers them with `list_webmcp_tools` and invokes them with `call_webmcp_tool`. Outward calls are approval-gated.
+
+**Save a conversation.** The 💾 button in the header exports the current chat — text, images, and tables — to a single self-contained, human-readable HTML file.
+
+**Bilingual interface.** The UI offers an **English / French** toggle (Settings → Language; defaults to your browser language). *Note: the French is an in-progress draft pending translator review, and not every screen is localized yet — see [technical-debt.md](technical-debt.md).*
 
 **Tabs stay organized.** Every tab the agent opens during a conversation — web searches and pages it opens to compare — is collected into a **Chrome tab group with a single-word name** (e.g. "Wolf"), one group per conversation. You can refer to it by name — *"summarize the pages in the Wolf group"* — and the agent reads them all at once. Each new conversation gets a fresh group; previous groups and their tabs are left open for you.
 
@@ -78,7 +88,11 @@ Click the **⚙ gear icon** in the sidebar header and fill in:
 | **API key** | Bearer token for the endpoint | Local servers usually accept any non-empty string |
 | **Model** | Model name as the endpoint knows it | `gpt-4o`, `llama3.1`, etc. |
 | **Temperature / Max tokens** | Optional request parameters | Leave blank for endpoint defaults |
+| **Embedding model / endpoint / key** | Optional — local-repository embeddings. Leave the endpoint/key blank to reuse the main ones, or point them at a separate embeddings host | `text-embedding-3-small` |
+| **Transcription model / endpoint / key** | Optional — enables **voice prompts**; a Whisper-style speech-to-text model on a `/audio/transcriptions` route. Separate endpoint/key supported | `whisper-1` |
 | **Custom instructions** | Optional standing instructions appended to the agent's built-in system prompt — tune tone, language, priorities, or domain context without touching the operational rules (tool policy, citations, approvals stay intact) | "Answer in French" · "I work in geospatial data — prefer technical depth" |
+
+Each service (chat, embeddings, transcription) can run on its **own endpoint and key**; the embeddings and transcription fields fall back to the main endpoint/key when left blank.
 
 Click **Test connection** before saving — it sends a one-word prompt and shows you the reply or the exact error.
 
@@ -97,7 +111,7 @@ Notes:
 The status pill is color-coded: neutral **Idle**, blue **Thinking…/Using browser…**, amber **Paused / Waiting for approval / Login required**, red **Error**.
 
 - **🗑 Clear conversation** — stops any running task (aborting in-flight model requests), wipes the chat, the agent's conversation memory, and the tool log. Use it to start fresh; the agent's context (and your token spend) otherwise grows with every exchange.
-- **⚙ Settings** — model configuration, Known Sites, and Skills.
+- **⚙ Settings** — language, model configuration, Hints, and Skills.
 - **A− / A+** — adjust the panel's text size (scales the whole sidebar); click the percentage to reset to 100%. The choice persists across sessions.
 
 ### 4.2 Tab context panel
@@ -105,7 +119,7 @@ The status pill is color-coded: neutral **Idle**, blue **Thinking…/Using brows
 The row of buttons under the header controls what page content is handed to the agent *up front* (the agent reads the active tab by default, and can fetch any tab itself mid-task with its tools):
 
 - **Snapshot** — captures the **visible part of the current tab as an image** and attaches it to your next message. This is the tool for content that text extraction can't see: PowerBI reports, canvas-rendered dashboards and spreadsheets, Figma, embedded PDFs, charts. The image appears in the thread immediately (with a pending chip above the input — ✕ discards it) and is sent with whatever you ask next. **Requires a vision-capable model** (e.g. GPT-4o-class, llava/qwen-vl locally). Captures only the visible viewport.
-- **OCR Page** — like Snapshot, but captures the **whole page** by scrolling top to bottom and taking a series of overlapping screenshots, all attached to your next message (the vision model "reads" them). Use it for long or opaque pages where a single viewport isn't enough. Also available to the agent as the `capture_full_page` tool (it'll reach for it when a page's content is invisible to the text tools). **Vision-model required, and token-heavy** (many images) — it's the last-resort escalation. It stops at the bottom (or when scrolling stops changing the view) and caps at ~20 frames. Caveat: it scrolls the window or the largest inner scroll region, so apps that scroll a custom canvas (e.g. Excel Online's grid) may not page past the first view.
+- **Snapshot Page** — like Snapshot, but captures the **whole page** by scrolling top to bottom and taking a series of overlapping screenshots, all attached to your next message (the vision model "reads" them). Use it for long or opaque pages where a single viewport isn't enough. Also available to the agent as the `capture_full_page` tool (it'll reach for it when a page's content is invisible to the text tools). **Vision-model required, and token-heavy** (many images) — it's the last-resort escalation. It stops at the bottom (or when scrolling stops changing the view) and caps at ~20 frames. Caveat: it scrolls the window or the largest inner scroll region, so apps that scroll a custom canvas (e.g. Excel Online's grid) may not page past the first view.
 - **Refresh** — re-extracts whatever is currently in context.
 
 Each tab in context is listed with a status dot — green (readable), amber (login required), red (blocked or unreadable, e.g. `chrome://` pages) — and a **stale** tag once a snapshot is older than 5 minutes. Stale context isn't deleted; the agent is told it may be out of date and re-fetches when freshness matters.
@@ -149,7 +163,7 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `open_url` | Open a URL in a new tab, collected into the conversation's tab group | – |
 | `search_web` | Search via your default search engine in a new tab (joins the conversation's tab group) | – |
 | `read_tab_group` | Read every page in a tab group, by name or the conversation's own group | – |
-| `search_known_sites` | Look up your Known Sites directory ([§5](#5-known-sites--the-agents-address-book)) | – |
+| `search_known_sites` | Look up your Hints directory ([§5](#5-hints--the-agents-address-book)) | – |
 | `sharepoint_search` | Search your SharePoint via its Search API on the signed-in session; returns passages, source URLs, and created/modified-by + date. Supports sort-by-modified and an "edited by me" filter for recent/my files | – |
 | `add_to_repo` | Capture the current page (or the conversation's tab group) into a named on-device repository | – |
 | `search_repo` | Retrieve relevant passages from a named on-device repository (local embedding search) | – |
@@ -166,6 +180,7 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `export_data` | Emit a structured table you can download as CSV/JSON (a card appears in the chat) | – |
 | `read_pdf` | Extract the text of a PDF — including one open in the current tab, which the page tools can't read | – |
 | `read_office_document` | Extract the text of a Word (.docx), PowerPoint (.pptx), or Excel (.xlsx) file — for Office files the browser downloads instead of displaying | – |
+| `get_video_transcript` | Pull the existing caption/subtitle transcript of a video (YouTube, or any page exposing caption tracks) — read it instead of watching | – |
 | `press_keys` | Send a key or combo (Enter, Control+Enter, app shortcuts like "c" to compose) | **Yes** |
 | `click_at` | Click at viewport coordinates — for canvas/map content with no clickable element | **Yes** |
 | `drag` | Drag between coordinates — pan a map, move a slider, drag-and-drop | **Yes** |
@@ -175,6 +190,10 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `save_app_playbook` | Persist a learned, site-scoped playbook (see [§6.6](#66-app-playbooks--teaching-the-agent-an-app)) | **Yes** |
 | `wait_for_page_state` | Wait for a tab to finish loading | – |
 | `detect_auth_state` | Check whether a page is behind a login | – |
+| `list_mcp_tools` | List the methods an MCP-server Hint exposes for the task | – |
+| `call_mcp_tool` | Invoke a method on an MCP-server Hint over HTTP | **Yes** |
+| `list_webmcp_tools` | List the in-page tools the current page exposes via WebMCP (`navigator.modelContext`) | – |
+| `call_webmcp_tool` | Invoke one of the page's in-page WebMCP tools | **Yes** |
 | `save_memory` / `update_memory` / `delete_memory` | Add, revise, or forget durable facts about you — only when Memory is enabled ([§6½](#6½-memory--what-the-agent-remembers-about-you)) | – |
 
 ## 4¾. SharePoint search (poor-man's RAG)
@@ -202,18 +221,20 @@ Honest limits: your endpoint must expose an `/embeddings` route (set a separate 
 
 ## 4⅞½. Backup & restore
 
-Everything CANAgent stores on your device — your **endpoint settings**, **known sites**, **skills/app playbooks**, **memory**, and all your **repositories** (text + vectors) — can be saved to a single JSON file and restored later or on another machine. Use it before reinstalling, to move your setup to a new device, or to share a starter configuration with a colleague.
+Everything CANAgent stores on your device — your **endpoint settings**, **language**, **hints**, **skills/app playbooks**, **memory**, and all your **repositories** (text + vectors) — can be saved to a single JSON file and restored later or on another machine. Use it before reinstalling, to move your setup to a new device, or to share a starter configuration with a colleague.
 
 - **Settings → Backup & Restore → Export backup** downloads `canagent-backup-<date>.json`. By default it includes your **API key**, so the file holds a live credential — store it securely. Untick **Include API key** to export everything except the key.
-- **Restore from file…** reads a backup and **overwrites** your current settings, known sites, skills, and memory, and **replaces any repository with the same name** (others are left alone). You're asked to confirm first; the panel reloads when it's done.
+- **Restore from file…** reads a backup and **overwrites** your current settings, hints, skills, and memory, and **replaces any repository with the same name** (others are left alone). You're asked to confirm first; the panel reloads when it's done.
 
 It's a plain JSON file with no backend — nothing is uploaded; the only network traffic CANAgent ever makes is to your model endpoint.
 
-## 5. Known Sites — the agent's address book
+## 5. Hints — the agent's address book
+
+> Formerly "Known Sites". A Hint can be a website **or** an MCP server.
 
 ### 5.1 What it is and why
 
-An agent that doesn't know where your data lives wastes its steps on generic web searches — or worse, confidently reads the wrong site. Known Sites is a small, user-curated **directory of places worth checking**, with descriptions of what data lives at each. Before reaching for a web search, the agent consults this directory; when an entry matches the task, it navigates straight there.
+An agent that doesn't know where your data lives wastes its steps on generic web searches — or worse, confidently reads the wrong site. Hints is a small, user-curated **directory of places worth checking**, with descriptions of what data lives at each. Before reaching for a web search, the agent consults this directory; when an entry matches the task, it navigates straight there. A Hint can also point at an **MCP server** (give it an MCP endpoint URL): the agent then discovers and calls that server's tools via `list_mcp_tools` / `call_mcp_tool`.
 
 This is what makes **multi-step tasks** practical. "Check whether any bug filed this week is mentioned in the runbook wiki" requires the agent to know what "the bug tracker" and "the runbook wiki" *are*. With both in the directory, that request becomes two precise navigations instead of guesswork.
 
@@ -252,7 +273,7 @@ https://wiki.internal.example.com/search?q={query}
 
 ### 5.4 Managing entries
 
-**Settings → Known sites**: add, edit (✎), and delete (✕) entries, with **Import JSON** / **Export JSON** for bulk loading and sharing. Import merges by name — an imported entry replaces an existing entry with the same name, everything else is appended.
+**Settings → Hints**: add, edit (✎), and delete (✕) entries, with **Import JSON** / **Export JSON** for bulk loading and sharing. Import merges by name — an imported entry replaces an existing entry with the same name, everything else is appended.
 
 A starter set showing the range — an authenticated work system, an API explorer, and public data services:
 
@@ -351,7 +372,7 @@ Two editable skills ship on first install. They're deliberately written the way 
    "Source tabs:" citation list with URLs.
 ```
 
-Note how `research` step 1 reaches into the **Known Sites directory** — skills and the directory compose. A `jira-triage` skill doesn't need to hardcode your Jira URL; it can say "open the Team Jira board from the known sites" and stay valid even when the URL changes.
+Note how `research` step 1 reaches into the **Hints directory** — skills and the directory compose. A `jira-triage` skill doesn't need to hardcode your Jira URL; it can say "open the Team Jira board from the hints" and stay valid even when the URL changes.
 
 ### 6.5 Authoring guidance
 
@@ -359,7 +380,7 @@ Note how `research` step 1 reaches into the **Known Sites directory** — skills
 - **Make the description trigger-shaped**: it should read like the requests that ought to activate it.
 - **Specify the output format** — a table, a grouped list, a tone. This is what makes recurring runs consistent.
 - **Don't fight the safety model**: a skill can include click/fill/submit steps, but each such action still requires your approval at run time. Skills change *what the agent tries*, never *what it's allowed to do silently*.
-- Keep one skill per workflow; compose by referencing known sites rather than duplicating URLs across skills.
+- Keep one skill per workflow; compose by referencing hints rather than duplicating URLs across skills.
 
 ### 6.6 App Playbooks — teaching the agent an app
 
@@ -384,14 +405,14 @@ Playbooks appear in **Settings → Skills** with an `[app: <site>]` badge; edit 
 
 ### 6.7 Managing skills
 
-**Settings → Skills**: the same management model as Known Sites — add/edit/delete, **Import JSON** / **Export JSON**, merge-by-name on import. Names must be lowercase-kebab and unique.
+**Settings → Skills**: the same management model as Hints — add/edit/delete, **Import JSON** / **Export JSON**, merge-by-name on import. Names must be lowercase-kebab and unique. A skill can also be **pinned as a toolbar button** (give it a button label and tick "Show as a button") for one-click launching.
 
 ```json
 [
   {
     "name": "jira-triage",
     "description": "Triage this week's new Jira tickets and produce a priority report",
-    "body": "1. Open the Team Jira board from the known sites directory.\n2. Extract tickets created in the last 7 days with get_tab_content.\n3. Classify each as P1/P2/P3 with a one-line rationale.\n4. Output a table: ticket id (linked), title, priority, rationale.\n5. End with the Source tabs citation list."
+    "body": "1. Open the Team Jira board from the hints directory.\n2. Extract tickets created in the last 7 days with get_tab_content.\n3. Classify each as P1/P2/P3 with a one-line rationale.\n4. Output a table: ticket id (linked), title, priority, rationale.\n5. End with the Source tabs citation list."
   }
 ]
 ```
@@ -434,7 +455,7 @@ The mechanics:
 | Stored locally | Never stored |
 |---|---|
 | Model settings (key never synced) | Page content (snapshots live in memory for the session only) |
-| Known Sites and Skills | Conversation history across browser restarts |
+| Hints and Skills | Conversation history across browser restarts |
 | Memory entries — only if you enable Memory ([§6½](#6½-memory--what-the-agent-remembers-about-you)) | Anything on a server: there is no backend; the only network traffic is to your model endpoint |
 
 ## 8. Troubleshooting
@@ -446,7 +467,7 @@ The mechanics:
 | "Model request timed out after 120s" | The endpoint accepted the request but never answered — typical of an overloaded local model. Try a smaller model or raise max tokens limits server-side. |
 | Task seems stuck | **Stop** aborts the current step including in-flight model requests; 🗑 clears everything. Both always return control. |
 | A tab shows **blocked** / **unsupported** | `blocked` = site access restricted (the inline card or "Allow this site" fixes it); `unsupported` = the browser won't let any extension read it (`chrome://` pages, Web Store, some PDFs). |
-| Agent answers without using the browser when it should | Say so explicitly ("check my open tabs", "search the web for…"), add the site to Known Sites, or write a skill that names the tools to use. |
+| Agent answers without using the browser when it should | Say so explicitly ("check my open tabs", "search the web for…"), add the site to Hints, or write a skill that names the tools to use. |
 | Long task dies when the sidebar closes | The background service worker is kept alive by the open sidebar. Keep the panel open during long tasks. |
 | Skill didn't auto-trigger | Sharpen its description (see [§6.3](#63-two-ways-to-trigger-a-skill)) or force it with `/name`. |
 | Error right after sending a snapshot | Your endpoint/model isn't vision-capable — it rejected the image content. Switch to a multimodal model or discard the snapshot. |
@@ -468,7 +489,8 @@ extension/
       TabContextPanel.tsx     Context buttons and tab list
       ToolActivityPanel.tsx   Tool log
       SettingsScreen.tsx      Model config overlay
-      KnownSitesSection.tsx   Known Sites manager
+      KnownSitesSection.tsx   Hints manager (formerly Known Sites)
+      i18n.tsx                In-app EN/FR localization (catalogue + provider)
       SkillsSection.tsx       Skills manager
       Markdown.tsx            Sanitized markdown renderer (marked + DOMPurify)
     background/               Service worker

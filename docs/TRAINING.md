@@ -28,13 +28,14 @@ CANAgent is powerful *because* it can see what you can see and send it to an AI 
 1. **Where your data goes.** Whatever the agent reads to answer you — the page text, your prompt, a document's contents — is sent to the **model endpoint configured in Settings**. Choose that endpoint deliberately.
 2. **What stays local.** Your API key, your saved settings, your on-device "repositories" (document libraries), and their search index live **only in this browser profile on this device**. They are not synced to the cloud. *However*, building a repository sends each document's text to the endpoint once (to compute embeddings).
 3. **It acts as you.** The agent uses your authenticated sessions — SharePoint, email, internal apps. It can only see what your account can see, and it must **ask your approval before any action that changes something** (clicking, submitting, running code).
+4. **Other places data can go (newer features).** *Voice prompts* send your recorded **audio** to the transcription endpoint you configure (which may be separate from the chat endpoint) — approve it for the classification of what you dictate. *MCP servers* and *WebMCP* let the agent call **external tools**: an MCP-server "Hint" receives whatever the agent sends to its tools, and a page's in-page WebMCP tools run with your session. Both call types are approval-gated — read the approval card before allowing them, and only use tool servers your department permits.
 
 **Departmental rules come first.** Before using CANAgent on any real work:
 - Follow the **TBS *Guide on the use of generative AI*** and **your department's GenAI direction**. If your department has not authorized a generative-AI tool for a given activity, do not use it for that activity.
 - **Know your classification.** Only point CANAgent at an endpoint that is **approved for the classification of the information you are handling** (Unclassified, Protected A, Protected B, etc.). Do **not** send Protected or sensitive information to a public/commercial AI service unless your department has formally assessed and approved that service for that purpose. When in doubt, prefer a **departmental or on-premises ("sovereign") endpoint**.
 - **Human in the loop.** Treat every output as a *draft from a fallible assistant*. Verify facts against the cited sources. You remain accountable for anything you act on or send.
 - **Records & ATIP.** Outputs you rely on for a decision may be subject to information-management and access-to-information obligations — manage them like any other work record.
-- **Official languages.** CANAgent can help draft or summarize in English and French, but it is **not** a substitute for the Translation Bureau for authoritative or published translations. Always have a human review bilingual output.
+- **Official languages.** The **interface** can be set to English or French (Settings → Language; the French is a draft pending review and not yet complete). For *content*, CANAgent can help draft or summarize in English and French, but it is **not** a substitute for the Translation Bureau for authoritative or published translations. Always have a human review bilingual output.
 
 **✅ Check:** *In one sentence — when you ask CANAgent to summarize a document, where does that document's text go?* (Answer: to the model endpoint configured in Settings — so that endpoint must be approved for the document's classification.)
 
@@ -90,7 +91,7 @@ What it can do, at a glance:
 - **Header:** the CANAgent title and a live **status** (idle / thinking / acting), a **text-size** control (A− / A+), a **clear-conversation** (trash) button — which also stops a running task — and the **Settings** gear.
 - **Tab-context bar** (under the header):
   - **Snapshot** — capture the visible part of the current tab as an *image* for the model (for dashboards/charts the text tools can't read). *Needs a vision-capable model.*
-  - **OCR Page** — scroll-and-capture the *whole* page as images (for long or canvas-rendered pages). *Vision model, token-heavy — a last resort.*
+  - **Snapshot Page** — scroll-and-capture the *whole* page as images (for long or canvas-rendered pages). *Vision model, token-heavy — a last resort.*
   - **Refresh** — re-read what's in context.
   - **Repository box** (with **+ Tab** / **+ Group** and a **✕** to clear) — capture pages into an on-device library (Module 7).
 - **Composer (the message box):** type your request. Two shortcuts:

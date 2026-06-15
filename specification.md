@@ -264,6 +264,9 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
   `add_to_repo` for the full document.
 - `capture_full_page {maxFrames?}` — scroll-and-snapshot the whole page into frames
   for the vision model (opaque/canvas pages; needs a vision model).
+- `get_video_transcript {tabId?, lang?}` — read a video's existing captions: YouTube's
+  `ytInitialPlayerResponse` timedtext track (`fmt=json3`) or a generic WebVTT `<track>`;
+  60k context cap. Read-only; instead of audio STT.
 
 **Navigation & web search**
 - `navigate {url}` — reuse a tab, wait for load.
@@ -292,7 +295,17 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
   modifiedBy, modified}`. `sortBy:'modified'` orders by recency; `editedByMe:true`
   resolves the current user (`/_api/web/currentuser`) and filters `Editor:"<name>"`
   — together they answer "the last N files I edited". `query` optional.
-- `search_known_sites {query}` — match against the user's curated site list.
+- `search_known_sites {query}` — match against the user's curated **Hints** list
+  (formerly "Known Sites"; an entry may carry an `mcpUrl`).
+
+**Tool servers (MCP / WebMCP)**
+- `list_mcp_tools {server, query?}` / `call_mcp_tool {server, name, arguments, reason}`
+  — discover and invoke methods on an MCP-server Hint over Streamable-HTTP JSON-RPC
+  (`background/mcpClient.ts`). `call` is gated. Static bearer-token auth; remote HTTP only.
+- `list_webmcp_tools {tabId?}` / `call_webmcp_tool {tabId?, name, arguments, reason}` —
+  discover and invoke a page's in-page WebMCP tools, captured by a MAIN-world
+  document_start bridge (`content/webmcpBridge.ts`) that shims `navigator.modelContext`.
+  `call` is gated.
 
 **Knowledge & output**
 - `save_app_playbook {origin, name, description, content, reason}` — persist a
@@ -384,7 +397,7 @@ a fresh one; old groups/tabs are left open. The group name is surfaced to the ag
 (state block + `list_tabs`) so the user can say "summarize the Wolf group".
 
 **Snapshots & full-page capture.** The tab-context bar has **Snapshot** (one
-viewport JPEG) and **OCR Page** (scroll the whole page into frames). Both queue
+viewport JPEG) and **Snapshot Page** (scroll the whole page into frames). Both queue
 images that ride the user's next message as `image_url` parts. The agent tool
 `capture_full_page` injects frames into the current task's context.
 
@@ -402,10 +415,11 @@ or auto-detected from an open `*.sharepoint.com` tab. No app registration/token.
 Caveat: the `Editor` managed property must be query-mapped and matching is by display
 name, so the "me" filter isn't a perfect identity match.
 
-**Known sites, skills, app playbooks, memory** (all in `chrome.storage.local`):
-- **Known sites** — a user-curated list (name, URL, description, optional search
-  template). Injected into the system prompt; the agent prefers a site's own search
-  over web search. Managed in Settings; importable as JSON.
+**Hints, skills, app playbooks, memory** (all in `chrome.storage.local`):
+- **Hints** (formerly "Known sites"; key `ba_sites`) — a user-curated list (name, URL,
+  description, optional search template, and optional `mcpUrl`/`mcpToken` to make the
+  entry an MCP server). Injected into the system prompt; the agent prefers a site's own
+  search over web search. Managed in Settings; importable as JSON.
 - **Skills** — Claude-Code-style named instruction blocks (seeded with examples on
   install). The agent loads one with `use_skill`. **App playbooks** are skills with
   an `origin`; the matching site's playbook auto-appears in the prompt. The user
@@ -444,14 +458,15 @@ read that exact bookmarked URL (not a web search).
 - **Tool activity** (`ToolActivityPanel.tsx`): a running log of tool calls and
   outcomes, including approvals (Approve/Deny inline).
 - **Tab-context bar** (`TabContextPanel.tsx`):
-  Snapshot, OCR Page, Refresh; a **repo capture** row — a repo-name box that is a
+  Snapshot, Snapshot Page, Refresh; a **repo capture** row — a repo-name box that is a
   `<datalist>` dropdown of existing repos *and* accepts a new typed name, plus
   **+ Tab** / **+ Group** buttons.
-- **Settings** (`SettingsScreen.tsx`): endpoint base URL, API key (password),
-  model; temperature / max-tokens; **embedding model**; SharePoint base URL; custom
-  instructions; a **Test connection** button; then sections for **Known sites**,
-  **Skills**, **Memory**, **Repositories** (expand a repo to delete individual
-  documents, or delete the whole repo), and **Backup & Restore**
+- **Settings** (`SettingsScreen.tsx`): a **Language** selector (Auto/EN/FR); endpoint
+  base URL, API key (password), model; temperature / max-tokens; **embedding** and
+  **transcription** model/endpoint/key (each service may use its own endpoint+key);
+  SharePoint base URL; custom instructions; a **Test connection** button; then sections
+  for **Hints**, **Skills**, **Memory**, **Repositories** (expand a repo to delete
+  individual documents, or delete the whole repo), and **Backup & Restore**
   (`BackupRestoreSection.tsx`) — export all config (the `ba_*` storage keys) plus
   every repository (`repo_export`, vectors base64-encoded) to one JSON file, and
   restore it (overwrites storage keys; replaces same-name repos via `repo_import`).
@@ -497,11 +512,19 @@ interface Settings {
   systemPrompt?: string; // custom instructions, appended to the built-in prompt
   sharepointBaseUrl?: string; // optional, for sharepoint_search
   embeddingModel?: string;    // optional, for /embeddings (local RAG); defaults to `model`
+  embeddingBaseUrl?: string;  // optional, separate embeddings endpoint; blank = baseUrl
+  embeddingApiKey?: string;   // optional, separate embeddings key; blank = apiKey
+  transcriptionModel?: string;   // optional, enables voice prompts (/audio/transcriptions)
+  transcriptionBaseUrl?: string; // optional, separate STT endpoint; blank = baseUrl
+  transcriptionApiKey?: string;  // optional, separate STT key; blank = apiKey
 }
 ```
 
 Persisted under `ba_settings` in `chrome.storage.local`. The Settings screen trims
-fields and drops empties on save.
+fields and drops empties on save. The UI **language** preference is a separate key
+(`ba_language`: `'auto'|'en'|'fr'`); in-app EN/FR localization lives in
+`src/sidebar/i18n.tsx` (catalogue + `LanguageProvider`/`useT`), with a partial-coverage
+caveat in `technical-debt.md`.
 
 ---
 
