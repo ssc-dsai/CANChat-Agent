@@ -247,12 +247,41 @@ function sheetToCsv(doc: Document, shared: string[]): string {
   return lines.join('\n');
 }
 
+// OOXML files are ZIPs, which start with the bytes "PK". A SharePoint direct
+// path sometimes returns an HTML viewer/redirect instead of the file; detecting
+// the missing ZIP signature lets us retry with a download hint.
+function looksLikeZip(data: ArrayBuffer): boolean {
+  const b = new Uint8Array(data, 0, Math.min(2, data.byteLength));
+  return b[0] === 0x50 && b[1] === 0x4b;
+}
+
+/** Append SharePoint's `download=1` hint so a viewer URL serves the raw file. */
+function withDownloadParam(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.searchParams.has('download')) return null; // already tried
+    u.searchParams.set('download', '1');
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 async function extractOffice(url: string, maxChars?: number): Promise<ExtractOfficeResponse> {
   let data: ArrayBuffer;
   try {
     const res = await fetch(url, { credentials: 'include' });
     if (!res.ok) return { ok: false, error: `Could not fetch the file (HTTP ${res.status}).` };
     data = await res.arrayBuffer();
+    // If the server handed back a viewer/redirect (not a ZIP), retry once asking
+    // for the raw file — common for SharePoint document paths.
+    if (!looksLikeZip(data)) {
+      const retryUrl = withDownloadParam(url);
+      if (retryUrl) {
+        const retry = await fetch(retryUrl, { credentials: 'include' });
+        if (retry.ok) data = await retry.arrayBuffer();
+      }
+    }
   } catch (e) {
     return { ok: false, error: `Could not fetch the file: ${String(e)}` };
   }

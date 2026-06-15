@@ -33,7 +33,7 @@ import type {
   ToolActivity,
 } from '../shared/types';
 import type { DataExport, FileArtifact, MemoryEntry, Settings, SiteEntry, Skill } from '../shared/types';
-import { hostMatches, normalizeHost } from '../shared/url';
+import { documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
@@ -172,11 +172,12 @@ Working method:
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
 - To read a Microsoft Office file (.docx Word, .pptx PowerPoint, .xlsx Excel) — including one the browser just downloaded instead of displaying — call read_office_document, not get_tab_content.
+- Never open_url/navigate to a URL ending in .docx/.pptx/.xlsx/.pdf — the browser downloads the file and you get nothing useful. Pass that URL to read_office_document (Office) or read_pdf (PDF) instead.
 - To work with a video (YouTube or any captioned video on the page) — summarize it, answer about it, find a moment — call get_video_transcript; it reads the page's existing captions instantly. Do not try to watch or listen to the video. If it reports no captions, say so.
 - Some web pages expose their own in-page tools via WebMCP (navigator.modelContext). On the active tab, call list_webmcp_tools to discover them; when one matches the task, prefer call_webmcp_tool over hand-driving the page UI.
 - Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
 - The user can reference a repository (typing #) or a bookmarked page (typing @) in their message; when they do, an explicit instruction is attached — act on it directly: search_repo that exact repository, or open and read that exact URL rather than web-searching for it.
-- For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets) with source URLs plus who created and last modified each file and the modified date. Answer from those snippets and cite the URLs. For "recent files" or "files I edited" requests, pass sortBy:'modified' (newest first) and editedByMe:true (limit to the signed-in user) — query is optional for these. This is the way to do retrieval over the user's document store.
+- For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets) with source URLs plus who created and last modified each file and the modified date. Answer from those snippets and cite the URLs. To summarize or analyze a result's full contents (beyond its snippet), pass that result's url to read_office_document (Office files) or read_pdf (PDFs) — do not navigate to it, which would just download it. For "recent files" or "files I edited" requests, pass sortBy:'modified' (newest first) and editedByMe:true (limit to the signed-in user) — query is optional for these. This is the way to do retrieval over the user's document store.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 
 Answer format:
@@ -1383,15 +1384,25 @@ export class AgentRuntime {
         const contents = await browser.getAllTabContents();
         return JSON.stringify(contents.map((c) => this.contentForModel(c, MULTI_TAB_CHARS)));
       }
-      case 'navigate':
-        return JSON.stringify(await browser.navigate(tabId, String(args.url)));
+      case 'navigate': {
+        const url = String(args.url);
+        // Navigating to an Office/PDF file makes the browser download it (nothing
+        // to render), leaving nothing to process — read it directly instead.
+        const docRead = await this.maybeReadDocumentUrl(url);
+        if (docRead) return docRead;
+        return JSON.stringify(await browser.navigate(tabId, url));
+      }
       case 'search_web': {
         const result = await browser.searchWeb(String(args.query));
         if (result.tabId > 0) await this.addToConversationGroup(result.tabId);
         return JSON.stringify({ ...result, group: this.groupName });
       }
       case 'open_url': {
-        const result = await browser.openUrl(String(args.url));
+        const url = String(args.url);
+        // Same guardrail as navigate: read document URLs rather than downloading them.
+        const docRead = await this.maybeReadDocumentUrl(url);
+        if (docRead) return docRead;
+        const result = await browser.openUrl(url);
         if (result.tabId > 0) await this.addToConversationGroup(result.tabId);
         return JSON.stringify({ ...result, group: this.groupName });
       }
@@ -1761,6 +1772,19 @@ export class AgentRuntime {
     this.plan[step - 1].status = status;
     this.emit({ type: 'plan_update', plan: this.planView() });
     return `Step ${step} marked ${status}.`;
+  }
+
+  /**
+   * If `url` points at an Office or PDF file, read it with the right reader and
+   * return the extracted text — instead of letting open_url/navigate hand it to
+   * the browser, which would download the file and leave nothing to process.
+   * Returns null for ordinary pages so navigation proceeds normally.
+   */
+  private async maybeReadDocumentUrl(url: string): Promise<string | null> {
+    const kind = documentKindForUrl(url);
+    if (kind === 'office') return browser.readOfficeDocument(undefined, url);
+    if (kind === 'pdf') return browser.readPdf(undefined, url);
+    return null;
   }
 
   private exportData(args: Record<string, unknown>): string {

@@ -10,6 +10,24 @@ export function normalizeHost(input: string): string {
   return host;
 }
 
+/**
+ * Classify a URL by file type so the agent reads documents instead of navigating
+ * to them (the browser downloads Office/PDF files rather than rendering, leaving
+ * nothing to process). Tests the path extension only, ignoring any query string
+ * (e.g. SharePoint's `…/Report.pptx?web=1`). Returns null for normal web pages.
+ */
+export function documentKindForUrl(url: string): 'office' | 'pdf' | null {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (/\.(docx?|docm|pptx?|pptm|xlsx?|xlsm)$/.test(pathname)) return 'office';
+  if (/\.pdf$/.test(pathname)) return 'pdf';
+  return null;
+}
+
 /** True when an active tab's host belongs to a playbook's origin (incl. subdomains). */
 export function hostMatches(tabHost: string, origin: string): boolean {
   const a = normalizeHost(tabHost);
