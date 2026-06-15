@@ -10,7 +10,7 @@ export interface McpTool {
 }
 
 const PROTOCOL_VERSION = '2025-06-18';
-const CLIENT_INFO = { name: 'CANAgent', version: '0.1.0' };
+const CLIENT_INFO = { name: 'CANChat Agent', version: '0.1.0' };
 
 // endpoint -> negotiated session id (servers that use sessions return one).
 const sessions = new Map<string, string>();

@@ -126,12 +126,12 @@ export function exportConversationHtml(messages: ChatMessageView[]): void {
   const html =
     `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">\n` +
-    `<title>CANAgent conversation — ${escapeHtml(now.toISOString().slice(0, 10))}</title>\n` +
+    `<title>CANChat Agent conversation — ${escapeHtml(now.toISOString().slice(0, 10))}</title>\n` +
     `<style>${STYLE}</style>\n</head>\n<body>\n<div class="wrap">\n` +
-    `<div class="doc-head"><h1>CANAgent conversation</h1>` +
+    `<div class="doc-head"><h1>CANChat Agent conversation</h1>` +
     `<div class="meta">Exported ${escapeHtml(exportedAt)} · ${messages.length} message${messages.length === 1 ? '' : 's'}</div></div>\n` +
     body +
     `\n</div>\n</body>\n</html>\n`;
 
-  downloadBlob(html, 'text/html', `canagent-conversation-${now.toISOString().slice(0, 10)}.html`);
+  downloadBlob(html, 'text/html', `canchat-agent-conversation-${now.toISOString().slice(0, 10)}.html`);
 }

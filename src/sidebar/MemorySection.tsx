@@ -157,7 +157,7 @@ export function MemorySection() {
             <textarea
               class="chat-input"
               rows={3}
-              placeholder="Works on a browser-agent extension called CANAgent"
+              placeholder="Works on a browser-agent extension called CANChat Agent"
               value={draft}
               onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
             />

@@ -211,7 +211,7 @@ export function Sidebar() {
     <div class="sidebar">
       <header class="header">
         <div class="brand">
-          <span class="title">CANAssist</span>
+          <span class="title">CANChat Agent</span>
           <span class="app-version" title="Build stamp (UTC): YY DDD HH">{__APP_VERSION__}</span>
         </div>
         <span class={`status status-${status}`}>

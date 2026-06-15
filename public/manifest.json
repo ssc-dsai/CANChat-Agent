@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "CANAgent",
+  "name": "CANChat Agent",
   "version": "0.1.0",
   "description": "An agent that uses your browser as its tool environment. Ask questions about pages, tabs, and the web from the side panel.",
   "minimum_chrome_version": "116",
@@ -40,7 +40,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Open CANAgent",
+    "default_title": "Open CANChat Agent",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

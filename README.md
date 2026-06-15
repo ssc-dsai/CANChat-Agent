@@ -1,6 +1,6 @@
-# CANAgent — User Manual
+# CANChat Agent — User Manual
 
-CANAgent is a Chromium extension that puts an AI agent in your browser's side panel and gives it **the browser itself as its toolset**. Instead of calling external APIs, the agent does what you would do: it opens tabs, runs searches through your default search engine, reads pages (including pages behind your existing logins), and synthesizes answers — pausing for your approval before anything state-changing, and pausing for you whenever a site wants a login.
+CANChat Agent is a Chromium extension that puts an AI agent in your browser's side panel and gives it **the browser itself as its toolset**. Instead of calling external APIs, the agent does what you would do: it opens tabs, runs searches through your default search engine, reads pages (including pages behind your existing logins), and synthesizes answers — pausing for your approval before anything state-changing, and pausing for you whenever a site wants a login.
 
 You bring your own model: any OpenAI-compatible endpoint works, from OpenAI's API to a local Ollama instance. Nothing ships preconfigured and your API key never leaves your machine.
 
@@ -72,13 +72,13 @@ Then load it in Chrome (or any Chromium browser):
 1. Open `chrome://extensions`.
 2. Enable **Developer mode** (top right).
 3. Click **Load unpacked** and select the `dist/` folder.
-4. Click the CANAgent toolbar icon to open the side panel.
+4. Click the CANChat Agent toolbar icon to open the side panel.
 
 After any rebuild, click the reload icon on the extension card in `chrome://extensions`.
 
 ## 3. Connecting a model
 
-CANAgent ships with no provider, no key, and no model. Until you configure one, the sidebar shows a "No model configured" banner and the agent refuses to run.
+CANChat Agent ships with no provider, no key, and no model. Until you configure one, the sidebar shows a "No model configured" banner and the agent refuses to run.
 
 Click the **⚙ gear icon** in the sidebar header and fill in:
 
@@ -106,7 +106,7 @@ Notes:
 
 ### 4.1 Header
 
-**CANAgent · status pill · 🗑 · ⚙**
+**CANChat Agent · status pill · 🗑 · ⚙**
 
 The status pill is color-coded: neutral **Idle**, blue **Thinking…/Using browser…**, amber **Paused / Waiting for approval / Login required**, red **Error**.
 
@@ -221,12 +221,12 @@ Honest limits: your endpoint must expose an `/embeddings` route (set a separate 
 
 ## 4⅞½. Backup & restore
 
-Everything CANAgent stores on your device — your **endpoint settings**, **language**, **hints**, **skills/app playbooks**, **memory**, and all your **repositories** (text + vectors) — can be saved to a single JSON file and restored later or on another machine. Use it before reinstalling, to move your setup to a new device, or to share a starter configuration with a colleague.
+Everything CANChat Agent stores on your device — your **endpoint settings**, **language**, **hints**, **skills/app playbooks**, **memory**, and all your **repositories** (text + vectors) — can be saved to a single JSON file and restored later or on another machine. Use it before reinstalling, to move your setup to a new device, or to share a starter configuration with a colleague.
 
 - **Settings → Backup & Restore → Export backup** downloads `canagent-backup-<date>.json`. By default it includes your **API key**, so the file holds a live credential — store it securely. Untick **Include API key** to export everything except the key.
 - **Restore from file…** reads a backup and **overwrites** your current settings, hints, skills, and memory, and **replaces any repository with the same name** (others are left alone). You're asked to confirm first; the panel reloads when it's done.
 
-It's a plain JSON file with no backend — nothing is uploaded; the only network traffic CANAgent ever makes is to your model endpoint.
+It's a plain JSON file with no backend — nothing is uploaded; the only network traffic CANChat Agent ever makes is to your model endpoint.
 
 ## 5. Hints — the agent's address book
 
@@ -328,7 +328,7 @@ A **skill** is a named, saved procedure — modeled on Claude Code's skills. It 
 
 ### 6.2 Progressive disclosure — how skills stay cheap
 
-Skill bodies can be long; sending all of them with every message would bloat each request. CANAgent uses the same trick Claude Code does:
+Skill bodies can be long; sending all of them with every message would bloat each request. CANChat Agent uses the same trick Claude Code does:
 
 - The model **always** sees the skill *names and descriptions* — a few tokens each, in every task's instructions.
 - A skill's *body* is loaded **only when needed**, via the `use_skill` tool. The model reads "research — research a question on the web…", decides it matches your request, calls `use_skill("research")`, gets the full procedure back as a tool result, and follows it.
@@ -445,7 +445,7 @@ The mechanics:
 - **Always asks first:** reading all tabs at once, clicking anything, typing into any field, submitting any form. Each request appears as an approval card naming the exact element and tab.
 - **Read-only default:** everything else the agent does is observation.
 - **Auth pause:** the agent never tries to get around a login — it detects login walls (URL patterns, password fields, sign-in text, known identity providers like Okta/Auth0/Microsoft/Google/Atlassian) and waits for you.
-- **Fallback re-grant card:** if you restrict the extension's site access manually (`chrome://extensions` → CANAgent → Details → Site access), the agent pauses with an inline **Allow this site / Allow all sites** card instead of failing.
+- **Fallback re-grant card:** if you restrict the extension's site access manually (`chrome://extensions` → CANChat Agent → Details → Site access), the agent pauses with an inline **Allow this site / Allow all sites** card instead of failing.
 - **Bookmarks** (`bookmarks` permission): used read-only, only to power the `@` bookmark picker in the chat input. The extension never modifies your bookmarks.
 - **Offscreen document** (`offscreen` permission): a hidden page created on demand to run pdf.js for `read_pdf` and an OOXML unzip/parse for `read_office_document`. No data leaves the device; it fetches the file with your existing session so cookie-gated PDFs and Office files work. Office support covers OOXML only (`.docx`/`.pptx`/`.xlsx`); legacy binary `.doc`/`.xls`/`.ppt` are not supported, and spreadsheets return raw cell values (not formatted/computed display).
 - **Tab groups** (`tabGroups` permission): used to collect the tabs the agent opens into a named per-conversation group. The extension never reads or closes tabs you opened yourself unless you ask.

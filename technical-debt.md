@@ -1,7 +1,7 @@
-# CANAgent — Technical Debt & Known Limitations
+# CANChat Agent — Technical Debt & Known Limitations
 
 A running register of the honest caveats and "good enough for now, revisit when…"
-trade-offs accepted while building CANAgent. Each entry notes **where** it lives,
+trade-offs accepted while building CANChat Agent. Each entry notes **where** it lives,
 **why it's acceptable today**, the **trigger** that should make us revisit it, and a
 **suggested fix**. Most of these are deliberate scope choices for a personal /
 small-team tool, not bugs.

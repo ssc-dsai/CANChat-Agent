@@ -1536,7 +1536,7 @@ export class AgentRuntime {
 
   private async pauseForPermission(origin: string): Promise<void> {
     if (this.stopRequested) return;
-    const message = `CANAgent needs access to ${origin.replace(/^https?:\/\//, '')} to read this page. Allow it to continue.`;
+    const message = `CANChat Agent needs access to ${origin.replace(/^https?:\/\//, '')} to read this page. Allow it to continue.`;
     this.setStatus('awaiting_approval', message);
     this.emit({ type: 'permission_required', origin, message });
     this.notice(message);

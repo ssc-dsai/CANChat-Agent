@@ -1,13 +1,13 @@
-# A Guide to Skills in CANAgent
+# A Guide to Skills in CANChat Agent
 
-CANAgent can do a lot out of the box — it reads pages, drives web apps, searches your
+CANChat Agent can do a lot out of the box — it reads pages, drives web apps, searches your
 SharePoint, and answers from on-device repositories. **Skills** let you capture a way of
 working and reuse it: a saved, named procedure the agent follows whenever a matching task
 comes up.
 
 This guide explains what a skill is, how skills get triggered, the full catalogue of
 built-in tools a skill can use, how to write a good one, and — honestly — what "adding a
-new tool" does and doesn't mean in CANAgent.
+new tool" does and doesn't mean in CANChat Agent.
 
 > New here? Start with the [README](README.md) for setup and the overall feature tour, and
 > [docs/TRAINING.md](docs/TRAINING.md) if you're a Government of Canada user (classification
@@ -61,7 +61,7 @@ keeps the agent fast even if you have many skills.
 
 3. **As an app playbook.** If a skill has a **Site** set, its full instructions inject
    automatically whenever your active tab is on that host — no typing needed. This is how
-   CANAgent "knows how to drive" Gmail, Outlook, MarineTraffic, etc. when you're on those
+   CANChat Agent "knows how to drive" Gmail, Outlook, MarineTraffic, etc. when you're on those
    sites.
 
 4. **As a toolbar button.** Give a skill a **button label** and tick **"Show as a button"** in
@@ -148,7 +148,7 @@ tool roster; you don't install or import any of it.
 ### Memory *(only when you enable persistent memory)*
 - `save_memory` / `update_memory` / `delete_memory` — keep durable facts about you (never secrets or page content).
 
-> The definitive list lives in the source at `src/shared/schemas.ts`. If you build CANAgent
+> The definitive list lives in the source at `src/shared/schemas.ts`. If you build CANChat Agent
 > from a newer revision, check there for additions.
 
 ---

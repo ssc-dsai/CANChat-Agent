@@ -17,7 +17,8 @@ async function collectConversationStorage(): Promise<Record<string, unknown>> {
 }
 
 interface Backup {
-  app: 'CANAgent';
+  // Current exports tag 'CANChat Agent'; legacy files tagged 'CANAgent' still restore.
+  app: 'CANChat Agent' | 'CANAgent';
   kind: 'backup';
   version: number;
   exportedAt: string;
@@ -57,7 +58,7 @@ export function BackupRestoreSection() {
       }
       const repos = (await chrome.runtime.sendMessage({ type: 'repo_export' })) as ExportedRepo[];
       const backup: Backup = {
-        app: 'CANAgent',
+        app: 'CANChat Agent',
         kind: 'backup',
         version: 1,
         exportedAt: new Date().toISOString(),
@@ -67,7 +68,7 @@ export function BackupRestoreSection() {
       const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: 'application/json' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `canagent-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `canchat-agent-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       const n = backup.repos.length;
@@ -86,8 +87,8 @@ export function BackupRestoreSection() {
     setMessage(null);
     try {
       const data = JSON.parse(await file.text()) as Partial<Backup>;
-      if (data?.app !== 'CANAgent' || data?.kind !== 'backup') {
-        throw new Error('Not a CANAgent backup file.');
+      if ((data?.app !== 'CANChat Agent' && data?.app !== 'CANAgent') || data?.kind !== 'backup') {
+        throw new Error('Not a CANChat Agent backup file.');
       }
       const ok = window.confirm(
         'Restore will overwrite your current settings, hints, skills, and memory, and replace any repositories with the same name. Continue?',

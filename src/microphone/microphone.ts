@@ -14,7 +14,7 @@ async function requestMic(): Promise<void> {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     // We only needed the grant — release the device immediately.
     stream.getTracks().forEach((t) => t.stop());
-    statusEl.textContent = 'Microphone enabled. Return to CANAgent and tap the mic again — you can close this tab.';
+    statusEl.textContent = 'Microphone enabled. Return to CANChat Agent and tap the mic again — you can close this tab.';
     statusEl.classList.add('ok');
     button.disabled = true;
   } catch {

@@ -1,6 +1,6 @@
-# CANAgent — Specification
+# CANChat Agent — Specification
 
-A build-from-scratch specification for **CANAgent**: a Chromium Manifest V3 browser
+A build-from-scratch specification for **CANChat Agent**: a Chromium Manifest V3 browser
 extension that puts an AI agent in the browser **side panel** and uses the
 **authenticated browser itself as the agent's tool environment**. The agent reads
 pages and tabs, drives web apps, searches the open web and the user's own systems,
@@ -61,7 +61,7 @@ Dependencies: `preact`, `marked`, `dompurify`, `pdfjs-dist`. Dev: `vite`,
 ```jsonc
 {
   "manifest_version": 3,
-  "name": "CANAgent",
+  "name": "CANChat Agent",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -71,7 +71,7 @@ Dependencies: `preact`, `marked`, `dompurify`, `pdfjs-dist`. Dev: `vite`,
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "serviceWorker.js", "type": "module" },
   "side_panel": { "default_path": "sidebar.html" },
-  "action": { "default_title": "Open CANAgent", "default_icon": { … } },
+  "action": { "default_title": "Open CANChat Agent", "default_icon": { … } },
   "icons": { "16": …, "32": …, "48": …, "128": … }
 }
 ```
@@ -80,7 +80,7 @@ Dependencies: `preact`, `marked`, `dompurify`, `pdfjs-dist`. Dev: `vite`,
   needs broad host access to be useful, and staged prompts mid-task are jarring.
 - Clicking the toolbar action opens the side panel
   (`chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`).
-- Icon: a maple-leaf mark (the "CAN" in CANAgent), four sizes.
+- Icon: a maple-leaf mark (the "CAN" in CANChat Agent), four sizes.
 
 Permission roles: `sidePanel` (UI surface) · `tabs`/`activeTab`/`scripting`
 (read & drive pages) · `search` (default search engine) · `bookmarks` (@-mention

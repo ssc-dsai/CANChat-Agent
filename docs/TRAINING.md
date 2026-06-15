@@ -1,11 +1,11 @@
-# CANAgent — User Training Script
+# CANChat Agent — User Training Script
 
 **Audience:** Government of Canada employees (program, policy, corporate, and analyst roles)
 **Format:** Instructor-led or self-paced
 **Duration:** ~90 minutes (60 min core + 30 min hands-on use cases)
 **Prerequisites:** A Chromium browser (Chrome or Edge), and an **approved** OpenAI-compatible model endpoint provided by your department (base URL + API key + model name). See **Module 0 — Security & Compliance** before configuring anything.
 
-> CANAgent is a browser side-panel AI assistant that uses *your already-signed-in browser* as its toolset. It can read the page you're on, your open tabs, PDFs and Office files, search your SharePoint, and build small on-device document libraries you can ask questions against. It is sometimes referred to internally as "CANAssist" — the panel and toolbar say **CANAgent**.
+> CANChat Agent is a browser side-panel AI assistant that uses *your already-signed-in browser* as its toolset. It can read the page you're on, your open tabs, PDFs and Office files, search your SharePoint, and build small on-device document libraries you can ask questions against. The panel and toolbar say **CANChat Agent**.
 
 ---
 
@@ -23,28 +23,28 @@ If self-paced, just follow the **Do** and **Check** items.
 ## Module 0 — Security & Compliance (do not skip)
 
 **🎙 Say:**
-CANAgent is powerful *because* it can see what you can see and send it to an AI model. That is exactly why we start here. Three facts shape everything you do with it:
+CANChat Agent is powerful *because* it can see what you can see and send it to an AI model. That is exactly why we start here. Three facts shape everything you do with it:
 
 1. **Where your data goes.** Whatever the agent reads to answer you — the page text, your prompt, a document's contents — is sent to the **model endpoint configured in Settings**. Choose that endpoint deliberately.
 2. **What stays local.** Your API key, your saved settings, your on-device "repositories" (document libraries), and their search index live **only in this browser profile on this device**. They are not synced to the cloud. *However*, building a repository sends each document's text to the endpoint once (to compute embeddings).
 3. **It acts as you.** The agent uses your authenticated sessions — SharePoint, email, internal apps. It can only see what your account can see, and it must **ask your approval before any action that changes something** (clicking, submitting, running code).
 4. **Other places data can go (newer features).** *Voice prompts* send your recorded **audio** to the transcription endpoint you configure (which may be separate from the chat endpoint) — approve it for the classification of what you dictate. *MCP servers* and *WebMCP* let the agent call **external tools**: an MCP-server "Hint" receives whatever the agent sends to its tools, and a page's in-page WebMCP tools run with your session. Both call types are approval-gated — read the approval card before allowing them, and only use tool servers your department permits.
 
-**Departmental rules come first.** Before using CANAgent on any real work:
+**Departmental rules come first.** Before using CANChat Agent on any real work:
 - Follow the **TBS *Guide on the use of generative AI*** and **your department's GenAI direction**. If your department has not authorized a generative-AI tool for a given activity, do not use it for that activity.
-- **Know your classification.** Only point CANAgent at an endpoint that is **approved for the classification of the information you are handling** (Unclassified, Protected A, Protected B, etc.). Do **not** send Protected or sensitive information to a public/commercial AI service unless your department has formally assessed and approved that service for that purpose. When in doubt, prefer a **departmental or on-premises ("sovereign") endpoint**.
+- **Know your classification.** Only point CANChat Agent at an endpoint that is **approved for the classification of the information you are handling** (Unclassified, Protected A, Protected B, etc.). Do **not** send Protected or sensitive information to a public/commercial AI service unless your department has formally assessed and approved that service for that purpose. When in doubt, prefer a **departmental or on-premises ("sovereign") endpoint**.
 - **Human in the loop.** Treat every output as a *draft from a fallible assistant*. Verify facts against the cited sources. You remain accountable for anything you act on or send.
 - **Records & ATIP.** Outputs you rely on for a decision may be subject to information-management and access-to-information obligations — manage them like any other work record.
-- **Official languages.** The **interface** can be set to English or French (Settings → Language; the French is a draft pending review and not yet complete). For *content*, CANAgent can help draft or summarize in English and French, but it is **not** a substitute for the Translation Bureau for authoritative or published translations. Always have a human review bilingual output.
+- **Official languages.** The **interface** can be set to English or French (Settings → Language; the French is a draft pending review and not yet complete). For *content*, CANChat Agent can help draft or summarize in English and French, but it is **not** a substitute for the Translation Bureau for authoritative or published translations. Always have a human review bilingual output.
 
-**✅ Check:** *In one sentence — when you ask CANAgent to summarize a document, where does that document's text go?* (Answer: to the model endpoint configured in Settings — so that endpoint must be approved for the document's classification.)
+**✅ Check:** *In one sentence — when you ask CANChat Agent to summarize a document, where does that document's text go?* (Answer: to the model endpoint configured in Settings — so that endpoint must be approved for the document's classification.)
 
 ---
 
-## Module 1 — What CANAgent is, and the mental model
+## Module 1 — What CANChat Agent is, and the mental model
 
 **🎙 Say:**
-Think of CANAgent as a capable assistant sitting in a panel beside your browser. You give it a goal in plain language; it decides which browser "tools" to use — reading the current tab, opening search results, reading a PDF, searching SharePoint — and comes back with an answer, usually with source links. For multi-step tasks it shows a **plan** and a running **tool activity** log so you can see what it's doing. It is **not** a chatbot disconnected from your work; its whole point is to operate on the pages and documents in front of you.
+Think of CANChat Agent as a capable assistant sitting in a panel beside your browser. You give it a goal in plain language; it decides which browser "tools" to use — reading the current tab, opening search results, reading a PDF, searching SharePoint — and comes back with an answer, usually with source links. For multi-step tasks it shows a **plan** and a running **tool activity** log so you can see what it's doing. It is **not** a chatbot disconnected from your work; its whole point is to operate on the pages and documents in front of you.
 
 What it can do, at a glance:
 - Answer questions about the **current tab** or **several open tabs**.
@@ -54,7 +54,7 @@ What it can do, at a glance:
 - Build small **on-device document libraries** ("repositories") and answer questions from them with citations.
 - **Extract tables** to CSV/JSON, **operate web apps** (with your approval for any change), and learn **playbooks** for sites you use often.
 
-**✅ Check:** *Name two things CANAgent can read that a normal copy-paste into a chatbot could not easily handle.* (e.g., a cookie-gated PDF you're logged into; an Excel file the browser downloads; your SharePoint search results.)
+**✅ Check:** *Name two things CANChat Agent can read that a normal copy-paste into a chatbot could not easily handle.* (e.g., a cookie-gated PDF you're logged into; an Excel file the browser downloads; your SharePoint search results.)
 
 ---
 
@@ -68,7 +68,7 @@ What it can do, at a glance:
 2. Open `chrome://extensions` (or `edge://extensions`).
 3. Turn on **Developer mode** (top-right).
 4. Click **Load unpacked** and select the `dist/` folder.
-5. Pin **CANAgent** to the toolbar, then click its icon to open the **side panel**.
+5. Pin **CANChat Agent** to the toolbar, then click its icon to open the **side panel**.
 
 **🧑‍💻 Do — configure your model (one time):**
 1. In the side panel, click the **gear (Settings)** icon.
@@ -88,7 +88,7 @@ What it can do, at a glance:
 ## Module 3 — Interface tour
 
 **🎙 Say / 🧑‍💻 Do (point each out):**
-- **Header:** the CANAgent title and a live **status** (idle / thinking / acting), a **text-size** control (A− / A+), a **clear-conversation** (trash) button — which also stops a running task — and the **Settings** gear.
+- **Header:** the CANChat Agent title and a live **status** (idle / thinking / acting), a **text-size** control (A− / A+), a **clear-conversation** (trash) button — which also stops a running task — and the **Settings** gear.
 - **Tab-context bar** (under the header):
   - **Snapshot** — capture the visible part of the current tab as an *image* for the model (for dashboards/charts the text tools can't read). *Needs a vision-capable model.*
   - **Snapshot Page** — scroll-and-capture the *whole* page as images (for long or canvas-rendered pages). *Vision model, token-heavy — a last resort.*
@@ -113,7 +113,7 @@ What it can do, at a glance:
 
 **🧑‍💻 Do — guided web research:**
 1. Ask: *"Find the current federal public service mental-health support offerings and summarize the main programs, with sources."*
-2. Watch CANAgent open results into a **named tab group** (e.g. "Heron") and read across them. It will mention the group name; you can later say *"summarize the pages in the Heron group."*
+2. Watch CANChat Agent open results into a **named tab group** (e.g. "Heron") and read across them. It will mention the group name; you can later say *"summarize the pages in the Heron group."*
 
 **🎙 Say:** Notice it **cites sources** and uses the site's own pages rather than guessing. Always click through and verify before relying on anything.
 
@@ -124,7 +124,7 @@ What it can do, at a glance:
 ## Module 5 — Documents: PDFs and Office files
 
 **🎙 Say:**
-The browser shows PDFs as an image and *downloads* Office files — so neither is readable by ordinary page tools. CANAgent has dedicated readers that fetch the file with your signed-in session and extract the text.
+The browser shows PDFs as an image and *downloads* Office files — so neither is readable by ordinary page tools. CANChat Agent has dedicated readers that fetch the file with your signed-in session and extract the text.
 
 **🧑‍💻 Do:**
 1. Open (or have a link to) a long **PDF** — e.g. a Treasury Board directive. Ask: *"What are the key requirements and who do they apply to?"* (`read_pdf`)
@@ -134,14 +134,14 @@ The browser shows PDFs as an image and *downloads* Office files — so neither i
 
 **🎙 Say (limits):** Scanned/image-only PDFs have no text layer (use **Snapshot/OCR + a vision model**). Legacy `.doc/.xls/.ppt` are not supported — re-save as the modern format. Spreadsheets give raw values, not formatted/computed display, so check numbers and dates.
 
-**✅ Check:** *A colleague sends a `.pptx` that your browser downloads. How do you get CANAgent to read it?* (Open/point it at the file and ask — it uses `read_office_document`.)
+**✅ Check:** *A colleague sends a `.pptx` that your browser downloads. How do you get CANChat Agent to read it?* (Open/point it at the file and ask — it uses `read_office_document`.)
 
 ---
 
 ## Module 6 — SharePoint: find and summarize your documents
 
 **🎙 Say:**
-Using your existing SharePoint session (no extra sign-in or app registration), CANAgent can search your sites and return passages with the source links — including **who created/modified** each file and **when**.
+Using your existing SharePoint session (no extra sign-in or app registration), CANChat Agent can search your sites and return passages with the source links — including **who created/modified** each file and **when**.
 
 **🧑‍💻 Do:**
 1. Make sure you're signed into SharePoint in the browser (and the **SharePoint base URL** is set in Settings, or a SharePoint tab is open).
@@ -151,14 +151,14 @@ Using your existing SharePoint session (no extra sign-in or app registration), C
 
 **🎙 Say (limits):** It only sees what **you** are allowed to see. The "files I edited" filter relies on your tenant's search configuration and matches by display name, so treat it as a strong hint, not a perfect audit. Snippets are short — for deep analysis, open the document or ingest it into a repository (next module).
 
-**✅ Check:** *True or false: CANAgent can see SharePoint files your account has no access to.* (False — it uses your session.)
+**✅ Check:** *True or false: CANChat Agent can see SharePoint files your account has no access to.* (False — it uses your session.)
 
 ---
 
 ## Module 7 — On-device repositories (your private, searchable library)
 
 **🎙 Say:**
-A **repository** is a small, on-device library of documents you've captured. CANAgent chunks each one, computes embeddings (via your endpoint), and stores the text + index **locally** so you can ask questions across all of them and get answers **with citations**. Great for a set of directives, a program's reference pages, or a stack of reports you keep returning to.
+A **repository** is a small, on-device library of documents you've captured. CANChat Agent chunks each one, computes embeddings (via your endpoint), and stores the text + index **locally** so you can ask questions across all of them and get answers **with citations**. Great for a set of directives, a program's reference pages, or a stack of reports you keep returning to.
 
 > **Compliance reminder:** building a repository sends each document's text to your endpoint once (for embeddings). Only ingest material that is appropriate for that endpoint's approved classification.
 
@@ -186,14 +186,14 @@ A **repository** is a small, on-device library of documents you've captured. CAN
 - On a page or report with tabular data: *"Extract the program, lead, and due date into a table."* You'll get a **download card** with **CSV** and **JSON** buttons for your tracker.
 
 **🧑‍💻 Do — teach a site (app playbook):**
-- On an internal tool you use often, type **`/learn`**. CANAgent explores the app and saves a reusable **playbook**, so next time it knows how to operate that tool. Review what it saved.
+- On an internal tool you use often, type **`/learn`**. CANChat Agent explores the app and saves a reusable **playbook**, so next time it knows how to operate that tool. Review what it saved.
 
 **🧑‍💻 Do — operate a web app (with approval):**
-- Ask it to perform a UI action (e.g., *"open the most recent item in this list"*). For anything that **changes state** (clicking, submitting, running code), CANAgent shows an **approval card** explaining *what* and *why* — read it, then **Approve** or **Deny**. Approve deliberately.
+- Ask it to perform a UI action (e.g., *"open the most recent item in this list"*). For anything that **changes state** (clicking, submitting, running code), CANChat Agent shows an **approval card** explaining *what* and *why* — read it, then **Approve** or **Deny**. Approve deliberately.
 
 **🎙 Say — memory (optional, off by default):** In Settings you can enable a small persistent **memory** (e.g., your role, preferred style). Keep it free of sensitive specifics.
 
-**✅ Check:** *Before CANAgent submits a form on your behalf, what happens?* (It pauses and asks you to approve, with a plain-language reason.)
+**✅ Check:** *Before CANChat Agent submits a form on your behalf, what happens?* (It pauses and asks you to approve, with a plain-language reason.)
 
 ---
 
@@ -254,4 +254,4 @@ Use these as ready-made practice scenarios. Adapt the wording to your program. *
 
 **Materials to prepare:** an approved endpoint's base URL/key/model; a sample PDF, `.docx`, `.pptx`, `.xlsx`; access to a non-sensitive SharePoint site; a couple of Canada.ca pages.
 
-**Close with:** the **Do's and Don'ts** card and a reminder that **accountability stays with the employee** — CANAgent is an assistant, not an authority.
+**Close with:** the **Do's and Don'ts** card and a reminder that **accountability stays with the employee** — CANChat Agent is an assistant, not an authority.
