@@ -59,42 +59,72 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
+  background: linear-gradient(var(--bg-panel), var(--bg));
 }
 
 .brand {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  line-height: 1.15;
+  gap: 3px;
+  line-height: 1.1;
+}
+
+.brand-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .title {
   font-weight: 700;
-  font-size: 16px;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .app-version {
+  align-self: flex-start;
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
-  letter-spacing: 0.04em;
+  background: var(--bg-input);
+  border-radius: 5px;
+  padding: 1px 6px;
 }
 
 .status {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 4px 12px;
-  border-radius: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
   background: var(--bg-input);
-  color: var(--text);
+  color: var(--text-dim);
   white-space: nowrap;
+}
+
+.status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
 }
 
 .status-thinking,
 .status-acting {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
 }
 
@@ -122,21 +152,43 @@ body {
   color: var(--error);
 }
 
+/* Right-hand control cluster */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.header-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
 .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  padding: 4px 6px;
+  line-height: 0;
+  padding: 7px;
+  border-radius: 8px;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-/* Text-size control */
+/* Text-size control — a single segmented pill */
 .scale-ctl {
   display: flex;
   align-items: center;
   gap: 1px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
 }
 .scale-btn,
 .scale-val {
@@ -145,28 +197,30 @@ body {
   color: var(--text-dim);
   cursor: pointer;
   line-height: 1;
-  padding: 3px 4px;
-  border-radius: 5px;
+  padding: 3px 5px;
+  border-radius: 6px;
 }
 .scale-btn {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
 }
 .scale-val {
   font-size: 10px;
-  min-width: 30px;
+  min-width: 34px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .scale-btn:hover,
 .scale-val:hover {
   color: var(--text);
-  background: var(--bg-input);
+  background: var(--bg);
 }
 .icon-btn:hover:not(:disabled) {
   color: var(--text);
+  background: var(--bg-input);
 }
 .icon-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: default;
 }
 

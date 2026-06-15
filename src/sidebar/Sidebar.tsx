@@ -79,6 +79,47 @@ function StatusLabel({ status }: { status: AgentStatus }) {
   );
 }
 
+// Monochrome line icons (Feather-style, MIT) used in the header. They inherit
+// the button's currentColor so they match the theme and hover states — far
+// tidier than the multi-colour emoji they replace.
+const svgProps = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  'stroke-width': 2,
+  'stroke-linecap': 'round' as const,
+  'stroke-linejoin': 'round' as const,
+};
+const IconHistory = () => (
+  <svg {...svgProps}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </svg>
+);
+const IconSave = () => (
+  <svg {...svgProps}>
+    <path d="M12 3v12" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M5 21h14" />
+  </svg>
+);
+const IconTrash = () => (
+  <svg {...svgProps}>
+    <path d="M4 7h16" />
+    <path d="M9 7V4h6v3" />
+    <path d="m6 7 1 13h10l1-13" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
+const IconSettings = () => (
+  <svg {...svgProps}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
 export function Sidebar() {
   const portRef = useRef<chrome.runtime.Port | null>(null);
   const [status, setStatus] = useState<AgentStatus>('idle');
@@ -211,45 +252,50 @@ export function Sidebar() {
     <div class="sidebar">
       <header class="header">
         <div class="brand">
-          <span class="title">CANChat Agent</span>
+          <div class="brand-line">
+            <span class="title">CANChat Agent</span>
+            <span class={`status status-${status}`}>
+              <StatusLabel status={status} />
+            </span>
+          </div>
           <span class="app-version" title="Build stamp (UTC): YY DDD HH">{__APP_VERSION__}</span>
         </div>
-        <span class={`status status-${status}`}>
-          <StatusLabel status={status} />
-        </span>
-        <span class="scale-ctl">
-          <button class="scale-btn" title={t('header.smallerText')} onClick={() => applyScale(uiScale - 0.1)}>
-            A−
+        <div class="header-controls">
+          <span class="scale-ctl">
+            <button class="scale-btn" title={t('header.smallerText')} onClick={() => applyScale(uiScale - 0.1)}>
+              A−
+            </button>
+            <button class="scale-val" title={t('header.resetText')} onClick={() => applyScale(1)}>
+              {Math.round(uiScale * 100)}%
+            </button>
+            <button class="scale-btn" title={t('header.largerText')} onClick={() => applyScale(uiScale + 0.1)}>
+              A+
+            </button>
+          </span>
+          <span class="header-divider" />
+          <button class="icon-btn" title={t('header.history')} onClick={() => setShowHistory(true)}>
+            <IconHistory />
           </button>
-          <button class="scale-val" title={t('header.resetText')} onClick={() => applyScale(1)}>
-            {Math.round(uiScale * 100)}%
+          <button
+            class="icon-btn"
+            title={t('header.saveConversation')}
+            onClick={() => exportConversationHtml(messages)}
+            disabled={messages.length === 0}
+          >
+            <IconSave />
           </button>
-          <button class="scale-btn" title={t('header.largerText')} onClick={() => applyScale(uiScale + 0.1)}>
-            A+
+          <button
+            class="icon-btn"
+            title={t('header.clearConversation')}
+            onClick={() => send({ type: 'clear_conversation' })}
+            disabled={messages.length === 0}
+          >
+            <IconTrash />
           </button>
-        </span>
-        <button class="icon-btn" title={t('header.history')} onClick={() => setShowHistory(true)}>
-          🕘
-        </button>
-        <button
-          class="icon-btn"
-          title={t('header.saveConversation')}
-          onClick={() => exportConversationHtml(messages)}
-          disabled={messages.length === 0}
-        >
-          💾
-        </button>
-        <button
-          class="icon-btn"
-          title={t('header.clearConversation')}
-          onClick={() => send({ type: 'clear_conversation' })}
-          disabled={messages.length === 0}
-        >
-          🗑
-        </button>
-        <button class="icon-btn" title={t('header.settings')} onClick={() => setShowSettings(true)}>
-          ⚙
-        </button>
+          <button class="icon-btn" title={t('header.settings')} onClick={() => setShowSettings(true)}>
+            <IconSettings />
+          </button>
+        </div>
       </header>
 
       {errorBanner && (
