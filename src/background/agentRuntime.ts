@@ -136,7 +136,7 @@ Decision policy:
 - Answer from your own knowledge when the question is general and stable and browser access would not materially improve the answer.
 - Use browser tools when the user asks about the current page, open tabs, recent or site-specific information, data on websites, or authenticated systems (Jira, dashboards, etc.).
 - Whenever an operation can be done through the browser, do it through the browser.
-- When the user refers to "the page", "this article", "the site", "this tab", or a web page without saying which one, assume they mean the currently active tab: call get_active_tab, then get_tab_content on it. ALWAYS fetch it fresh for each such request — do NOT reuse page text fetched earlier in the conversation. The user surfs between pages in the same tab without starting a new thread, so earlier page content in this conversation may be from a different URL than the tab now shows; the live URL is in the working-state block's "Active tab" line.
+- When the user refers to "the page", "this article", "the site", "this tab", or a web page without saying which one, assume they mean the currently active tab: call get_active_tab, then get_tab_content on it. ALWAYS fetch it fresh for each such request — do NOT reuse page text fetched earlier in the conversation, and do NOT reuse a tabId from earlier in the conversation (it may now point at a closed or different tab). If a tool reports that a tab no longer exists, do not give up — call get_active_tab to get the current tab id and retry on it. The user surfs between pages in the same tab without starting a new thread, so earlier page content in this conversation may be from a different URL than the tab now shows; the live URL is in the working-state block's "Active tab" line.
 
 Planning multi-step tasks:
 - For any task that needs more than two or three tool calls, FIRST call set_plan with an ordered list of steps. Keep exactly one step in_progress (update_plan), and mark steps done as you finish them. Revise with set_plan if the situation changes.
@@ -1123,10 +1123,29 @@ export class AgentRuntime {
         return JSON.stringify(await browser.getActiveTab());
       case 'get_tab_content': {
         let content = await browser.getTabContent(tabId);
+        // Self-heal a stale tabId: if the referenced tab is gone (e.g. the user
+        // navigated or closed it since it was last read), re-resolve the current
+        // active tab and read that, so "summarize the current page" succeeds on
+        // the first try instead of failing until the model re-runs get_active_tab.
+        if (
+          content.extractionStatus === 'unsupported' &&
+          content.metadata['ba:note'] === 'Tab no longer exists.'
+        ) {
+          try {
+            const active = await browser.getActiveTab();
+            if (active.tabId !== tabId) {
+              content = await browser.getTabContent(active.tabId);
+              content.metadata['ba:note'] =
+                `The originally referenced tab was gone; showing the current active tab (${active.url}).`;
+            }
+          } catch {
+            // No active tab to fall back to; keep the original "tab gone" result.
+          }
+        }
         if (content.extractionStatus === 'blocked' && content.metadata['ba:origin']) {
           // Pause so the user can grant access from the sidebar, then retry once.
           await this.pauseForPermission(content.metadata['ba:origin']);
-          if (!this.stopRequested) content = await browser.getTabContent(tabId);
+          if (!this.stopRequested) content = await browser.getTabContent(content.tabId);
         }
         await this.pauseIfAuthRequired(content);
         return this.serializeContent(content, SINGLE_TAB_CHARS);

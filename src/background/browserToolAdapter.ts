@@ -102,8 +102,25 @@ export async function listTabs(): Promise<TabSummary[]> {
   return tabs.filter((t) => t.id !== undefined).map((t) => toTabSummary(t, titles));
 }
 
+/**
+ * Resolve the user's active tab resiliently. `lastFocusedWindow` can briefly
+ * return nothing when the side panel itself holds focus, so fall back to the
+ * current window and finally to any active tab (preferring a real web page over
+ * a chrome:// surface). Returns undefined only when there is genuinely no
+ * active tab anywhere.
+ */
+async function queryActiveTab(): Promise<chrome.tabs.Tab | undefined> {
+  let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab) [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) {
+    const tabs = await chrome.tabs.query({ active: true });
+    tab = tabs.find((t) => /^https?:/i.test(t.url ?? '')) ?? tabs[0];
+  }
+  return tab;
+}
+
 export async function getActiveTab(): Promise<TabSummary> {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const tab = await queryActiveTab();
   if (!tab) throw new Error('No active tab found.');
   return toTabSummary(tab, await groupTitleMap());
 }
@@ -217,7 +234,7 @@ export async function searchWeb(query: string): Promise<NavigationResult> {
   // chrome.search.query does not return the tab; the new results tab becomes
   // the active tab in the current window.
   await new Promise((r) => setTimeout(r, 500));
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const tab = await queryActiveTab();
   if (!tab?.id) {
     return { tabId: -1, url: '', title: '', status: 'error', error: 'Could not locate the search results tab.' };
   }
@@ -554,9 +571,7 @@ export async function readPdf(tabId: number | undefined, url: string | undefined
   let target = url;
   if (!target) {
     try {
-      const tab = tabId
-        ? await chrome.tabs.get(tabId)
-        : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+      const tab = tabId ? await chrome.tabs.get(tabId) : await queryActiveTab();
       target = tab?.url;
     } catch {
       // fall through
@@ -587,9 +602,7 @@ export async function readOfficeDocument(
   let target = url;
   if (!target) {
     try {
-      const tab = tabId
-        ? await chrome.tabs.get(tabId)
-        : (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+      const tab = tabId ? await chrome.tabs.get(tabId) : await queryActiveTab();
       target = tab?.url;
     } catch {
       // fall through
