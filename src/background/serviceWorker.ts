@@ -78,6 +78,12 @@ chrome.runtime.onConnect.addListener((port) => {
       case 'delete_conversation':
         void runtime.deleteConversation(command.id);
         break;
+      case 'import_conversation':
+        void runtime.importConversation(command.record);
+        break;
+      case 'clear_conversations':
+        void runtime.clearConversations();
+        break;
       case 'distill_skill':
         void runtime.distillSkill();
         break;

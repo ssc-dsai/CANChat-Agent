@@ -27,6 +27,10 @@ export type SidebarCommand =
   | { type: 'clear_conversation' }
   | { type: 'load_conversation'; id: string }
   | { type: 'delete_conversation'; id: string }
+  // `record` is a conversation body already validated by parseConversationFile in
+  // the UI; typed as unknown to avoid leaking the background StoredConversation type.
+  | { type: 'import_conversation'; record: unknown }
+  | { type: 'clear_conversations' }
   | { type: 'distill_skill' }
   | { type: 'dismiss_distill' }
   | { type: 'pause_agent' }

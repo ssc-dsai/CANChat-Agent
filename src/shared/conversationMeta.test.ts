@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { deriveTitle, derivePreview, pruneIndex } from './conversationMeta';
+import {
+  CONVERSATION_FILE,
+  deriveTitle,
+  derivePreview,
+  parseConversationFile,
+  pruneIndex,
+  slugifyTitle,
+} from './conversationMeta';
 import type { ConversationSummary } from './types';
 
 describe('deriveTitle', () => {
@@ -15,6 +22,24 @@ describe('deriveTitle', () => {
 
   it('returns empty string for blank input (caller localizes the fallback)', () => {
     expect(deriveTitle('   \n  ')).toBe('');
+  });
+
+  it('strips a leading skill-invocation token, keeping the argument', () => {
+    expect(deriveTitle('/research arctic shipping lanes')).toBe('arctic shipping lanes');
+  });
+
+  it('keeps the skill name when the slash command has no argument', () => {
+    expect(deriveTitle('/summarize-tabs')).toBe('summarize-tabs');
+  });
+
+  it('truncates on a word boundary rather than mid-word', () => {
+    const input = 'analyze the quarterly financial report and highlight the key risks for leadership';
+    const title = deriveTitle(input);
+    expect(title.endsWith('…')).toBe(true);
+    const body = title.slice(0, -1);
+    // The clipped body is a clean prefix that ends right before a space.
+    expect(input.startsWith(body)).toBe(true);
+    expect(input.charAt(body.length)).toBe(' ');
   });
 });
 
@@ -59,5 +84,40 @@ describe('pruneIndex', () => {
     const snapshot = index.map((c) => c.id);
     pruneIndex(index, 1);
     expect(index.map((c) => c.id)).toEqual(snapshot);
+  });
+});
+
+describe('slugifyTitle', () => {
+  it('lowercases and replaces runs of non-alphanumerics with single hyphens', () => {
+    expect(slugifyTitle('Arctic Shipping: Lanes & Risks!')).toBe('arctic-shipping-lanes-risks');
+  });
+
+  it('falls back when nothing usable remains', () => {
+    expect(slugifyTitle('   ')).toBe('conversation');
+    expect(slugifyTitle('！！！', 'untitled')).toBe('untitled');
+  });
+});
+
+describe('parseConversationFile', () => {
+  const wrap = (body: unknown, over: Record<string, unknown> = {}) =>
+    JSON.stringify({ ...CONVERSATION_FILE, conversation: body, ...over });
+  const body = { messages: [{ role: 'user', text: 'hi' }], conversation: [{ role: 'user', content: 'hi' }] };
+
+  it('returns the inner body for a valid file', () => {
+    expect(parseConversationFile(wrap(body))).toEqual(body);
+  });
+
+  it('accepts the legacy CANAgent app tag', () => {
+    expect(parseConversationFile(wrap(body, { app: 'CANAgent' }))).toEqual(body);
+  });
+
+  it('rejects malformed JSON', () => {
+    expect(parseConversationFile('{not json')).toBeNull();
+  });
+
+  it('rejects the wrong kind or a body missing the required arrays', () => {
+    expect(parseConversationFile(wrap(body, { kind: 'backup' }))).toBeNull();
+    expect(parseConversationFile(wrap({ messages: [] }))).toBeNull();
+    expect(parseConversationFile(wrap({ conversation: [] }))).toBeNull();
   });
 });

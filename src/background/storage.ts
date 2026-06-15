@@ -50,6 +50,8 @@ export interface StoredConversation {
   updatedAt: string;
   messages: ChatMessageView[];
   conversation: LlmMessage[];
+  /** True once an LLM topic title has been generated, so autosave stops re-deriving the heuristic. */
+  autoTitled?: boolean;
   /** Best-effort working state, so a resumed thread keeps its plan/findings. */
   plan?: { text: string; status: PlanStepStatus }[];
   findings?: string[];
@@ -154,6 +156,15 @@ export async function deleteConversation(id: string): Promise<void> {
     [CONVERSATION_INDEX_KEY]: index.filter((c) => c.id !== id),
   });
   await chrome.storage.local.remove(conversationKey(id));
+}
+
+/** Remove every saved conversation: all body records and the index itself. */
+export async function clearAllConversations(): Promise<void> {
+  const index = await getConversationIndex();
+  await chrome.storage.local.remove([
+    CONVERSATION_INDEX_KEY,
+    ...index.map((c) => conversationKey(c.id)),
+  ]);
 }
 
 /** Seed example skills on first install only (key unset). */

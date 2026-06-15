@@ -10,9 +10,14 @@
 // =============================================================================
 
 import { useEffect, useState } from 'preact/hooks';
+import {
+  CONVERSATION_FILE,
+  parseConversationFile,
+  slugifyTitle,
+} from '../shared/conversationMeta';
 import type { SidebarCommand } from '../shared/messages';
 import type { ChatMessageView, ConversationSummary } from '../shared/types';
-import { exportConversationHtml } from './conversationExport';
+import { downloadBlob, exportConversationHtml } from './conversationExport';
 import { useT } from './i18n';
 
 const INDEX_KEY = 'ba_conv_index';
@@ -26,6 +31,7 @@ interface Props {
 export function ConversationsScreen({ send, onClose }: Props) {
   const t = useT();
   const [items, setItems] = useState<ConversationSummary[]>([]);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Read the index now and re-read whenever the runtime rewrites it (each turn).
   useEffect(() => {
@@ -61,6 +67,35 @@ export function ConversationsScreen({ send, onClose }: Props) {
     if (body?.messages?.length) exportConversationHtml(body.messages);
   };
 
+  // Save one conversation to a portable, re-importable JSON file.
+  const saveOne = async (item: ConversationSummary) => {
+    const key = `${BODY_PREFIX}${item.id}`;
+    const r = await chrome.storage.local.get(key);
+    const body = r[key];
+    if (!body) return;
+    const file = JSON.stringify({ ...CONVERSATION_FILE, conversation: body });
+    downloadBlob(file, 'application/json', `canchat-agent-conversation-${slugifyTitle(item.title)}.json`);
+  };
+
+  // Load a conversation file: validate, then hand the body to the runtime, which
+  // stores it and opens it on screen.
+  const loadFromFile = async (file: File) => {
+    setNotice(null);
+    const body = parseConversationFile(await file.text());
+    if (!body) {
+      setNotice({ ok: false, text: t('conversations.importError') });
+      return;
+    }
+    send({ type: 'import_conversation', record: body });
+    onClose();
+  };
+
+  const clearAll = () => {
+    if (items.length === 0) return;
+    if (!confirm(t('conversations.confirmClearAll', { n: String(items.length) }))) return;
+    send({ type: 'clear_conversations' });
+  };
+
   return (
     <div class="settings-overlay">
       <div class="settings-card">
@@ -70,6 +105,28 @@ export function ConversationsScreen({ send, onClose }: Props) {
             ✕
           </button>
         </div>
+
+        <div class="settings-actions">
+          <label class="btn">
+            {t('conversations.load')}
+            <input
+              type="file"
+              accept="application/json,.json"
+              style="display:none"
+              onChange={(e) => {
+                const input = e.target as HTMLInputElement;
+                const f = input.files?.[0];
+                if (f) void loadFromFile(f);
+                input.value = '';
+              }}
+            />
+          </label>
+          <button class="btn" disabled={items.length === 0} onClick={clearAll}>
+            {t('conversations.clearAll')}
+          </button>
+        </div>
+
+        {notice && <div class={`banner ${notice.ok ? 'banner-ok' : 'banner-error'}`}>{notice.text}</div>}
 
         {items.length === 0 ? (
           <p class="settings-note">{t('conversations.empty')}</p>
@@ -88,6 +145,9 @@ export function ConversationsScreen({ send, onClose }: Props) {
                 <div class="conv-actions">
                   <button class="btn btn-primary" onClick={() => continueConversation(item.id)}>
                     {t('conversations.continue')}
+                  </button>
+                  <button class="btn" onClick={() => void saveOne(item)}>
+                    {t('conversations.save')}
                   </button>
                   <button class="btn" onClick={() => void exportOne(item.id)}>
                     {t('conversations.export')}

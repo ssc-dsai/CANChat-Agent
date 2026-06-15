@@ -15,7 +15,7 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function downloadBlob(content: string, type: string, filename: string): void {
+export function downloadBlob(content: string, type: string, filename: string): void {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement('a');
   a.href = url;

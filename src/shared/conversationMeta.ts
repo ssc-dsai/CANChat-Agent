@@ -19,15 +19,29 @@ const PREVIEW_MAX = 120;
  * an empty string so it can substitute its own "Untitled" wording.
  */
 export function deriveTitle(firstUserText: string): string {
-  const clean = firstUserText.replace(/\s+/g, ' ').trim();
+  let clean = firstUserText.replace(/\s+/g, ' ').trim();
   if (!clean) return '';
-  return clean.length > TITLE_MAX ? clean.slice(0, TITLE_MAX - 1).trimEnd() + '…' : clean;
+  // Drop a leading skill invocation token ("/research arctic lanes" →
+  // "arctic lanes") so the title reflects the subject, not the command. A bare
+  // "/research" with no argument keeps the skill name as the title.
+  const slash = /^\/([a-z0-9-]+)(?:\s+([\s\S]+))?$/i.exec(clean);
+  if (slash) clean = (slash[2] ?? slash[1]).trim();
+  return clip(clean, TITLE_MAX);
+}
+
+/** Clip to `max` chars on a word boundary where possible, appending an ellipsis. */
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const slice = text.slice(0, max - 1);
+  const lastSpace = slice.lastIndexOf(' ');
+  // Only break on a space if it isn't pathologically early (avoids a one-word title).
+  const cut = lastSpace > max * 0.6 ? slice.slice(0, lastSpace) : slice;
+  return cut.trimEnd() + '…';
 }
 
 /** A short one-line preview for the history list (last meaningful snippet). */
 export function derivePreview(text: string): string {
-  const clean = text.replace(/\s+/g, ' ').trim();
-  return clean.length > PREVIEW_MAX ? clean.slice(0, PREVIEW_MAX - 1).trimEnd() + '…' : clean;
+  return clip(text.replace(/\s+/g, ' ').trim(), PREVIEW_MAX);
 }
 
 /**
@@ -51,4 +65,44 @@ export function pruneIndex(
 
 function byUpdatedDesc(a: ConversationSummary, b: ConversationSummary): number {
   return b.updatedAt.localeCompare(a.updatedAt);
+}
+
+// --- portable single-conversation file (Save to file / Load from file) --------
+
+/** Envelope written around a conversation body when saved to a standalone file. */
+export const CONVERSATION_FILE = { app: 'CANChat Agent', kind: 'conversation', version: 1 } as const;
+
+/** A filesystem-safe slug derived from a title, for the download filename. */
+export function slugifyTitle(title: string, fallback = 'conversation'): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return slug || fallback;
+}
+
+/**
+ * Validate the JSON text of a saved-conversation file and return its inner body,
+ * or null if it isn't one. Pure (no chrome.*) so the UI can check a file before
+ * handing it to the service worker, and so it's unit-testable. Accepts the legacy
+ * "CANAgent" app tag alongside the current "CANChat Agent".
+ */
+export function parseConversationFile(
+  text: string,
+): { messages: unknown[]; conversation: unknown[] } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const file = parsed as Record<string, unknown>;
+  const appOk = file.app === CONVERSATION_FILE.app || file.app === 'CANAgent';
+  if (!appOk || file.kind !== 'conversation') return null;
+  const body = file.conversation as Record<string, unknown> | undefined;
+  if (!body || typeof body !== 'object') return null;
+  if (!Array.isArray(body.messages) || !Array.isArray(body.conversation)) return null;
+  return body as { messages: unknown[]; conversation: unknown[] };
 }

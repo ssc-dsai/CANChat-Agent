@@ -42,6 +42,7 @@ import { repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient
 import { ingestTab } from './repoIngest';
 import { normalizeUrl } from '../shared/repoChunk';
 import {
+  clearAllConversations,
   deleteConversation as deleteStoredConversation,
   getConversation,
   getMemories,
@@ -358,6 +359,12 @@ export class AgentRuntime {
   // record. Null means "the next message starts a fresh history entry".
   private currentConversationId: string | null = null;
   private conversationCreatedAt = '';
+  // Conversation title state. `titleIsAuto` flips true once an LLM topic title
+  // has been generated, locking it; until then autosave uses the heuristic and
+  // each settled turn retries generation (so a failed offline attempt recovers).
+  private currentConversationTitle: string | null = null;
+  private titleIsAuto = false;
+  private titlingInFlight = false;
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
 
@@ -487,6 +494,8 @@ export class AgentRuntime {
     if (!this.currentConversationId) {
       this.currentConversationId = crypto.randomUUID();
       this.conversationCreatedAt = new Date().toISOString();
+      this.currentConversationTitle = null;
+      this.titleIsAuto = false;
     }
 
     this.pushChat({
@@ -532,6 +541,10 @@ export class AgentRuntime {
       // Autosave every settled turn (including errored/stopped ones) so the
       // thread survives service-worker eviction and shows up in History.
       void this.persistCurrentConversation();
+      // Once the first exchange exists, generate a descriptive topic title.
+      // Fire-and-forget so it never delays the user's next message; retries on
+      // later turns until it succeeds, then locks (see titleIsAuto).
+      void this.maybeGenerateTitle();
     }
   }
 
@@ -547,13 +560,16 @@ export class AgentRuntime {
     const firstUser = this.messages.find((m) => m.role === 'user');
     const last = this.messages[this.messages.length - 1];
     const updatedAt = new Date().toISOString();
+    // Prefer the generated LLM title once we have one; otherwise the heuristic.
+    const title = this.currentConversationTitle ?? deriveTitle(firstUser?.text ?? '');
     const record: StoredConversation = {
       id,
-      title: deriveTitle(firstUser?.text ?? ''),
+      title,
       createdAt: this.conversationCreatedAt || updatedAt,
       updatedAt,
       messages: this.messages,
       conversation: this.conversation,
+      autoTitled: this.titleIsAuto,
       plan: this.plan ?? undefined,
       findings: this.findings.length > 0 ? this.findings : undefined,
       lastTaskUrl: this.lastTaskUrl || undefined,
@@ -567,6 +583,55 @@ export class AgentRuntime {
       });
     } catch {
       // A failed autosave must never break the chat; the next turn retries.
+    }
+  }
+
+  /**
+   * Generate a short, descriptive topic title for the current conversation with
+   * one cheap model call, then re-persist it. Runs at most once successfully per
+   * conversation; until it succeeds the heuristic title stands. Best-effort — any
+   * failure (no model, offline, odd response) is swallowed so the chat is
+   * unaffected and the next settled turn retries.
+   */
+  private async maybeGenerateTitle(): Promise<void> {
+    if (this.titleIsAuto || this.titlingInFlight) return;
+    const id = this.currentConversationId;
+    if (!id) return;
+    const firstUser = this.messages.find((m) => m.role === 'user');
+    const firstAssistant = this.messages.find((m) => m.role === 'assistant');
+    // Need a real exchange to title against.
+    if (!firstUser?.text || !firstAssistant?.text) return;
+
+    this.titlingInFlight = true;
+    try {
+      const settings = await getSettings();
+      if (!settings) return;
+      const prompt: LlmMessage[] = [
+        {
+          role: 'system',
+          content:
+            'You write concise titles. Given the start of a conversation, reply with ONLY a 3–6 word title naming its topic. No quotes, no punctuation at the end, no preamble.',
+        },
+        {
+          role: 'user',
+          content: `User asked:\n${firstUser.text.slice(0, 500)}\n\nAssistant replied:\n${firstAssistant.text.slice(0, 800)}`,
+        },
+      ];
+      const reply = await complete({ ...settings, maxTokens: 20, temperature: 0 }, prompt);
+      const raw = typeof reply.content === 'string' ? reply.content : '';
+      // Strip surrounding quotes/whitespace, then clip with the shared helper.
+      const title = deriveTitle(raw.replace(/^["'\s]+|["'\s]+$/g, ''));
+      // Re-check the id: the user may have cleared or loaded another thread while
+      // we were awaiting the model.
+      if (title && this.currentConversationId === id) {
+        this.currentConversationTitle = title;
+        this.titleIsAuto = true;
+        await this.persistCurrentConversation();
+      }
+    } catch {
+      // Titling is optional; leave the heuristic title and retry next turn.
+    } finally {
+      this.titlingInFlight = false;
     }
   }
 
@@ -592,6 +657,9 @@ export class AgentRuntime {
     this.lastTaskUrl = record.lastTaskUrl ?? '';
     this.currentConversationId = record.id;
     this.conversationCreatedAt = record.createdAt;
+    // Keep the saved title; only re-title if it was never auto-generated.
+    this.currentConversationTitle = record.title || null;
+    this.titleIsAuto = record.autoTitled ?? false;
     // Fresh tab group for the resumed thread; old tabs are left as-is.
     this.groupName = null;
     this.groupId = null;
@@ -612,7 +680,58 @@ export class AgentRuntime {
     if (this.currentConversationId === id) {
       this.currentConversationId = null;
       this.conversationCreatedAt = '';
+      this.currentConversationTitle = null;
+      this.titleIsAuto = false;
     }
+  }
+
+  /**
+   * Import a conversation from a "Load from file" payload: store it under a fresh
+   * id (so it never clobbers an existing thread), then open it via the normal
+   * resume path so it appears on screen and is continuable. `record` was already
+   * shape-checked by `parseConversationFile` in the UI; we re-verify defensively.
+   */
+  async importConversation(record: unknown): Promise<void> {
+    if (this.running) {
+      this.emit({ type: 'error', message: 'Finish or stop the current task before loading a conversation.' });
+      return;
+    }
+    const body = record as Partial<StoredConversation> | null;
+    if (!body || !Array.isArray(body.messages) || !Array.isArray(body.conversation)) {
+      this.emit({ type: 'error', message: 'That file is not a valid conversation.' });
+      return;
+    }
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    const messages = body.messages as ChatMessageView[];
+    const firstUser = messages.find((m) => m.role === 'user');
+    const last = messages[messages.length - 1];
+    const title = body.title || deriveTitle(firstUser?.text ?? '');
+    const stored: StoredConversation = {
+      id,
+      title,
+      createdAt: body.createdAt || now,
+      updatedAt: now, // surface the freshly imported thread at the top of History
+      messages,
+      conversation: body.conversation as LlmMessage[],
+      autoTitled: body.autoTitled ?? false,
+      plan: body.plan,
+      findings: body.findings,
+      lastTaskUrl: body.lastTaskUrl,
+    };
+    await saveConversation(stored, {
+      title,
+      updatedAt: now,
+      messageCount: messages.length,
+      preview: derivePreview(last?.text ?? ''),
+    });
+    // Reuse the resume path to load it into memory and repaint the panel.
+    await this.loadConversation(id);
+  }
+
+  /** Wipe all saved conversations. The on-screen chat is left intact (re-saves on its next turn). */
+  async clearConversations(): Promise<void> {
+    await clearAllConversations();
   }
 
   stop(): void {
@@ -658,6 +777,8 @@ export class AgentRuntime {
     // The previous conversation stays in storage (Clear = "new chat", not delete).
     this.currentConversationId = null;
     this.conversationCreatedAt = '';
+    this.currentConversationTitle = null;
+    this.titleIsAuto = false;
     // New conversation ⇒ fresh tab group (old group/tabs are left open).
     this.groupName = null;
     this.groupId = null;
