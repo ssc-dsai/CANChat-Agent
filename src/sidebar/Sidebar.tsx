@@ -21,20 +21,11 @@ import type {
 } from '../shared/types';
 import { ChatPanel } from './ChatPanel';
 import { exportConversationHtml } from './conversationExport';
+import { useT } from './i18n';
 import { PlanPanel } from './PlanPanel';
 import { SettingsScreen } from './SettingsScreen';
 import { TabContextPanel } from './TabContextPanel';
 import { ToolActivityPanel } from './ToolActivityPanel';
-
-const STATUS_LABELS: Record<AgentStatus, string> = {
-  idle: 'Idle',
-  thinking: 'Thinking…',
-  acting: 'Using browser…',
-  paused: 'Paused',
-  awaiting_approval: 'Waiting for approval',
-  auth_required: 'Login required',
-  error: 'Error',
-};
 
 // Pools the per-letter animation randomly draws from. Colour is intentionally
 // left untouched (inherited from the status pill).
@@ -52,7 +43,8 @@ const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
 /** Per-letter "funky" animated label, shown while the agent is working. */
 function StatusLabel({ status }: { status: AgentStatus }) {
-  const label = STATUS_LABELS[status];
+  const t = useT();
+  const label = t(`status.${status}`);
   const active = status === 'thinking' || status === 'acting';
   const ref = useRef<HTMLSpanElement>(null);
 
@@ -211,6 +203,8 @@ export function Sidebar() {
     };
   }, []);
 
+  const t = useT();
+
   return (
     <div class="sidebar">
       <header class="header">
@@ -222,19 +216,19 @@ export function Sidebar() {
           <StatusLabel status={status} />
         </span>
         <span class="scale-ctl">
-          <button class="scale-btn" title="Smaller text" onClick={() => applyScale(uiScale - 0.1)}>
+          <button class="scale-btn" title={t('header.smallerText')} onClick={() => applyScale(uiScale - 0.1)}>
             A−
           </button>
-          <button class="scale-val" title="Reset text size" onClick={() => applyScale(1)}>
+          <button class="scale-val" title={t('header.resetText')} onClick={() => applyScale(1)}>
             {Math.round(uiScale * 100)}%
           </button>
-          <button class="scale-btn" title="Larger text" onClick={() => applyScale(uiScale + 0.1)}>
+          <button class="scale-btn" title={t('header.largerText')} onClick={() => applyScale(uiScale + 0.1)}>
             A+
           </button>
         </span>
         <button
           class="icon-btn"
-          title="Save conversation as HTML"
+          title={t('header.saveConversation')}
           onClick={() => exportConversationHtml(messages)}
           disabled={messages.length === 0}
         >
@@ -242,13 +236,13 @@ export function Sidebar() {
         </button>
         <button
           class="icon-btn"
-          title="Clear conversation"
+          title={t('header.clearConversation')}
           onClick={() => send({ type: 'clear_conversation' })}
           disabled={messages.length === 0}
         >
           🗑
         </button>
-        <button class="icon-btn" title="Settings" onClick={() => setShowSettings(true)}>
+        <button class="icon-btn" title={t('header.settings')} onClick={() => setShowSettings(true)}>
           ⚙
         </button>
       </header>
@@ -264,9 +258,9 @@ export function Sidebar() {
 
       {configured === false && !showSettings && (
         <div class="banner banner-warn">
-          No model configured.{' '}
+          {t('header.noModel')}{' '}
           <button class="link-btn" onClick={() => setShowSettings(true)}>
-            Open settings
+            {t('header.openSettings')}
           </button>
         </div>
       )}

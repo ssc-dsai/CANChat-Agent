@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import { Sidebar } from './Sidebar';
+import { LanguageProvider } from './i18n';
 import './styles.css';
 
 // Apply the saved text size before first paint (no resize flash).
@@ -8,4 +9,9 @@ if (savedScale >= 0.8 && savedScale <= 1.6) {
   document.documentElement.style.zoom = String(savedScale);
 }
 
-render(<Sidebar />, document.getElementById('app')!);
+render(
+  <LanguageProvider>
+    <Sidebar />
+  </LanguageProvider>,
+  document.getElementById('app')!,
+);

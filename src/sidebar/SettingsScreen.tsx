@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
 import { BackupRestoreSection } from './BackupRestoreSection';
+import { LANGUAGE_STORAGE_KEY, useT, type LangPref } from './i18n';
 import { KnownSitesSection } from './KnownSitesSection';
 import { MemorySection } from './MemorySection';
 import { RepositoriesSection } from './RepositoriesSection';
@@ -14,16 +15,26 @@ interface Props {
 const EMPTY: Settings = { baseUrl: '', apiKey: '', model: '' };
 
 export function SettingsScreen({ onClose }: Props) {
+  const t = useT();
   const [settings, setSettings] = useState<Settings>(EMPTY);
   const [testResult, setTestResult] = useState<TestConnectionResponse | null>(null);
   const [testing, setTesting] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [langPref, setLangPref] = useState<LangPref>('auto');
 
   useEffect(() => {
-    chrome.storage.local.get('ba_settings').then((r) => {
+    chrome.storage.local.get(['ba_settings', LANGUAGE_STORAGE_KEY]).then((r) => {
       if (r.ba_settings) setSettings(r.ba_settings as Settings);
+      if (r[LANGUAGE_STORAGE_KEY]) setLangPref(r[LANGUAGE_STORAGE_KEY] as LangPref);
     });
   }, []);
+
+  // Writing the preference triggers the LanguageProvider's storage listener, so
+  // the whole UI re-renders into the chosen language immediately.
+  const changeLanguage = (pref: LangPref) => {
+    setLangPref(pref);
+    void chrome.storage.local.set({ [LANGUAGE_STORAGE_KEY]: pref });
+  };
 
   const update = (patch: Partial<Settings>) => {
     setSettings((s) => ({ ...s, ...patch }));
@@ -72,19 +83,29 @@ export function SettingsScreen({ onClose }: Props) {
     <div class="settings-overlay">
       <div class="settings-card">
         <div class="settings-header">
-          <strong>Settings</strong>
+          <strong>{t('settings.title')}</strong>
           <button class="icon-btn" onClick={() => onClose(valid && saved ? true : undefined)}>
             ✕
           </button>
         </div>
 
-        <p class="settings-note">
-          Connect any OpenAI-compatible endpoint (remote API, local model, or gateway). The key is
-          stored only on this device and never synced.
-        </p>
+        <label class="field">
+          <span>{t('settings.language')}</span>
+          <select
+            value={langPref}
+            onChange={(e) => changeLanguage((e.target as HTMLSelectElement).value as LangPref)}
+          >
+            <option value="auto">{t('settings.languageAuto')}</option>
+            <option value="en">{t('settings.languageEn')}</option>
+            <option value="fr">{t('settings.languageFr')}</option>
+          </select>
+        </label>
+        <p class="settings-note">{t('settings.languageNote')}</p>
+
+        <p class="settings-note">{t('settings.note')}</p>
 
         <label class="field">
-          <span>Endpoint base URL</span>
+          <span>{t('settings.endpointUrl')}</span>
           <input
             type="url"
             placeholder="https://api.example.com/v1"
@@ -94,7 +115,7 @@ export function SettingsScreen({ onClose }: Props) {
         </label>
 
         <label class="field">
-          <span>API key</span>
+          <span>{t('settings.apiKey')}</span>
           <input
             type="password"
             placeholder="sk-…"
@@ -104,7 +125,7 @@ export function SettingsScreen({ onClose }: Props) {
         </label>
 
         <label class="field">
-          <span>Model</span>
+          <span>{t('settings.model')}</span>
           <input
             type="text"
             placeholder="model-name"
@@ -115,7 +136,7 @@ export function SettingsScreen({ onClose }: Props) {
 
         <div class="field-row">
           <label class="field">
-            <span>Temperature (optional)</span>
+            <span>{t('settings.temperature')}</span>
             <input
               type="number"
               step="0.1"
@@ -129,7 +150,7 @@ export function SettingsScreen({ onClose }: Props) {
             />
           </label>
           <label class="field">
-            <span>Max tokens (optional)</span>
+            <span>{t('settings.maxTokens')}</span>
             <input
               type="number"
               min="1"
@@ -143,7 +164,7 @@ export function SettingsScreen({ onClose }: Props) {
         </div>
 
         <label class="field">
-          <span>Embedding model (optional) — for local repositories; defaults to the model above if blank</span>
+          <span>{t('settings.embeddingModel')}</span>
           <input
             type="text"
             placeholder="text-embedding-3-small"
@@ -154,7 +175,7 @@ export function SettingsScreen({ onClose }: Props) {
 
         <div class="field-row">
           <label class="field">
-            <span>Embedding endpoint base URL (optional) — blank uses the main endpoint above</span>
+            <span>{t('settings.embeddingUrl')}</span>
             <input
               type="url"
               placeholder="https://embeddings.example.com/v1"
@@ -163,7 +184,7 @@ export function SettingsScreen({ onClose }: Props) {
             />
           </label>
           <label class="field">
-            <span>Embedding API key (optional) — blank uses the main key</span>
+            <span>{t('settings.embeddingKey')}</span>
             <input
               type="password"
               placeholder="sk-…"
@@ -174,7 +195,7 @@ export function SettingsScreen({ onClose }: Props) {
         </div>
 
         <label class="field">
-          <span>Transcription model (optional) — enables voice prompts (mic button); must be a speech-to-text model your endpoint exposes at /audio/transcriptions</span>
+          <span>{t('settings.transcriptionModel')}</span>
           <input
             type="text"
             placeholder="whisper-1"
@@ -185,7 +206,7 @@ export function SettingsScreen({ onClose }: Props) {
 
         <div class="field-row">
           <label class="field">
-            <span>Transcription endpoint base URL (optional) — blank uses the main endpoint above</span>
+            <span>{t('settings.transcriptionUrl')}</span>
             <input
               type="url"
               placeholder="https://stt.example.com/v1"
@@ -194,7 +215,7 @@ export function SettingsScreen({ onClose }: Props) {
             />
           </label>
           <label class="field">
-            <span>Transcription API key (optional) — blank uses the main key</span>
+            <span>{t('settings.transcriptionKey')}</span>
             <input
               type="password"
               placeholder="sk-…"
@@ -205,7 +226,7 @@ export function SettingsScreen({ onClose }: Props) {
         </div>
 
         <label class="field">
-          <span>SharePoint base URL (optional) — enables search over your SharePoint via the signed-in session; blank = auto-detect from an open SharePoint tab</span>
+          <span>{t('settings.sharepointUrl')}</span>
           <input
             type="url"
             placeholder="https://contoso.sharepoint.com"
@@ -215,11 +236,11 @@ export function SettingsScreen({ onClose }: Props) {
         </label>
 
         <label class="field">
-          <span>Custom instructions (optional) — appended to the agent's built-in instructions; applies from your next message</span>
+          <span>{t('settings.customInstructions')}</span>
           <textarea
             class="chat-input"
             rows={5}
-            placeholder={'e.g. Answer in French.\nI work in geospatial data — prefer technical depth over simplification.'}
+            placeholder={t('settings.customInstructionsPlaceholder')}
             value={settings.systemPrompt ?? ''}
             onInput={(e) => update({ systemPrompt: (e.target as HTMLTextAreaElement).value })}
           />
@@ -228,14 +249,14 @@ export function SettingsScreen({ onClose }: Props) {
         {testResult && (
           <div class={`banner ${testResult.ok ? 'banner-ok' : 'banner-error'}`}>{testResult.detail}</div>
         )}
-        {saved && <div class="banner banner-ok">Settings saved.</div>}
+        {saved && <div class="banner banner-ok">{t('settings.saved')}</div>}
 
         <div class="settings-actions">
           <button class="btn" onClick={test} disabled={!valid || testing}>
-            {testing ? 'Testing…' : 'Test connection'}
+            {testing ? t('settings.testing') : t('settings.testConnection')}
           </button>
           <button class="btn btn-primary" onClick={save} disabled={!valid}>
-            Save
+            {t('common.save')}
           </button>
         </div>
 

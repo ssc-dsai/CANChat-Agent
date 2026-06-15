@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import type { ExportedRepo } from '../shared/messages';
 
 // chrome.storage.local keys that make up the user's configuration.
-const STORAGE_KEYS = ['ba_settings', 'ba_sites', 'ba_skills', 'ba_memory', 'ba_memory_enabled'];
+const STORAGE_KEYS = ['ba_settings', 'ba_sites', 'ba_skills', 'ba_memory', 'ba_memory_enabled', 'ba_language'];
 
 interface Backup {
   app: 'CANAgent';
