@@ -103,14 +103,19 @@ body {
 .status {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  box-sizing: border-box;
+  height: 22px;
+  min-width: 92px;
   font-size: 12px;
   font-weight: 600;
-  padding: 3px 10px;
+  padding: 0 10px;
   border-radius: 999px;
   background: var(--bg-input);
   color: var(--text-dim);
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .status::before {
@@ -128,18 +133,22 @@ body {
   color: var(--accent);
 }
 
-/* Per-letter "ransom note" status animation. Colour is left to the pill;
-   font family, weight, italics, and size are randomised in JS (Sidebar.tsx).
-   Keep the pill from resizing as letters grow by anchoring the line box. */
+/* Per-letter "ransom note" status animation. Colour is left to the pill; font
+   family, weight, and italics are randomised in JS (Sidebar.tsx), and size via
+   transform:scale. Each letter gets a fixed slot and scales within it, so the
+   animation never reflows the pill or the header text around it. */
 .status-anim {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   line-height: 1;
 }
 .status-char {
   display: inline-block;
+  width: 0.6em;
+  text-align: center;
   white-space: pre;
-  transition: font-size 0.18s ease;
+  transform-origin: center;
+  transition: transform 0.18s ease;
 }
 .status-paused,
 .status-auth_required,

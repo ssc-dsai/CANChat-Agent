@@ -46,7 +46,7 @@ const EN: Dict = {
   // status
   'status.idle': 'Idle',
   'status.thinking': 'Thinking…',
-  'status.acting': 'Using browser…',
+  'status.acting': 'Browsing…',
   'status.paused': 'Paused',
   'status.awaiting_approval': 'Waiting for approval',
   'status.auth_required': 'Login required',
@@ -130,7 +130,7 @@ const FR: Dict = {
   // status
   'status.idle': 'Inactif',
   'status.thinking': 'Réflexion…',
-  'status.acting': 'Utilisation du navigateur…',
+  'status.acting': 'Navigation…',
   'status.paused': 'En pause',
   'status.awaiting_approval': 'En attente d’approbation',
   'status.auth_required': 'Connexion requise',

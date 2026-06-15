@@ -38,7 +38,6 @@ const FUNK_FONTS = [
   '"Comic Sans MS", "Comic Sans", cursive',
 ];
 const FUNK_WEIGHTS = [400, 500, 600, 700, 800];
-const BASE_FONT_PX = 13; // matches .status font-size; vary up to +2pt.
 
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
@@ -59,7 +58,9 @@ function StatusLabel({ status }: { status: AgentStatus }) {
         c.style.fontFamily = pick(FUNK_FONTS);
         c.style.fontWeight = String(pick(FUNK_WEIGHTS));
         c.style.fontStyle = Math.random() < 0.3 ? 'italic' : 'normal';
-        c.style.fontSize = `${(BASE_FONT_PX + Math.random() * 2).toFixed(1)}px`;
+        // Size varies via transform (not font-size) so it never reflows the
+        // surrounding header — each letter scales within its fixed slot.
+        c.style.transform = `scale(${(1 + Math.random() * 0.18).toFixed(2)})`;
       });
     };
     tick();
