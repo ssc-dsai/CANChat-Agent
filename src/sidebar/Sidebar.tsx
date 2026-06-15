@@ -20,6 +20,7 @@ import type {
   ToolActivity,
 } from '../shared/types';
 import { ChatPanel } from './ChatPanel';
+import { ConversationsScreen } from './ConversationsScreen';
 import { exportConversationHtml } from './conversationExport';
 import { useT } from './i18n';
 import { PlanPanel } from './PlanPanel';
@@ -92,6 +93,7 @@ export function Sidebar() {
   const [canDistill, setCanDistill] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [uiScale, setUiScale] = useState(() => {
     const s = Number(localStorage.getItem('ba_ui_scale'));
@@ -226,6 +228,9 @@ export function Sidebar() {
             A+
           </button>
         </span>
+        <button class="icon-btn" title={t('header.history')} onClick={() => setShowHistory(true)}>
+          🕘
+        </button>
         <button
           class="icon-btn"
           title={t('header.saveConversation')}
@@ -295,6 +300,8 @@ export function Sidebar() {
           }}
         />
       )}
+
+      {showHistory && <ConversationsScreen send={send} onClose={() => setShowHistory(false)} />}
     </div>
   );
 }

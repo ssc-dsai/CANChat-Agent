@@ -34,6 +34,7 @@ const EN: Dict = {
   'common.add': 'Add',
   'common.dismiss': 'Dismiss',
   // header
+  'header.history': 'Conversation history',
   'header.saveConversation': 'Save conversation as HTML',
   'header.clearConversation': 'Clear conversation',
   'header.settings': 'Settings',
@@ -86,6 +87,19 @@ const EN: Dict = {
   'settings.saved': 'Settings saved.',
   'settings.testing': 'Testing…',
   'settings.testConnection': 'Test connection',
+  // History overlay
+  'conversations.title': 'Conversation history',
+  'conversations.empty': 'No saved conversations yet. Conversations are saved automatically as you chat.',
+  'conversations.untitled': 'Untitled conversation',
+  'conversations.continue': 'Continue',
+  'conversations.export': 'Export',
+  'conversations.delete': 'Delete',
+  'conversations.confirmDelete': 'Delete “{title}”? This cannot be undone.',
+  'conversations.messageCount': '{n} messages',
+  // Backup & Restore
+  'backup.includeConversations': 'Include saved conversations',
+  'backup.includeConversationsNote':
+    'Conversations can contain page content and screenshots. Off by default — only export them if you intend to.',
 };
 
 const FR: Dict = {
@@ -98,6 +112,7 @@ const FR: Dict = {
   'common.add': 'Ajouter',
   'common.dismiss': 'Ignorer',
   // header
+  'header.history': 'Historique des conversations',
   'header.saveConversation': 'Enregistrer la conversation en HTML',
   'header.clearConversation': 'Effacer la conversation',
   'header.settings': 'Paramètres',
@@ -151,6 +166,20 @@ const FR: Dict = {
   'settings.saved': 'Paramètres enregistrés.',
   'settings.testing': 'Essai en cours…',
   'settings.testConnection': 'Tester la connexion',
+  // Historique
+  'conversations.title': 'Historique des conversations',
+  'conversations.empty':
+    'Aucune conversation enregistrée pour l’instant. Les conversations sont enregistrées automatiquement au fil de l’échange.',
+  'conversations.untitled': 'Conversation sans titre',
+  'conversations.continue': 'Continuer',
+  'conversations.export': 'Exporter',
+  'conversations.delete': 'Supprimer',
+  'conversations.confirmDelete': 'Supprimer « {title} »? Cette action est irréversible.',
+  'conversations.messageCount': '{n} messages',
+  // Sauvegarde et restauration
+  'backup.includeConversations': 'Inclure les conversations enregistrées',
+  'backup.includeConversationsNote':
+    'Les conversations peuvent contenir le contenu de pages et des captures d’écran. Désactivé par défaut — ne les exportez que si vous le souhaitez.',
 };
 
 export const MESSAGES: Record<Lang, Dict> = { en: EN, fr: FR };

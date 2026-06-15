@@ -25,6 +25,8 @@ export type SidebarCommand =
   | { type: 'user_message'; text: string; mentions?: Array<{ kind: 'bookmark' | 'repo'; value: string }> }
   | { type: 'stop_task' }
   | { type: 'clear_conversation' }
+  | { type: 'load_conversation'; id: string }
+  | { type: 'delete_conversation'; id: string }
   | { type: 'distill_skill' }
   | { type: 'dismiss_distill' }
   | { type: 'pause_agent' }

@@ -42,15 +42,20 @@ import { repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient
 import { ingestTab } from './repoIngest';
 import { normalizeUrl } from '../shared/repoChunk';
 import {
+  deleteConversation as deleteStoredConversation,
+  getConversation,
   getMemories,
   getMemoryEnabled,
   getSettings,
   getSites,
   getSkills,
   MEMORY_MAX_ENTRIES,
+  saveConversation,
   saveMemories,
   saveSkills,
+  type StoredConversation,
 } from './storage';
+import { deriveTitle, derivePreview } from '../shared/conversationMeta';
 import * as tabContext from './tabContextManager';
 
 const SOFT_STEP_BUDGET = 20; // default tool-iteration budget per task
@@ -348,6 +353,11 @@ export class AgentRuntime {
   // Per-conversation tab group (reset only on clearConversation).
   private groupName: string | null = null;
   private groupId: number | null = null;
+  // Stable id for the conversation currently in memory. Allocated on the first
+  // user message after a clear/load, reused across turns so autosave updates one
+  // record. Null means "the next message starts a fresh history entry".
+  private currentConversationId: string | null = null;
+  private conversationCreatedAt = '';
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
 
@@ -472,6 +482,13 @@ export class AgentRuntime {
     this.pendingSnapshots = [];
     if (snapshots.length > 0) this.emit({ type: 'pending_snapshots', thumbs: [] });
 
+    // Open a new history entry on the first message of a conversation; later
+    // turns reuse the same id so autosave updates one growing record.
+    if (!this.currentConversationId) {
+      this.currentConversationId = crypto.randomUUID();
+      this.conversationCreatedAt = new Date().toISOString();
+    }
+
     this.pushChat({
       role: 'user',
       text,
@@ -512,6 +529,89 @@ export class AgentRuntime {
       this.abortController = null;
       this.running = false;
       if (this.status !== 'error') this.setStatus('idle');
+      // Autosave every settled turn (including errored/stopped ones) so the
+      // thread survives service-worker eviction and shows up in History.
+      void this.persistCurrentConversation();
+    }
+  }
+
+  /**
+   * Snapshot the in-memory conversation to storage under its stable id. Called
+   * from `handleUserMessage`'s finally block after each turn. Title comes from
+   * the first user message; the body carries the full LlmMessage[] so the thread
+   * can be truly resumed later.
+   */
+  private async persistCurrentConversation(): Promise<void> {
+    if (!this.currentConversationId || this.messages.length === 0) return;
+    const id = this.currentConversationId;
+    const firstUser = this.messages.find((m) => m.role === 'user');
+    const last = this.messages[this.messages.length - 1];
+    const updatedAt = new Date().toISOString();
+    const record: StoredConversation = {
+      id,
+      title: deriveTitle(firstUser?.text ?? ''),
+      createdAt: this.conversationCreatedAt || updatedAt,
+      updatedAt,
+      messages: this.messages,
+      conversation: this.conversation,
+      plan: this.plan ?? undefined,
+      findings: this.findings.length > 0 ? this.findings : undefined,
+      lastTaskUrl: this.lastTaskUrl || undefined,
+    };
+    try {
+      await saveConversation(record, {
+        title: record.title,
+        updatedAt,
+        messageCount: this.messages.length,
+        preview: derivePreview(last?.text ?? ''),
+      });
+    } catch {
+      // A failed autosave must never break the chat; the next turn retries.
+    }
+  }
+
+  /**
+   * Restore a saved conversation into the runtime so the user can continue it.
+   * Replaces the in-memory thread; the previously active one was already
+   * autosaved each turn, so nothing is lost. Refuses while a task is running.
+   */
+  async loadConversation(id: string): Promise<void> {
+    if (this.running) {
+      this.emit({ type: 'error', message: 'Finish or stop the current task before loading another conversation.' });
+      return;
+    }
+    const record = await getConversation(id);
+    if (!record) {
+      this.emit({ type: 'error', message: 'That conversation could not be found (it may have been deleted).' });
+      return;
+    }
+    this.conversation = record.conversation ?? [];
+    this.messages = record.messages ?? [];
+    this.plan = record.plan ?? null;
+    this.findings = record.findings ?? [];
+    this.lastTaskUrl = record.lastTaskUrl ?? '';
+    this.currentConversationId = record.id;
+    this.conversationCreatedAt = record.createdAt;
+    // Fresh tab group for the resumed thread; old tabs are left as-is.
+    this.groupName = null;
+    this.groupId = null;
+    this.activities = [];
+    this.pendingSnapshots = [];
+    this.pendingToolImages = [];
+    this.stepsUsed = 0;
+    this.toolCallCount = 0;
+    this.canDistill = false;
+    this.setStatus('idle');
+    this.emit({ type: 'plan_update', plan: this.planView() });
+    this.emit(this.fullState());
+  }
+
+  /** Delete a saved conversation; if it is the active one, detach so a new id is allocated next. */
+  async deleteConversation(id: string): Promise<void> {
+    await deleteStoredConversation(id);
+    if (this.currentConversationId === id) {
+      this.currentConversationId = null;
+      this.conversationCreatedAt = '';
     }
   }
 
@@ -554,6 +654,10 @@ export class AgentRuntime {
     this.toolCallCount = 0;
     this.canDistill = false;
     this.lastTaskUrl = '';
+    // Detach from the saved record: the next message opens a new history entry.
+    // The previous conversation stays in storage (Clear = "new chat", not delete).
+    this.currentConversationId = null;
+    this.conversationCreatedAt = '';
     // New conversation ⇒ fresh tab group (old group/tabs are left open).
     this.groupName = null;
     this.groupId = null;

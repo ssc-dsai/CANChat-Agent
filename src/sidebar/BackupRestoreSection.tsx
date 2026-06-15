@@ -1,8 +1,20 @@
 import { useState } from 'preact/hooks';
 import type { ExportedRepo } from '../shared/messages';
+import type { ConversationSummary } from '../shared/types';
+import { useT } from './i18n';
 
 // chrome.storage.local keys that make up the user's configuration.
 const STORAGE_KEYS = ['ba_settings', 'ba_sites', 'ba_skills', 'ba_memory', 'ba_memory_enabled', 'ba_language'];
+const CONVERSATION_INDEX_KEY = 'ba_conv_index';
+const CONVERSATION_KEY_PREFIX = 'ba_conv_';
+
+/** Gather the conversation index plus every conversation body for an opt-in export. */
+async function collectConversationStorage(): Promise<Record<string, unknown>> {
+  const idx = (await chrome.storage.local.get(CONVERSATION_INDEX_KEY))[CONVERSATION_INDEX_KEY];
+  const index = Array.isArray(idx) ? (idx as ConversationSummary[]) : [];
+  const keys = [CONVERSATION_INDEX_KEY, ...index.map((c) => `${CONVERSATION_KEY_PREFIX}${c.id}`)];
+  return (await chrome.storage.local.get(keys)) as Record<string, unknown>;
+}
 
 interface Backup {
   app: 'CANAgent';
@@ -14,8 +26,10 @@ interface Backup {
 }
 
 export function BackupRestoreSection() {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [includeKey, setIncludeKey] = useState(true);
+  const [includeConversations, setIncludeConversations] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const exportAll = async () => {
@@ -23,6 +37,9 @@ export function BackupRestoreSection() {
     setMessage(null);
     try {
       const storage = (await chrome.storage.local.get(STORAGE_KEYS)) as Record<string, unknown>;
+      if (includeConversations) {
+        Object.assign(storage, await collectConversationStorage());
+      }
       if (!includeKey && storage.ba_settings && typeof storage.ba_settings === 'object') {
         // Strip the main key and the optional per-service override keys.
         storage.ba_settings = {
@@ -113,6 +130,15 @@ export function BackupRestoreSection() {
       {includeKey && (
         <p class="settings-note warn">⚠ The file will contain your API key in plain text — store it securely.</p>
       )}
+      <label class="backup-check">
+        <input
+          type="checkbox"
+          checked={includeConversations}
+          onChange={(e) => setIncludeConversations((e.target as HTMLInputElement).checked)}
+        />
+        {t('backup.includeConversations')}
+      </label>
+      {includeConversations && <p class="settings-note warn">⚠ {t('backup.includeConversationsNote')}</p>}
       <div class="settings-actions">
         <button class="btn" disabled={busy} onClick={exportAll}>
           Export backup

@@ -201,6 +201,24 @@ export interface ChatMessageView {
   dataExport?: DataExport;
 }
 
+/**
+ * Lightweight history-list entry for a saved conversation. Lives in the
+ * `ba_conv_index` array so the History overlay can render without loading every
+ * (potentially image-heavy) conversation body. The full body — including the
+ * `LlmMessage[]` model context needed to resume — is keyed separately as
+ * `ba_conv_<id>` and typed in storage.ts.
+ */
+export interface ConversationSummary {
+  id: string;
+  /** First user message, clipped; empty when only an image was sent. */
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  /** Short snippet of the latest message, for the list row. */
+  preview: string;
+}
+
 export type PlanStepStatus = 'pending' | 'in_progress' | 'done' | 'skipped';
 
 export interface PlanView {
