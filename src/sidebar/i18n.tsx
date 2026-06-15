@@ -63,6 +63,9 @@ const EN: Dict = {
   'settings.endpointUrl': 'Endpoint base URL',
   'settings.apiKey': 'API key',
   'settings.model': 'Model',
+  'settings.apiVersion': 'Azure API version (optional)',
+  'settings.apiVersionNote':
+    'Set this only for Azure OpenAI (e.g. 2024-02-01). When filled, requests use Azure’s api-version query parameter and api-key header. Your endpoint URL should point at the deployment, e.g. https://NAME.openai.azure.com/openai/deployments/DEPLOYMENT',
   'settings.temperature': 'Temperature (optional)',
   'settings.maxTokens': 'Max tokens (optional)',
   'settings.embeddingModel':
@@ -124,6 +127,9 @@ const FR: Dict = {
   'settings.endpointUrl': 'URL de base du point de terminaison',
   'settings.apiKey': 'Clé d’API',
   'settings.model': 'Modèle',
+  'settings.apiVersion': 'Version d’API Azure (facultatif)',
+  'settings.apiVersionNote':
+    'À remplir uniquement pour Azure OpenAI (p. ex. 2024-02-01). Si renseigné, les requêtes utilisent le paramètre api-version et l’en-tête api-key d’Azure. L’URL du point de terminaison doit viser le déploiement, p. ex. https://NOM.openai.azure.com/openai/deployments/DEPLOIEMENT',
   'settings.temperature': 'Température (facultatif)',
   'settings.maxTokens': 'Jetons maximum (facultatif)',
   'settings.embeddingModel':

@@ -66,6 +66,7 @@ export function SettingsScreen({ onClose }: Props) {
       baseUrl: settings.baseUrl.trim(),
       apiKey: settings.apiKey.trim(),
       model: settings.model.trim(),
+      apiVersion: settings.apiVersion?.trim() || undefined,
       systemPrompt: settings.systemPrompt?.trim() || undefined,
       sharepointBaseUrl: settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       embeddingModel: settings.embeddingModel?.trim() || undefined,
@@ -133,6 +134,17 @@ export function SettingsScreen({ onClose }: Props) {
             onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
           />
         </label>
+
+        <label class="field">
+          <span>{t('settings.apiVersion')}</span>
+          <input
+            type="text"
+            placeholder="2024-02-01"
+            value={settings.apiVersion ?? ''}
+            onInput={(e) => update({ apiVersion: (e.target as HTMLInputElement).value })}
+          />
+        </label>
+        <p class="settings-note">{t('settings.apiVersionNote')}</p>
 
         <div class="field-row">
           <label class="field">

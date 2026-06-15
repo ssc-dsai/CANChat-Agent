@@ -138,6 +138,13 @@ export interface Settings {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /**
+   * Azure OpenAI's required api-version (e.g. "2024-02-01"). When set, the
+   * adapter switches to Azure mode for every service: it appends
+   * ?api-version=… to each request URL and authenticates with the `api-key`
+   * header instead of `Authorization: Bearer`. Blank = standard OpenAI shape.
+   */
+  apiVersion?: string;
   temperature?: number;
   maxTokens?: number;
   /** Optional user instructions appended to the built-in system prompt. */

@@ -76,20 +76,46 @@ function resolve(settings: Settings, kind: 'chat' | 'embedding' | 'transcription
   };
 }
 
-function endpoint(settings: Settings): string {
-  return resolve(settings, 'chat').base + '/chat/completions';
+/**
+ * Azure mode is keyed entirely off `apiVersion`: Azure OpenAI rejects any
+ * request lacking the api-version query param, so its presence is the cleanest
+ * signal that the user is on Azure. Returns the version string or undefined for
+ * a standard OpenAI-compatible endpoint.
+ */
+export function apiVersion(settings: Settings): string | undefined {
+  return settings.apiVersion?.trim() || undefined;
+}
+
+/**
+ * Append `?api-version=…` when on Azure. The per-service base URL already points
+ * at the Azure deployment (…/openai/deployments/{name}), so we only add the
+ * route suffix and the query string here.
+ */
+export function buildUrl(base: string, path: string, version: string | undefined): string {
+  const url = base + path;
+  return version ? `${url}?api-version=${encodeURIComponent(version)}` : url;
+}
+
+/**
+ * Azure authenticates API keys with the `api-key` header; standard OpenAI uses
+ * `Authorization: Bearer`. (Azure's Bearer scheme is reserved for Entra ID
+ * tokens, which this extension does not issue.)
+ */
+export function authHeaders(key: string, version: string | undefined): Record<string, string> {
+  return version ? { 'api-key': key } : { Authorization: `Bearer ${key}` };
 }
 
 /** Embed a batch of texts via the configured OpenAI-compatible /embeddings route. */
 export async function embed(settings: Settings, texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   const { base, key } = resolve(settings, 'embedding');
-  const url = base + '/embeddings';
+  const version = apiVersion(settings);
+  const url = buildUrl(base, '/embeddings', version);
   let response: Response;
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(key, version) },
       body: JSON.stringify({ model: settings.embeddingModel || settings.model, input: texts }),
     });
   } catch (err) {
@@ -118,7 +144,8 @@ export async function transcribe(settings: Settings, audioDataUrl: string): Prom
     throw new LlmError('No transcription model configured. Set one in Settings to use voice prompts.');
   }
   const { base, key } = resolve(settings, 'transcription');
-  const url = base + '/audio/transcriptions';
+  const version = apiVersion(settings);
+  const url = buildUrl(base, '/audio/transcriptions', version);
   const blob = await (await fetch(audioDataUrl)).blob();
   const form = new FormData();
   // OpenAI/Whisper-style endpoints infer the format from the filename extension.
@@ -129,7 +156,7 @@ export async function transcribe(settings: Settings, audioDataUrl: string): Prom
     // Do NOT set Content-Type — the runtime adds the multipart boundary.
     response = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${key}` },
+      headers: { ...authHeaders(key, version) },
       body: form,
     });
   } catch (err) {
@@ -168,13 +195,15 @@ export async function complete(
   if (settings.temperature !== undefined) body.temperature = settings.temperature;
   if (settings.maxTokens !== undefined) body.max_tokens = settings.maxTokens;
 
+  const { base, key } = resolve(settings, 'chat');
+  const version = apiVersion(settings);
   let response: Response;
   try {
-    response = await fetch(endpoint(settings), {
+    response = await fetch(buildUrl(base, '/chat/completions', version), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.apiKey}`,
+        ...authHeaders(key, version),
       },
       body: JSON.stringify(body),
       signal,
