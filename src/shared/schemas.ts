@@ -680,6 +680,22 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'get_video_transcript',
+      description:
+        "Get the caption/subtitle transcript of the video on the current tab (YouTube, or any page exposing caption tracks). Prefer this over trying to watch or listen — it reads the page's existing transcript instantly. Not every video has captions; if none are found it says so.",
+      parameters: {
+        type: 'object',
+        properties: {
+          tabId: { type: 'number', description: 'Tab with the video; omit for the active tab.' },
+          lang: { type: 'string', description: "Preferred caption language code (e.g. 'en'); optional." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'wait_for_page_state',
       description: 'Wait until a tab finishes loading (or times out after 20s).',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },

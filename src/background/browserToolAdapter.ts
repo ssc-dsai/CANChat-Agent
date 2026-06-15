@@ -32,6 +32,8 @@ import { extractOffice, extractPdf } from './offscreenClient';
 import { hasAllUrlsAccess } from './permissions';
 
 const PAGE_LOAD_TIMEOUT_MS = 20000;
+// Cap a video transcript put into the model's context (mirrors read_pdf).
+const VIDEO_TRANSCRIPT_CONTEXT_CHARS = 60_000;
 
 function toTabSummary(tab: chrome.tabs.Tab, groupTitles?: Map<number, string>): TabSummary {
   const groupId = tab.groupId !== undefined && tab.groupId !== -1 ? tab.groupId : undefined;
@@ -623,6 +625,124 @@ export async function readOfficeDocument(
       : undefined,
     text: result.text,
   });
+}
+
+// Runs in the page's MAIN world: pull the video's existing caption/subtitle
+// track (YouTube's timedtext, or a generic WebVTT <track>) and return it as
+// plain text. Async so it can fetch the caption URL in the page's own (often
+// same-origin) context. Returns a JSON string; `{ __error }` signals failure.
+function videoTranscriptRunner(lang: string | undefined, maxChars: number): Promise<string> {
+  return (async () => {
+    const finish = (
+      source: string,
+      language: string,
+      segments: Array<{ t: number; text: string }>,
+    ): string => {
+      const full = segments
+        .map((s) => s.text)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const truncated = full.length > maxChars;
+      const lastT = segments.length ? segments[segments.length - 1].t : 0;
+      return JSON.stringify({
+        source,
+        language,
+        segmentCount: segments.length,
+        durationSec: Math.round(lastT),
+        charCount: full.length,
+        truncated,
+        text: truncated ? full.slice(0, maxChars) + ' …[truncated]' : full,
+        note: truncated
+          ? 'Transcript truncated to fit context. Ask about specific parts, or ingest the page for full retrieval.'
+          : undefined,
+      });
+    };
+
+    try {
+      // --- YouTube: read the caption track list from the player response. ---
+      const yt = (window as unknown as { ytInitialPlayerResponse?: unknown }).ytInitialPlayerResponse;
+      const tracks =
+        (yt as { captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: unknown[] } } })
+          ?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? null;
+      if (Array.isArray(tracks) && tracks.length) {
+        const list = tracks as Array<{ baseUrl: string; languageCode?: string; kind?: string }>;
+        const pick =
+          (lang && list.find((t) => t.languageCode === lang)) ||
+          list.find((t) => t.languageCode === 'en' && t.kind !== 'asr') ||
+          list.find((t) => t.languageCode === 'en') ||
+          list[0];
+        const res = await fetch(pick.baseUrl + '&fmt=json3');
+        const data = (await res.json()) as {
+          events?: Array<{ tStartMs?: number; segs?: Array<{ utf8?: string }> }>;
+        };
+        const segments = (data.events ?? [])
+          .filter((e) => e.segs)
+          .map((e) => ({
+            t: (e.tStartMs ?? 0) / 1000,
+            text: (e.segs ?? []).map((s) => s.utf8 ?? '').join(''),
+          }))
+          .filter((s) => s.text.trim());
+        if (segments.length) return finish('youtube', pick.languageCode ?? 'unknown', segments);
+      }
+
+      // --- Generic: a WebVTT <track> on a <video> element. ---
+      const parseVtt = (vtt: string): Array<{ t: number; text: string }> => {
+        const out: Array<{ t: number; text: string }> = [];
+        for (const block of vtt.replace(/\r/g, '').split('\n\n')) {
+          const m = /(\d{2}):(\d{2}):(\d{2})[.,](\d{3})\s*-->/.exec(block);
+          if (!m) continue;
+          const t = +m[1] * 3600 + +m[2] * 60 + +m[3] + +m[4] / 1000;
+          const text = block
+            .split('\n')
+            .filter((l) => l && !l.includes('-->') && !/^\d+$/.test(l) && l !== 'WEBVTT')
+            .join(' ')
+            .replace(/<[^>]+>/g, '');
+          if (text.trim()) out.push({ t, text });
+        }
+        return out;
+      };
+      for (const video of Array.from(document.querySelectorAll('video'))) {
+        const track = Array.from(video.querySelectorAll('track')).find(
+          (t) => /subtitles|captions/i.test(t.kind) && t.src && (!lang || t.srclang === lang),
+        );
+        if (track?.src) {
+          const vtt = await (await fetch(track.src)).text();
+          const segments = parseVtt(vtt);
+          if (segments.length) return finish('webvtt', track.srclang || 'unknown', segments);
+        }
+      }
+
+      return JSON.stringify({
+        __error: 'No captions or transcript track found on this page. The video may have none, or they may be disabled.',
+      });
+    } catch (e) {
+      return JSON.stringify({ __error: String(e) });
+    }
+  })();
+}
+
+export async function getVideoTranscript(tabId: number, lang?: string): Promise<string> {
+  let tab: chrome.tabs.Tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {
+    return JSON.stringify({ __error: 'Tab no longer exists.' });
+  }
+  if (isRestrictedUrl(tab.url ?? '')) {
+    return JSON.stringify({ __error: 'Cannot read browser-internal pages.' });
+  }
+  try {
+    const injection = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: videoTranscriptRunner,
+      args: [lang ?? undefined, VIDEO_TRANSCRIPT_CONTEXT_CHARS],
+    });
+    return injection[0]?.result ?? JSON.stringify({ __error: 'No result from the page.' });
+  } catch (err) {
+    return JSON.stringify({ __error: String(err) });
+  }
 }
 
 // Turn SharePoint's HitHighlightedSummary (with <c0>…</c0> highlights and

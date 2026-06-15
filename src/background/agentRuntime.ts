@@ -113,6 +113,7 @@ const READ_ONLY_TOOLS = new Set([
   'export_data',
   'read_pdf',
   'read_office_document',
+  'get_video_transcript',
   'read_app_content',
 ]);
 
@@ -163,6 +164,7 @@ Working method:
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
 - To read a Microsoft Office file (.docx Word, .pptx PowerPoint, .xlsx Excel) — including one the browser just downloaded instead of displaying — call read_office_document, not get_tab_content.
+- To work with a video (YouTube or any captioned video on the page) — summarize it, answer about it, find a moment — call get_video_transcript; it reads the page's existing captions instantly. Do not try to watch or listen to the video. If it reports no captions, say so.
 - Some web pages expose their own in-page tools via WebMCP (navigator.modelContext). On the active tab, call list_webmcp_tools to discover them; when one matches the task, prefer call_webmcp_tool over hand-driving the page UI.
 - Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
 - The user can reference a repository (typing #) or a bookmarked page (typing @) in their message; when they do, an explicit instruction is attached — act on it directly: search_repo that exact repository, or open and read that exact URL rather than web-searching for it.
@@ -1381,6 +1383,10 @@ export class AgentRuntime {
           args.tabId !== undefined ? Number(args.tabId) : undefined,
           args.url ? String(args.url) : undefined,
         );
+      case 'get_video_transcript': {
+        const vidTab = args.tabId !== undefined ? Number(args.tabId) : (await browser.getActiveTab()).tabId;
+        return browser.getVideoTranscript(vidTab, args.lang ? String(args.lang) : undefined);
+      }
       case 'wait_for_page_state':
         return JSON.stringify(await browser.waitForPageState(tabId));
       case 'detect_auth_state': {
