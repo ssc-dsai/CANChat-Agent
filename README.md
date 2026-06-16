@@ -106,13 +106,15 @@ Notes:
 
 ### 4.1 Header
 
-**CANChat Agent · status pill · 🗑 · ⚙**
+**CANChat Agent · status pill · A− 100% A+ · 🕘 · ⬇ · ✎ · ⚙**
 
-The status pill is color-coded: neutral **Idle**, blue **Thinking…/Using browser…**, amber **Paused / Waiting for approval / Login required**, red **Error**.
+The status pill is color-coded: neutral **Idle**, purple **Thinking…/Using browser…**, amber **Paused / Waiting for approval / Login required**, red **Error**. At rest it shows as a quiet dot + label; the filled pill (with a gentle pulse) appears only while the agent is working or needs you.
 
-- **🗑 Clear conversation** — stops any running task (aborting in-flight model requests), wipes the chat, the agent's conversation memory, and the tool log. Use it to start fresh; the agent's context (and your token spend) otherwise grows with every exchange.
-- **⚙ Settings** — language, model configuration, Hints, and Skills.
 - **A− / A+** — adjust the panel's text size (scales the whole sidebar); click the percentage to reset to 100%. The choice persists across sessions.
+- **🕘 History** — open the saved-conversation list (search, sort, labels).
+- **⬇ Save conversation** — download the current conversation as an HTML file.
+- **✎ New chat** — start a fresh conversation. This stops any running task and clears the chat view, but the previous conversation is **kept in History** (it is not deleted), so you can reopen it later. Starting fresh also keeps the agent's context (and your token spend) from growing with every exchange.
+- **⚙ Settings** — language and model configuration (Model / Advanced tabs), Skills, and Data & privacy (Known sites, Memory, Knowledge bases, Backup & Restore).
 
 ### 4.2 Tab context panel
 

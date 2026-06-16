@@ -297,6 +297,14 @@ task**.
 **Site permission** — if the agent needs access to a site it hasn't been granted,
 a card offers **Allow this site**, **Allow all sites**, or **Stop task**.
 
+> **📷 Screenshot to capture manually — browser permission dialog.** After you
+> click **Allow this site**, the *browser's own* permission dialog appears
+> ("Allow CANChat Agent to read and change your data on <site>?"). *Why it isn't
+> auto-captured:* this is native browser chrome, outside the extension's pages,
+> so the test harness can't render it. *To capture:* trigger a task on a site the
+> extension hasn't been granted, click **Allow this site**, and screenshot the
+> browser prompt. *Suggested file:* `docs/user-guide/screenshots/06-permission-dialog.png`.
+
 ### 5.5 Status pill and run controls
 
 The header status pill reads **Idle**, **Thinking**, **Acting**, **Paused**,
@@ -371,6 +379,14 @@ button appears beside Send. Tap to record, tap again to stop; your speech is
 transcribed into the composer. *One-time setup:* the side panel can't show the
 microphone permission prompt itself, so the first time it opens a small tab where
 you allow the mic; then return and tap again.
+
+> **📷 Screenshot to capture manually — microphone permission prompt.** The
+> one-time grant tab (`microphone.html`) and the browser's native "Use your
+> microphone?" prompt. *Why it isn't auto-captured:* the OS/browser microphone
+> permission dialog is native chrome and requires real hardware access. *To
+> capture:* set a transcription model, tap the mic in the side panel, and
+> screenshot the grant tab and the browser prompt. *Suggested file:*
+> `docs/user-guide/screenshots/07-mic-permission.png`.
 
 ### 5.10 Snapshots (for image-aware models)
 
@@ -485,6 +501,21 @@ Each is a request you type into the composer; the agent handles the steps.
 | **Run browser automation** | "Open the compose window and start a draft to …" | Maps the page, then asks approval before each click/type/submit. |
 | **Teach a new app** | "/learn" on a site you use often. | Explores the app and saves an app playbook for next time. |
 | **Connect an MCP service** | Add the MCP server under Known sites, then "Use the <name> tools to …" | Lists the server's tools and calls them (with approval). |
+
+> **📷 Screenshots to capture manually — credentialed integrations.** Two
+> workflows depend on real accounts/servers and can't be reproduced in the
+> offline harness:
+>
+> - **SharePoint search results.** After setting a SharePoint base URL and asking
+>   "Search SharePoint for …", the answer lists ranked results with snippets,
+>   source links, and author/modified details. *Why manual:* requires a real
+>   signed-in SharePoint/Microsoft 365 session. *Suggested file:*
+>   `docs/user-guide/screenshots/08-sharepoint-results.png`.
+> - **A live MCP tool call.** After registering an MCP server under Known sites and
+>   asking the agent to use it, you'll see the tool-discovery step, an **Approve
+>   action?** card for `call_mcp_tool`, and the result. *Why manual:* needs a real
+>   reachable MCP server and token. *Suggested file:*
+>   `docs/user-guide/screenshots/09-mcp-call.png`.
 
 ---
 
@@ -861,7 +892,7 @@ between the code and existing docs/labels:
    now uses a **compose icon labelled "New chat"** (the action keeps the previous
    conversation in History rather than deleting it — `agentRuntime.clearConversation`
    comments "Clear = new chat, not delete"). This manual documents the current
-   behavior; the README's header line should be updated.
+   behavior, and the README header line has since been corrected to match.
 2. **Product name vs. package/repo name.** The user-facing product is **CANChat
    Agent** (manifest `name`, all UI), but the npm package is
    `browser-agent-extension` and the GitHub repo is `CANAgent`. Backups also
