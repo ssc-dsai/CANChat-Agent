@@ -153,6 +153,53 @@ for many users · **Medium** — noticeable friction, workaround exists · **Low
 
 ---
 
+## Findings — evaluated with a real, populated configuration
+
+A second pass loaded a real Backup & Restore export (14 conversations, a label, 5 skills, 3 memory
+entries, populated model settings) into a throwaway harness context and walked the **populated** UI.
+No live model calls were made, and the evidence screenshots are withheld from the repo because they
+contain personal data; findings are described textually with `file:line`. This pass surfaced issues
+invisible in the empty/mock state.
+
+### U13 — History previews render raw Markdown
+- **Severity:** High
+- **Heuristic:** #2 Match between system & the real world (also #8)
+- **Evidence:** With real conversations, every list preview shows literal markup, e.g.
+  `### Current tab: WSJ article confirmed …`, `## Salt comparison **Greek yogurt is usually …**`,
+  `## Summary This Ars Technica …`. Previews are derived from raw assistant text
+  ([`conversationMeta.ts`](../src/shared/conversationMeta.ts) `derivePreview`) and rendered as plain
+  text, so heading/emphasis syntax leaks through.
+- **Recommendation:** Strip Markdown when deriving the preview (drop leading `#`s, unwrap
+  `**`/`*`/backticks). One-line, high visible payoff.
+
+### U14 — Each history card reserves an empty label row
+- **Severity:** Low
+- **Heuristic:** #8 Aesthetic & minimalist design (also #6)
+- **Evidence:** Every conversation card renders a lone tag icon on its own row even when the
+  conversation has no labels ([`ConversationsScreen.tsx`](../src/sidebar/ConversationsScreen.tsx),
+  `.conv-labels-row`) — vertical noise across the whole list and an unlabeled affordance.
+- **Recommendation:** Hide the row when there are no labels; fold the "+ label" control in with the
+  action icons.
+
+### U15 — No text search or sort in History
+- **Severity:** Medium
+- **Heuristic:** #7 Flexibility & efficiency of use
+- **Evidence:** With 14 saved conversations the only filter is the single-label dropdown — no free-text
+  search and no sort control ([`ConversationsScreen.tsx`](../src/sidebar/ConversationsScreen.tsx)).
+  Finding a past chat means scrolling; this scales poorly toward the 100-conversation cap.
+- **Recommendation:** Add a search box (title + preview) and a recent/oldest sort toggle.
+
+### U16 — Settings form flashes empty placeholders on open
+- **Severity:** Low
+- **Heuristic:** #1 Visibility of system status
+- **Evidence:** On open, the Settings form renders empty placeholders for a beat before the async
+  `chrome.storage.local.get` populates it ([`SettingsScreen.tsx:25-30`](../src/sidebar/SettingsScreen.tsx));
+  capturing real values required waiting for the load. A user briefly sees an "unconfigured"-looking
+  form even when fully configured.
+- **Recommendation:** Show a skeleton/disabled state until loaded, or seed initial state synchronously.
+
+---
+
 ## What already works well
 
 - **Approval gating** of state-changing tools with a clear **Approve / Deny** card and a collapsed
@@ -161,6 +208,10 @@ for many users · **Medium** — noticeable friction, workaround exists · **Low
 - **Confirm dialogs** on history Delete / Clear-all and label delete (#3, #5).
 - **Plain-language privacy cues** — "stored only on this device", and an explicit "the file will
   contain your API key in plain text" warning in Backup (`09-settings-lower.png`) (#2, #9).
+- **Secret masking** — API-key fields are `type="password"` and render as dots even when populated
+  from a restored backup (#5, #9).
+- **Descriptive titles** — LLM-generated conversation titles read well (it's the *previews*, U13, that
+  leak Markdown, not the titles).
 - **Agent control** — Stop / Pause / Resume and per-action Deny (#3).
 - **Status visibility** — status pill, Tool activity log, and Plan panel (#1).
 - **Efficiency accelerators** — Enter-to-send, `@bookmark` / `#repo` mention autocomplete, skill
@@ -171,13 +222,14 @@ for many users · **Medium** — noticeable friction, workaround exists · **Low
 | Severity | Count | Issues |
 |----------|-------|--------|
 | Critical | 0 | — |
-| High | 2 | U1 (settings overload), U2 (first-run dump) |
-| Medium | 6 | U3 (brand/build stamp), U4 (jargon), U5 (icon-only), U6 (error recovery), U7 (localization), U8 (no help) |
-| Low | 4 | U9 (clear), U10 (status animation), U11 (settings guards), U12 (iconography) |
+| High | 3 | U1 (settings overload), U2 (first-run dump), U13 (Markdown in previews) |
+| Medium | 7 | U3 (brand/build stamp), U4 (jargon), U5 (icon-only), U6 (error recovery), U7 (localization), U8 (no help), U15 (no history search) |
+| Low | 6 | U9 (clear), U10 (status animation), U11 (settings guards), U12 (iconography), U14 (empty label row), U16 (settings flash) |
 
-**Top priorities:** restructure Settings (U1) and add a lightweight first-run/onboarding path (U2);
-then plain-language errors with Retry (U6) and a Help entry point (U8). These four address the
-highest-friction moments — getting started and recovering when something breaks.
+**Top priorities:** strip Markdown from history previews (U13 — quick win), restructure Settings (U1),
+add a lightweight first-run/onboarding path (U2); then history search (U15), plain-language errors with
+Retry (U6), and a Help entry point (U8). These address the highest-friction moments — getting started,
+finding past work, and recovering when something breaks.
 
 > Regenerate the evidence screenshots any time with `npx playwright test walkthrough` (writes to
 > `docs/usability/screenshots/`).
