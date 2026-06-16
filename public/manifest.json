@@ -14,7 +14,8 @@
     "bookmarks",
     "offscreen",
     "tabGroups",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "downloads"
   ],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [

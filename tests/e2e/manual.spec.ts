@@ -33,6 +33,32 @@ test.describe('user-manual screenshots', () => {
     await sidebar.screenshot({ path: `${SHOTS}/03-skill-form.png` });
   });
 
+  test('downloads prompt for a location (Save As)', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    // Capture chrome.downloads.download calls instead of opening a real dialog.
+    await sidebar.evaluate(() => {
+      (window as unknown as { __dl: unknown[] }).__dl = [];
+      chrome.downloads.download = ((opts: chrome.downloads.DownloadOptions, cb?: (id: number) => void) => {
+        (window as unknown as { __dl: unknown[] }).__dl.push(opts);
+        cb?.(1);
+      }) as typeof chrome.downloads.download;
+    });
+    // Backup export is the simplest file save (no model needed).
+    await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings
+    await sidebar.getByRole('tab', { name: 'Data & privacy' }).click();
+    await sidebar.getByText('Backup & Restore').click(); // expand the <details>
+    await sidebar.getByRole('button', { name: 'Export backup' }).click();
+
+    await expect
+      .poll(() => sidebar.evaluate(() => (window as unknown as { __dl: unknown[] }).__dl.length))
+      .toBeGreaterThan(0);
+    const opts = (await sidebar.evaluate(
+      () => (window as unknown as { __dl: chrome.downloads.DownloadOptions[] }).__dl[0],
+    )) as chrome.downloads.DownloadOptions;
+    expect(opts.saveAs).toBe(true);
+    expect(String(opts.filename)).toContain('canchat-agent-backup-');
+  });
+
   test('agent execution — plan panel and tool activity', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sendChat(sidebar, 'PLAN_DEMO: research this topic for me.');

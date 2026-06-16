@@ -106,6 +106,7 @@ capabilities (declared in `public/manifest.json`):
 | **Bookmarks** | So you can reference a saved bookmark by typing `@`. |
 | **Tab groups** | To gather the tabs it opens into one named group per conversation. |
 | **Offscreen** | To build the on-device knowledge-base store and generate documents. |
+| **Downloads** | To save files you ask for (tables, Word docs, exported chats, backups) — always via a **Save As** dialog so you pick the name and folder. |
 | **Access to all websites** (`<all_urls>`) | So it can read and act on whatever site you ask about. |
 
 > **Plain-language note:** "Access to all websites" sounds broad, but the agent
@@ -371,6 +372,11 @@ Knowledge bases** (see documents, chunk counts, and delete).
   **data card** with **Download CSV**, **Download JSON**, and **Copy CSV**.
 - **Create a Word document** — "write this up as a Word doc" produces a download
   card for a `.docx` file.
+
+> **Saving files always asks where.** Every download — CSV/JSON tables, Word
+> documents, exported conversations, and backups — opens a **Save As** dialog so
+> you can rename the file or choose a folder, rather than it dropping silently
+> into your Downloads folder.
 
 ### 5.9 Voice prompts
 

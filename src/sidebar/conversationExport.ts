@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import type { ChatMessageView, DataExport } from '../shared/types';
+import { saveFile } from './download';
 
 // marked's gfm/breaks options and DOMPurify's link hook are configured globally
 // in Markdown.tsx (loaded with the sidebar); set the options here too so this
@@ -16,12 +17,7 @@ function escapeHtml(s: string): string {
 }
 
 export function downloadBlob(content: string, type: string, filename: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveFile(new Blob([content], { type }), filename);
 }
 
 /** Split a trailing "Source tabs:"/"Sources:" block off an assistant answer. */

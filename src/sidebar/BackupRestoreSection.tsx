@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { ExportedRepo } from '../shared/messages';
 import type { ConversationSummary } from '../shared/types';
+import { saveFile } from './download';
 import { useT } from './i18n';
 
 // chrome.storage.local keys that make up the user's configuration.
@@ -73,12 +74,10 @@ export function BackupRestoreSection() {
         storage,
         repos: Array.isArray(repos) ? repos : [],
       };
-      const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: 'application/json' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `canchat-agent-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      saveFile(
+        new Blob([JSON.stringify(backup)], { type: 'application/json' }),
+        `canchat-agent-backup-${new Date().toISOString().slice(0, 10)}.json`,
+      );
       const n = backup.repos.length;
       setMessage({
         ok: true,

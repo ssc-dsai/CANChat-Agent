@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SidebarCommand } from '../shared/messages';
 import type { AgentStatus, ChatMessageView, DataExport, FileArtifact, Skill } from '../shared/types';
 import { DOCS_URL } from './links';
+import { saveFile } from './download';
 import { useT } from './i18n';
 import { Markdown } from './Markdown';
 
@@ -21,25 +22,15 @@ function toCsv(columns: string[], rows: string[][]): string {
 }
 
 function downloadBlob(content: string, type: string, filename: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveFile(new Blob([content], { type }), filename);
 }
 
-/** Decode a base64 string into bytes and download it as a binary file. */
+/** Decode a base64 string into bytes and offer it as a binary file download. */
 function downloadBase64(dataBase64: string, type: string, filename: string): void {
   const bin = atob(dataBase64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const url = URL.createObjectURL(new Blob([bytes], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveFile(new Blob([bytes], { type }), filename);
 }
 
 /** Download card for a generated binary document (e.g. a .docx). */

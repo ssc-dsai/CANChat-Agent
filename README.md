@@ -225,7 +225,7 @@ Honest limits: your endpoint must expose an `/embeddings` route (set a separate 
 
 Everything CANChat Agent stores on your device — your **endpoint settings**, **language**, **known sites**, **skills/app playbooks**, **memory**, and all your **repositories** (text + vectors) — can be saved to a single JSON file and restored later or on another machine. Use it before reinstalling, to move your setup to a new device, or to share a starter configuration with a colleague.
 
-- **Settings → Backup & Restore → Export backup** downloads `canagent-backup-<date>.json`. By default it includes your **API key**, so the file holds a live credential — store it securely. Untick **Include API key** to export everything except the key.
+- **Settings → Backup & Restore → Export backup** saves `canchat-agent-backup-<date>.json` (a Save As dialog lets you choose the name and folder). By default it includes your **API key**, so the file holds a live credential — store it securely. Untick **Include API key** to export everything except the key.
 - **Restore from file…** reads a backup and **overwrites** your current settings, known sites, skills, and memory, and **replaces any repository with the same name** (others are left alone). You're asked to confirm first; the panel reloads when it's done.
 
 It's a plain JSON file with no backend — nothing is uploaded; the only network traffic CANChat Agent ever makes is to your model endpoint.
@@ -451,6 +451,7 @@ The mechanics:
 - **Bookmarks** (`bookmarks` permission): used read-only, only to power the `@` bookmark picker in the chat input. The extension never modifies your bookmarks.
 - **Offscreen document** (`offscreen` permission): a hidden page created on demand to run pdf.js for `read_pdf` and an OOXML unzip/parse for `read_office_document`. No data leaves the device; it fetches the file with your existing session so cookie-gated PDFs and Office files work. Office support covers OOXML only (`.docx`/`.pptx`/`.xlsx`); legacy binary `.doc`/`.xls`/`.ppt` are not supported, and spreadsheets return raw cell values (not formatted/computed display).
 - **Tab groups** (`tabGroups` permission): used to collect the tabs the agent opens into a named per-conversation group. The extension never reads or closes tabs you opened yourself unless you ask.
+- **Downloads** (`downloads` permission): used only to save files *you* ask for — CSV/JSON tables, generated Word documents, exported conversations, and backups. Every save opens a **Save As dialog**, so you choose the filename and folder each time rather than having files dropped silently into your Downloads folder.
 
 **What's stored, what isn't:**
 
@@ -482,7 +483,7 @@ The mechanics:
 
 ```text
 extension/
-  public/manifest.json        MV3 manifest (sidePanel, tabs, scripting, search, <all_urls>)
+  public/manifest.json        MV3 manifest (sidePanel, tabs, scripting, search, downloads, <all_urls>)
   sidebar.html                Side panel page
   src/
     sidebar/                  Preact UI
