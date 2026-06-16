@@ -57,6 +57,21 @@ function decide(req: ChatRequest): ChatMessage {
   if (hasToolResult) return { role: 'assistant', content: FINAL_TEXT };
 
   const prompt = latestUserText(req.messages);
+  // Drives a multi-step view for the user manual: a visible plan plus a
+  // read-only tool call, then (next round, with the tool result present) a final
+  // answer. Lets the docs spec screenshot the Plan and Tool-activity panels.
+  if (prompt.includes('PLAN_DEMO')) {
+    return {
+      role: 'assistant',
+      content: null,
+      tool_calls: [
+        toolCall('set_plan', {
+          steps: ['Read the current page', 'Search the web for context', 'Summarize the findings'],
+        }),
+        toolCall('list_tabs', {}),
+      ],
+    };
+  }
   if (prompt.includes('RUN_JS')) {
     return {
       role: 'assistant',
