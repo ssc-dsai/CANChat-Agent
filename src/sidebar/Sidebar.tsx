@@ -21,6 +21,7 @@ import type {
 } from '../shared/types';
 import { ChatPanel } from './ChatPanel';
 import { ConversationsScreen } from './ConversationsScreen';
+import { OnboardingScreen } from './OnboardingScreen';
 import { exportConversationHtml } from './conversationExport';
 import { useT } from './i18n';
 import { PlanPanel } from './PlanPanel';
@@ -135,6 +136,7 @@ export function Sidebar() {
   const [canDistill, setCanDistill] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [uiScale, setUiScale] = useState(() => {
@@ -158,7 +160,7 @@ export function Sidebar() {
       const s = r.ba_settings as Settings | undefined;
       const ok = Boolean(s?.baseUrl && s?.apiKey && s?.model);
       setConfigured(ok);
-      if (!ok) setShowSettings(true);
+      if (!ok) setShowOnboarding(true);
     });
 
     let port: chrome.runtime.Port;
@@ -308,7 +310,7 @@ export function Sidebar() {
         </div>
       )}
 
-      {configured === false && !showSettings && (
+      {configured === false && !showSettings && !showOnboarding && (
         <div class="banner banner-warn">
           {t('header.noModel')}{' '}
           <button class="link-btn" onClick={() => setShowSettings(true)}>
@@ -338,6 +340,19 @@ export function Sidebar() {
       />
 
       <ToolActivityPanel activities={activities} />
+
+      {showOnboarding && (
+        <OnboardingScreen
+          onClose={(nowConfigured) => {
+            setShowOnboarding(false);
+            if (nowConfigured !== undefined) setConfigured(nowConfigured);
+          }}
+          onOpenAdvanced={() => {
+            setShowOnboarding(false);
+            setShowSettings(true);
+          }}
+        />
+      )}
 
       {showSettings && (
         <SettingsScreen

@@ -10,15 +10,20 @@ const SHOTS = 'docs/usability/screenshots';
 const PANEL = { width: 400, height: 820 }; // approximate side-panel dimensions
 
 test.describe('walkthrough', () => {
-  test('01 — first run auto-opens Settings; closing shows the no-model banner', async ({ context, extensionId }) => {
+  test('01 — first run shows the minimal onboarding (U2)', async ({ context, extensionId }) => {
     const page = await context.newPage();
     await page.setViewportSize(PANEL);
     await page.goto(`chrome-extension://${extensionId}/sidebar.html`);
-    // Fresh context, no ba_settings → the app drops the user straight into the
-    // (long) Settings overlay.
-    await expect(page.locator('.settings-overlay')).toBeVisible();
-    await page.screenshot({ path: `${SHOTS}/01-first-run-settings.png` });
-    // Close it → the gated composer + the "no model" warn banner.
+    // Fresh context, no ba_settings → a focused welcome with only the 3 required
+    // fields, not the full settings modal.
+    await expect(page.locator('.onboarding-card')).toBeVisible();
+    await expect(page.locator('.onboarding-card .field')).toHaveCount(3);
+    await page.screenshot({ path: `${SHOTS}/01-first-run-onboarding.png` });
+
+    // "Advanced setup" hands off to the full (tabbed) Settings; closing it then
+    // shows the gated "no model" banner.
+    await page.getByRole('button', { name: /advanced setup/i }).click();
+    await expect(page.locator('.settings-tabs')).toBeVisible();
     await page.locator('.settings-card > .settings-header .icon-btn').click();
     await expect(page.locator('.banner-warn')).toBeVisible();
     await page.screenshot({ path: `${SHOTS}/02-no-model-banner.png` });
@@ -60,18 +65,17 @@ test.describe('walkthrough', () => {
     await sidebar.screenshot({ path: `${SHOTS}/07-label-picker.png` });
   });
 
-  test('07/08 — settings overlay (top and lower sections)', async ({ sidebar }) => {
+  test('07/08 — tabbed settings: Model tab and Data tab (U1)', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear
-    const card = sidebar.locator('.settings-card');
-    await expect(card).toBeVisible();
-    await sidebar.screenshot({ path: `${SHOTS}/08-settings-top.png` });
+    await expect(sidebar.locator('.settings-tabs')).toBeVisible();
+    // Default Model tab: only the three required fields above the fold.
+    await expect(sidebar.locator('.settings-tab.is-active')).toHaveText('Model');
+    await sidebar.screenshot({ path: `${SHOTS}/08-settings-model-tab.png` });
 
-    // Scroll to the stacked sub-sections (Skills/Memory/Repos/Backup) to evidence
-    // the single long modal.
-    await card.evaluate((el) => {
-      el.scrollTop = el.scrollHeight;
-    });
-    await sidebar.screenshot({ path: `${SHOTS}/09-settings-lower.png` });
+    // Data & privacy tab groups the formerly-stacked sub-sections.
+    await sidebar.getByRole('tab', { name: 'Data & privacy' }).click();
+    await expect(sidebar.getByText('Backup & Restore')).toBeVisible();
+    await sidebar.screenshot({ path: `${SHOTS}/09-settings-data-tab.png` });
   });
 });

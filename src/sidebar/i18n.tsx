@@ -59,6 +59,15 @@ const EN: Dict = {
   'settings.languageFr': 'Français',
   // settings — model config
   'settings.title': 'Settings',
+  'settings.tabModel': 'Model',
+  'settings.tabAdvanced': 'Advanced',
+  'settings.tabSkills': 'Skills',
+  'settings.tabData': 'Data & privacy',
+  'onboarding.title': 'Welcome to CANChat Agent',
+  'onboarding.intro':
+    'An AI agent that uses your browser as its tools — ask about the current page, your open tabs, or the web. To begin, connect a model. The key is stored only on this device and never synced.',
+  'onboarding.start': 'Save & start',
+  'onboarding.advanced': 'Advanced setup…',
   'settings.note':
     'Connect any OpenAI-compatible endpoint (remote API, local model, or gateway). The key is stored only on this device and never synced.',
   'settings.endpointUrl': 'Endpoint base URL',
@@ -156,6 +165,15 @@ const FR: Dict = {
   'settings.languageFr': 'Français',
   // settings — model config
   'settings.title': 'Paramètres',
+  'settings.tabModel': 'Modèle',
+  'settings.tabAdvanced': 'Avancé',
+  'settings.tabSkills': 'Compétences',
+  'settings.tabData': 'Données et confidentialité',
+  'onboarding.title': 'Bienvenue dans CANChat Agent',
+  'onboarding.intro':
+    'Un agent IA qui utilise votre navigateur comme outils — posez des questions sur la page actuelle, vos onglets ouverts ou le Web. Pour commencer, connectez un modèle. La clé est stockée uniquement sur cet appareil et n’est jamais synchronisée.',
+  'onboarding.start': 'Enregistrer et démarrer',
+  'onboarding.advanced': 'Configuration avancée…',
   'settings.note':
     'Connectez n’importe quel point de terminaison compatible avec OpenAI (API distante, modèle local ou passerelle). La clé est stockée uniquement sur cet appareil et n’est jamais synchronisée.',
   'settings.endpointUrl': 'URL de base du point de terminaison',

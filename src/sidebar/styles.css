@@ -1099,6 +1099,46 @@ body {
   border-radius: 12px 12px 0 0;
 }
 
+/* Settings tab bar — splits the long modal into Model / Advanced / Skills / Data. */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 4px;
+}
+
+.settings-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+}
+
+.settings-tab.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.onboarding-card {
+  max-height: none;
+}
+
+.onboarding-advanced {
+  align-self: center;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
 .settings-note {
   margin: 0;
   font-size: 12px;

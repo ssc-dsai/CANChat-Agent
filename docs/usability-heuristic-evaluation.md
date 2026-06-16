@@ -17,7 +17,7 @@ no live network, no keys — and corroborated against the UI source.
 
 | # | Workflow | Surface |
 |---|----------|---------|
-| 1 | First run / configuration | auto-opened Settings overlay, "no model" banner |
+| 1 | First run / configuration | onboarding welcome, tabbed Settings, "no model" banner |
 | 2 | Ask the agent (chat) | composer, assistant reply, Copy |
 | 3 | Approve a state-changing action | approval prompt card |
 | 4 | Capture page context | Snapshot / Snapshot Page / Repo toolbar |
@@ -34,27 +34,32 @@ for many users · **Medium** — noticeable friction, workaround exists · **Low
 
 ## Findings
 
-### U1 — Settings is a single, very long modal mixing unrelated concerns
+### U1 — Settings is a single, very long modal mixing unrelated concerns — ✅ Resolved
 - **Severity:** High
 - **Heuristic:** #8 Aesthetic & minimalist design (also #6 Recognition)
-- **Evidence:** The Settings overlay stacks model endpoint/key/model, Azure version,
+- **Evidence (original):** The Settings overlay stacked model endpoint/key/model, Azure version,
   temperature/max-tokens, embeddings, transcription, SharePoint, custom instructions **and** Known
-  sites, Skills, Memory, Repositories, and Backup/Restore into one scroll
-  ([`SettingsScreen.tsx:84-300`](../src/sidebar/SettingsScreen.tsx)). Top and bottom of the same modal:
+  sites, Skills, Memory, Repositories, and Backup/Restore into one ~300-line scroll.
+- **Fix:** Settings is now a **tabbed** overlay — **Model · Advanced · Skills · Data & privacy**
+  ([`SettingsScreen.tsx`](../src/sidebar/SettingsScreen.tsx)). The default Model tab shows only the
+  three required fields (no scrolling); the rarely-used endpoint/sampling options live under Advanced,
+  and the device-data sections are grouped under Data & privacy.
 
-  ![first-run settings](usability/screenshots/01-first-run-settings.png)
-  ![settings lower sections](usability/screenshots/09-settings-lower.png)
-- **Recommendation:** Split into tabs or collapsible sections (e.g. *Model · Privacy & Data · Skills ·
-  Advanced*). Keep only the three required model fields above the fold.
+  ![settings — Model tab](usability/screenshots/08-settings-model-tab.png)
+  ![settings — Data & privacy tab](usability/screenshots/09-settings-data-tab.png)
 
-### U2 — First run drops the user straight into the full settings form
+### U2 — First run drops the user straight into the full settings form — ✅ Resolved
 - **Severity:** High
 - **Heuristic:** #10 Help & documentation (also #8)
-- **Evidence:** With no `ba_settings`, the app immediately opens the long modal
-  ([`Sidebar.tsx:161`](../src/sidebar/Sidebar.tsx)) — 15+ fields, no welcome, no explanation of what
-  the product does or which fields are required. See `01-first-run-settings.png` above.
-- **Recommendation:** A minimal first-run step (one screen: endpoint, key, model + a one-line "what
-  this is") with everything else deferred behind "Advanced". Link to the docs.
+- **Evidence (original):** With no `ba_settings`, the app immediately opened the long modal — 15+
+  fields, no welcome, no explanation of what the product does or which fields are required.
+- **Fix:** First run now shows a focused **onboarding** card
+  ([`OnboardingScreen.tsx`](../src/sidebar/OnboardingScreen.tsx), wired in
+  [`Sidebar.tsx`](../src/sidebar/Sidebar.tsx)): a one-line "what this is", the three required fields,
+  Test connection, **Save & start**, and an **Advanced setup…** link that hands off to the full tabbed
+  Settings. Everything else is deferred.
+
+  ![first-run onboarding](usability/screenshots/01-first-run-onboarding.png)
 
 ### U3 — App identity is truncated; a cryptic build stamp is shown prominently
 - **Severity:** Medium
@@ -71,7 +76,7 @@ for many users · **Medium** — noticeable friction, workaround exists · **Low
 - **Heuristic:** #2 Match between system & the real world
 - **Evidence:** The context toolbar shows **"Snapshot" vs "Snapshot Page"**, **"Repo name"**, **"+ Tab
   / + Group"** with no explanation (`04-chat-response.png`); the Repositories help text exposes the raw
-  tool names `add_to_repo` / `search_repo` (`09-settings-lower.png`); elsewhere: **"WebMCP"**, **"Save
+  tool names `add_to_repo` / `search_repo` (`09-settings-data-tab.png`); elsewhere: **"WebMCP"**, **"Save
   this workflow as a reusable skill?" (distill)**. These are implementation terms, not user language.
 - **Recommendation:** Relabel in task terms ("Capture screenshot" / "Capture whole page", "Add page to
   a knowledge base") and drop internal tool names from user-facing copy; keep them in tooltips if
@@ -212,7 +217,7 @@ pass surfaced issues invisible in the empty/mock state.
 - **Test connection** probes the endpoint before saving (#5).
 - **Confirm dialogs** on history Delete / Clear-all and label delete (#3, #5).
 - **Plain-language privacy cues** — "stored only on this device", and an explicit "the file will
-  contain your API key in plain text" warning in Backup (`09-settings-lower.png`) (#2, #9).
+  contain your API key in plain text" warning in Backup (`09-settings-data-tab.png`) (#2, #9).
 - **Secret masking** — API-key fields are `type="password"` and render as dots even when populated
   from a restored backup (#5, #9).
 - **Descriptive titles** — LLM-generated conversation titles read well (it's the *previews*, U13, that
@@ -227,14 +232,13 @@ pass surfaced issues invisible in the empty/mock state.
 | Severity | Count | Issues |
 |----------|-------|--------|
 | Critical | 0 | — |
-| High | 3 | U1 (settings overload), U2 (first-run dump), U13 (Markdown in previews) |
+| High | 1 | U13 (Markdown in previews) · ~~U1 (settings overload)~~ ✅ · ~~U2 (first-run dump)~~ ✅ |
 | Medium | 7 | U3 (brand/build stamp), U4 (jargon), U5 (icon-only), U6 (error recovery), U7 (localization), U8 (no help), U15 (no history search) |
 | Low | 6 | U9 (clear), U10 (status animation), U11 (settings guards), U12 (iconography), U14 (empty label row), U16 (settings flash) |
 
-**Top priorities:** strip Markdown from history previews (U13 — quick win), restructure Settings (U1),
-add a lightweight first-run/onboarding path (U2); then history search (U15), plain-language errors with
-Retry (U6), and a Help entry point (U8). These address the highest-friction moments — getting started,
-finding past work, and recovering when something breaks.
+**Resolved:** U1 (Settings split into Model / Advanced / Skills / Data & privacy tabs) and U2 (focused
+first-run onboarding). **Next priorities:** strip Markdown from history previews (U13 — quick win),
+history search (U15), plain-language errors with Retry (U6), and a Help entry point (U8).
 
 > Regenerate the evidence screenshots any time with `npx playwright test walkthrough` (writes to
 > `docs/usability/screenshots/`).

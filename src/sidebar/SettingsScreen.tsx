@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
 import { BackupRestoreSection } from './BackupRestoreSection';
@@ -14,6 +14,14 @@ interface Props {
 
 const EMPTY: Settings = { baseUrl: '', apiKey: '', model: '' };
 
+type SettingsTab = 'model' | 'advanced' | 'skills' | 'data';
+const TABS: ReadonlyArray<[SettingsTab, string]> = [
+  ['model', 'settings.tabModel'],
+  ['advanced', 'settings.tabAdvanced'],
+  ['skills', 'settings.tabSkills'],
+  ['data', 'settings.tabData'],
+];
+
 export function SettingsScreen({ onClose }: Props) {
   const t = useT();
   const [settings, setSettings] = useState<Settings>(EMPTY);
@@ -21,6 +29,16 @@ export function SettingsScreen({ onClose }: Props) {
   const [testing, setTesting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [langPref, setLangPref] = useState<LangPref>('auto');
+  const [tab, setTab] = useState<SettingsTab>('model');
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Switching tabs resets the scroll so the (now shorter) section starts at top.
+  const switchTab = (next: SettingsTab) => {
+    setTab(next);
+    if (cardRef.current) cardRef.current.scrollTop = 0;
+  };
+  // Test/Save act on the `settings` object, so they belong to the field tabs.
+  const showModelActions = tab === 'model' || tab === 'advanced';
 
   useEffect(() => {
     chrome.storage.local.get(['ba_settings', LANGUAGE_STORAGE_KEY]).then((r) => {
@@ -82,7 +100,7 @@ export function SettingsScreen({ onClose }: Props) {
 
   return (
     <div class="settings-overlay">
-      <div class="settings-card">
+      <div class="settings-card" ref={cardRef}>
         <div class="settings-header">
           <strong>{t('settings.title')}</strong>
           <button class="icon-btn" onClick={() => onClose(valid && saved ? true : undefined)}>
@@ -90,6 +108,22 @@ export function SettingsScreen({ onClose }: Props) {
           </button>
         </div>
 
+        <div class="settings-tabs" role="tablist">
+          {TABS.map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={tab === key}
+              class={`settings-tab ${tab === key ? 'is-active' : ''}`}
+              onClick={() => switchTab(key)}
+            >
+              {t(label)}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'model' && (
+        <>
         <label class="field">
           <span>{t('settings.language')}</span>
           <select
@@ -134,7 +168,11 @@ export function SettingsScreen({ onClose }: Props) {
             onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
           />
         </label>
+        </>
+        )}
 
+        {tab === 'advanced' && (
+        <>
         <label class="field">
           <span>{t('settings.apiVersion')}</span>
           <input
@@ -257,7 +295,11 @@ export function SettingsScreen({ onClose }: Props) {
             onInput={(e) => update({ systemPrompt: (e.target as HTMLTextAreaElement).value })}
           />
         </label>
+        </>
+        )}
 
+        {showModelActions && (
+        <>
         {testResult && (
           <div class={`banner ${testResult.ok ? 'banner-ok' : 'banner-error'}`}>{testResult.detail}</div>
         )}
@@ -271,14 +313,14 @@ export function SettingsScreen({ onClose }: Props) {
             {t('common.save')}
           </button>
         </div>
+        </>
+        )}
 
-        <hr class="settings-divider" />
+        {tab === 'skills' && <SkillsSection />}
 
+        {tab === 'data' && (
+        <>
         <KnownSitesSection />
-
-        <hr class="settings-divider" />
-
-        <SkillsSection />
 
         <hr class="settings-divider" />
 
@@ -291,6 +333,8 @@ export function SettingsScreen({ onClose }: Props) {
         <hr class="settings-divider" />
 
         <BackupRestoreSection />
+        </>
+        )}
       </div>
     </div>
   );
