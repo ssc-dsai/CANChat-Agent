@@ -4,6 +4,11 @@ CANChat Agent is a Chromium extension that puts an AI agent in your browser's si
 
 You bring your own model: any OpenAI-compatible endpoint works, from OpenAI's API to a local Ollama instance. Nothing ships preconfigured and your API key never leaves your machine.
 
+<p align="center">
+  <img src="docs/usability/screenshots/04-chat-response.png" alt="The CANChat Agent side panel answering a question about the current page" width="400"><br>
+  <sub><em>Ask about the page you're on and get an answer right in the side panel — with a Copy button and source citations.</em></sub>
+</p>
+
 ---
 
 ## Table of contents
@@ -74,6 +79,11 @@ Then load it in Chrome (or any Chromium browser):
 3. Click **Load unpacked** and select the `dist/` folder.
 4. Click the CANChat Agent toolbar icon to open the side panel.
 
+<p align="center">
+  <img src="docs/usability/screenshots/01-first-run-onboarding.png" alt="First-run welcome asking for endpoint, API key, and model" width="400"><br>
+  <sub><em>First launch: a short welcome asks only for an endpoint, key, and model — with a Test connection button — instead of the full settings screen.</em></sub>
+</p>
+
 After any rebuild, click the reload icon on the extension card in `chrome://extensions`.
 
 ## 3. Connecting a model
@@ -102,6 +112,16 @@ Notes:
 - The model needs to support **tool calling** (OpenAI `tools`/`function` format). Models without tool support can chat but can't drive the browser.
 - Every model request times out after **120 seconds**, so a hung endpoint can never freeze a task permanently.
 
+<p align="center">
+  <img src="docs/usability/screenshots/08-settings-model-tab.png" alt="Settings Model tab with endpoint, API key, and model fields" width="400"><br>
+  <sub><em>Settings → Model: the three essentials (endpoint, key, model) plus a language picker and Test connection.</em></sub>
+</p>
+
+<p align="center">
+  <img src="docs/user-guide/screenshots/01-settings-advanced.png" alt="Settings Advanced tab showing Azure version, auto-retry, embeddings and transcription options" width="400"><br>
+  <sub><em>Settings → Advanced: Azure API version, auto-retry on rate limits (429), and separate embedding/transcription endpoints — all optional.</em></sub>
+</p>
+
 ## 4. A tour of the sidebar
 
 ### 4.1 Header
@@ -116,6 +136,11 @@ The status pill is color-coded: neutral **Idle**, purple **Thinking…/Using bro
 - **✎ New chat** — start a fresh conversation. This stops any running task and clears the chat view, but the previous conversation is **kept in History** (it is not deleted), so you can reopen it later. Starting fresh also keeps the agent's context (and your token spend) from growing with every exchange.
 - **⚙ Settings** — language and model configuration (Model / Advanced tabs), Skills, and Data & privacy (Known sites, Memory, Knowledge bases, Backup & Restore).
 
+<p align="center">
+  <img src="docs/usability/screenshots/06-history.png" alt="Conversation history overlay with search, sort, and colored labels" width="400"><br>
+  <sub><em>History: every conversation is saved automatically, with search, newest/oldest sort, and colored labels for filtering.</em></sub>
+</p>
+
 ### 4.2 Tab context panel
 
 The row of buttons under the header controls what page content is handed to the agent *up front* (the agent reads the active tab by default, and can fetch any tab itself mid-task with its tools):
@@ -129,6 +154,11 @@ Each tab in context is listed with a status dot — green (readable), amber (log
 ### 4.3 Plan panel
 
 On a multi-step task a **Plan** panel appears between the tab buttons and the chat, listing the agent's steps with live status (○ pending, » in progress, ✓ done, – skipped) and a done/total count. It's the agent's own plan, updated as it works — a window into what it's doing and how far along it is. Simple one-shot tasks don't show a plan.
+
+<p align="center">
+  <img src="docs/user-guide/screenshots/04-agent-plan.png" alt="Plan panel listing the agent's steps above the chat, with a save-as-skill chip" width="400"><br>
+  <sub><em>The agent's live plan sits above the chat; after a substantial task it offers to save the whole workflow as a reusable skill.</em></sub>
+</p>
 
 ### 4.4 Chat
 
@@ -151,9 +181,19 @@ Three kinds of amber cards appear in the chat when the agent needs you:
 | **Authentication required** | A page redirected to login (detected via URL patterns, password fields, sign-in text, known identity providers) | Sign in to the site in the browser as usual, then **Resume** — the agent re-checks and continues |
 | **Needs access to \<site\>** | You've manually restricted the extension's site access and the agent opened a page it can't read | **Allow this site** / **Allow all sites** / Stop — granting resumes and retries automatically |
 
+<p align="center">
+  <img src="docs/usability/screenshots/05-approval-prompt.png" alt="Approve action card with a plain-language reason and Approve/Deny buttons" width="400"><br>
+  <sub><em>Before anything state-changing, the agent stops and asks — leading with a plain-language reason, with the mechanics under a "Technical detail" toggle.</em></sub>
+</p>
+
 ### 4.6 The tool activity log
 
 The collapsible **Tool activity** bar at the bottom shows every tool call with a status icon (… running, ✓ ok, ✗ error, ⊘ denied). Hover an entry to see the arguments. The agent's full toolset:
+
+<p align="center">
+  <img src="docs/user-guide/screenshots/05-tool-activity.png" alt="Expanded tool activity log listing the tools the agent ran" width="400"><br>
+  <sub><em>Expand the Tool activity log to see exactly which tools ran on a task, each with a status icon.</em></sub>
+</p>
 
 | Tool | What it does | Approval? |
 |---|---|---|
@@ -224,6 +264,11 @@ Honest limits: your endpoint must expose an `/embeddings` route (set a separate 
 ## 4⅞½. Backup & restore
 
 Everything CANChat Agent stores on your device — your **endpoint settings**, **language**, **known sites**, **skills/app playbooks**, **memory**, and all your **repositories** (text + vectors) — can be saved to a single JSON file and restored later or on another machine. Use it before reinstalling, to move your setup to a new device, or to share a starter configuration with a colleague.
+
+<p align="center">
+  <img src="docs/usability/screenshots/09-settings-data-tab.png" alt="Settings Data & privacy tab with collapsible Known sites, Memory, Knowledge bases, and Backup sections" width="400"><br>
+  <sub><em>Settings → Data &amp; privacy groups everything stored on your device — Known sites, Memory, Knowledge bases, and Backup &amp; Restore — into collapsible sections.</em></sub>
+</p>
 
 - **Settings → Backup & Restore → Export backup** saves `canchat-agent-backup-<date>.json` (a Save As dialog lets you choose the name and folder). By default it includes your **API key**, so the file holds a live credential — store it securely. Untick **Include API key** to export everything except the key.
 - **Restore from file…** reads a backup and **overwrites** your current settings, known sites, skills, and memory, and **replaces any repository with the same name** (others are left alone). You're asked to confirm first; the panel reloads when it's done.
@@ -376,6 +421,11 @@ Two editable skills ship on first install. They're deliberately written the way 
 
 Note how `research` step 1 reaches into the **Known sites directory** — skills and the directory compose. A `jira-triage` skill doesn't need to hardcode your Jira URL; it can say "open the Team Jira board from your known sites" and stay valid even when the URL changes.
 
+<p align="center">
+  <img src="docs/user-guide/screenshots/02-settings-skills.png" alt="Settings Skills tab showing the two seeded skills and import/export buttons" width="400"><br>
+  <sub><em>Settings → Skills: the two seeded skills, plus Add / Import (URL or JSON) / Export and the curated App playbook library.</em></sub>
+</p>
+
 ### 6.5 Authoring guidance
 
 - **Write the body as numbered steps naming real tools** (`navigate`, `get_tab_content`, `search_web`, `get_element_map`…). The model follows concrete procedures far more reliably than vibes.
@@ -408,6 +458,11 @@ Playbooks appear in **Settings → Skills** with an `[app: <site>]` badge; edit 
 ### 6.7 Managing skills
 
 **Settings → Skills**: the same management model as Known sites — add/edit/delete, **Import JSON** / **Export JSON**, merge-by-name on import. Names must be lowercase-kebab and unique. A skill can also be **pinned as a toolbar button** (give it a button label and tick "Show as a button") for one-click launching.
+
+<p align="center">
+  <img src="docs/user-guide/screenshots/03-skill-form.png" alt="Skill editor form with name, description, site binding, and instructions fields" width="400"><br>
+  <sub><em>The skill editor: a lowercase-kebab name (the <code>/command</code>), a trigger-shaped description, an optional site binding for app playbooks, and the markdown instructions.</em></sub>
+</p>
 
 ```json
 [
@@ -462,6 +517,11 @@ The mechanics:
 | Memory entries — only if you enable Memory ([§6½](#6½-memory--what-the-agent-remembers-about-you)) | Anything on a server: there is no backend; the only network traffic is to your model endpoint |
 
 ## 8. Troubleshooting
+
+<p align="center">
+  <img src="docs/usability/screenshots/10-error-retry.png" alt="Error banner with a plain-language message and a Retry link" width="400"><br>
+  <sub><em>When something fails, the banner explains it in plain language and offers a one-click <strong>Retry</strong> of your last message.</em></sub>
+</p>
 
 | Symptom | Cause and fix |
 |---|---|
