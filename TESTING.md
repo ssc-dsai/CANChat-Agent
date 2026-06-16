@@ -162,7 +162,14 @@ npx playwright show-trace test-results/<...>/trace.zip
 
 ---
 
-## 4. Exploratory testing with MCP (optional, non-deterministic)
+## 4. Usability evaluation
+
+A Nielsen heuristic evaluation of the UI — driven by the `walkthrough.spec.ts` harness and its
+captured screenshots — lives in
+**[docs/usability-heuristic-evaluation.md](docs/usability-heuristic-evaluation.md)**. Regenerate the
+evidence screenshots with `npx playwright test walkthrough`.
+
+## 5. Exploratory testing with MCP (optional, non-deterministic)
 
 Tools like [Playwright MCP](https://github.com/microsoft/playwright-mcp) or BrowserMCP let an AI agent
 drive a real browser and the extension interactively — useful for **exploratory** testing: probing new
