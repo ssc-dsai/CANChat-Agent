@@ -45,7 +45,7 @@ import { documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
-import { complete, embed, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
+import { complete, embed, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { generateDocument, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { ingestTab } from './repoIngest';
 import { normalizeUrl } from '../shared/repoChunk';
@@ -74,7 +74,8 @@ const SOFT_STEP_BUDGET = 20; // default tool-iteration budget per task
 const STEP_BUDGET_EXTENSION = 10; // granted when the plan still has work left
 const HARD_STEP_CEILING = 40; // absolute cap to bound cost
 const SITES_PROMPT_LIMIT = 25;
-const LLM_TIMEOUT_MS = 120000;
+// LLM_TIMEOUT_MS now lives in llmProvider (applied per request attempt) and is
+// imported for the "timed out" message below.
 const SINGLE_TAB_CHARS = 12000;
 const MULTI_TAB_CHARS = 5000;
 const CONVERSATION_CHAR_BUDGET = 90000; // compact older tool output beyond this
@@ -892,7 +893,7 @@ export class AgentRuntime {
           content: `Original request:\n${this.lastUserText}\n\nPlan that was followed:\n${planText}\n\nKey findings:\n${this.findings.join('\n') || '(none)'}\n\nProduce the skill JSON.`,
         },
       ];
-      const reply = await complete(settings, prompt, undefined, this.makeSignal());
+      const reply = await complete(settings, prompt, undefined, this.makeSignal(), this.rateLimitNotice);
       const raw = (reply.content ?? '').trim().replace(/^```(?:json)?|```$/g, '').trim();
       const parsed = JSON.parse(raw) as { name?: string; description?: string; body?: string };
       if (!parsed.name || !parsed.description || !parsed.body) {
@@ -1083,7 +1084,7 @@ export class AgentRuntime {
       this.refreshSystemMessage();
 
       this.setStatus('thinking');
-      const reply = await complete(settings, this.conversation, tools, this.makeSignal());
+      const reply = await complete(settings, this.conversation, tools, this.makeSignal(), this.rateLimitNotice);
       if (this.aborted(epoch)) return;
 
       if (!reply.tool_calls || reply.tool_calls.length === 0) {
@@ -1158,12 +1159,21 @@ export class AgentRuntime {
     }
   }
 
-  private makeSignal(): AbortSignal {
-    const taskSignal = this.abortController?.signal;
-    return taskSignal
-      ? AbortSignal.any([taskSignal, AbortSignal.timeout(LLM_TIMEOUT_MS)])
-      : AbortSignal.timeout(LLM_TIMEOUT_MS);
+  // The task's cancellation signal (Stop / clear). The per-request timeout now
+  // lives in llmProvider so it bounds each retry attempt, not the whole sequence.
+  private makeSignal(): AbortSignal | undefined {
+    return this.abortController?.signal;
   }
+
+  // Passed to complete() as onRetry: tells the user a transient failure (429 /
+  // 5xx) is being backed off and retried, so a busy endpoint looks like patience
+  // rather than a stall.
+  private rateLimitNotice = (info: { attempt: number; delayMs: number; status: number }): void => {
+    const secs = Math.max(1, Math.round(info.delayMs / 1000));
+    this.notice(
+      `⏳ The model endpoint is busy (HTTP ${info.status}). Waiting ${secs}s, then retrying (attempt ${info.attempt})…`,
+    );
+  };
 
   // Add an agent-opened tab to this conversation's tab group, creating it
   // (with a single-word name) on first use. Non-fatal on failure.
@@ -1233,7 +1243,7 @@ export class AgentRuntime {
         'You have reached your step budget — do not call any more tools. Using your findings and what you already know, give the user your best final answer now, clearly noting anything you could not verify.',
     });
     this.setStatus('thinking');
-    const reply = await complete(settings, this.conversation, undefined, this.makeSignal());
+    const reply = await complete(settings, this.conversation, undefined, this.makeSignal(), this.rateLimitNotice);
     if (this.stopRequested) return;
     const text = reply.content ?? '(no answer)';
     this.conversation.push({ role: 'assistant', content: text });
@@ -1495,7 +1505,7 @@ export class AgentRuntime {
         if (!settings) return 'Error: no model configured.';
         let queryVec: number[][];
         try {
-          queryVec = await embed(settings, [String(args.query)]);
+          queryVec = await embed(settings, [String(args.query)], this.makeSignal());
         } catch (e) {
           return `Error embedding the query: ${e instanceof Error ? e.message : String(e)}`;
         }

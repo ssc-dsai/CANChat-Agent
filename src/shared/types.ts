@@ -163,6 +163,12 @@ export interface Settings {
   transcriptionBaseUrl?: string;
   /** Optional separate API key for transcription; blank = use apiKey. */
   transcriptionApiKey?: string;
+  /**
+   * Automatically back off and retry transient model-endpoint failures (HTTP 429
+   * rate limits and transient 5xx), honoring a Retry-After header. Absent = on;
+   * set false to surface those errors immediately instead.
+   */
+  retryOnRateLimit?: boolean;
 }
 
 export type AgentStatus =

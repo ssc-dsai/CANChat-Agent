@@ -451,6 +451,7 @@ Open **Settings** (gear icon). Settings are split into four tabs.
 | Setting | Default | Description | Recommended |
 |---|---|---|---|
 | **API version** | *(empty)* | Set this **only for Azure OpenAI** (e.g. `2024-02-01`). Its presence switches the adapter to Azure mode (`api-key` header + `?api-version=`). | Leave empty for standard OpenAI-style endpoints. |
+| **Auto-retry when rate-limited** | **On** | When the endpoint is busy (HTTP **429** or a transient 5xx), automatically wait and retry instead of failing — honoring the server's `Retry-After` hint. A "retrying…" notice shows while it backs off. | Keep **on** for capacity-limited endpoints like Azure OpenAI; turn off only if you want failures surfaced immediately. |
 | **Temperature** | *(unset)* | 0–2 creativity dial; higher = more varied. | Leave empty to use the model's default; 0–0.3 for factual work. |
 | **Max tokens** | *(unset)* | Caps the length of each reply. | Leave empty unless you must bound cost/length. |
 | **Embedding model** | *(unset)* | Model for the `/embeddings` route used by knowledge bases. | Set if you use knowledge bases and your endpoint needs a specific embeddings model. |
@@ -653,6 +654,7 @@ The status-dot pulse and the mic-recording pulse respect
 | **Test connection fails: "check your API key"** | Wrong/expired key, or wrong auth style | Re-enter the key. For **Azure**, set **API version** (Advanced) so it uses the `api-key` header. |
 | **"Could not reach the model endpoint"** | Wrong URL, server down, or CORS blocking | Verify the base URL (include `/v1` for OpenAI-style). If the endpoint blocks cross-origin requests, **re-save settings** to grant access; approve any **Allow site** prompt. |
 | **"returned 400 … model"** | Model name not recognized by the endpoint | Correct the model name to one the endpoint lists. |
+| **"429 / Too Many Requests" / "rate-limited"** | The endpoint (often Azure OpenAI) is over capacity | With **Auto-retry** on (default) the agent backs off and retries automatically — you'll see a "retrying…" notice. If it still fails, the endpoint is saturated; wait and try again, or raise your quota. |
 | **Agent answers but won't click/automate** | Model lacks tool-calling | Switch to a model that supports tools/function calling. |
 | **"Approve action?" keeps appearing** | Working as designed | Each state-changing step asks once; **Approve** to proceed or **Deny** to stop. |
 | **Task paused, asks me to log in** | Page hit a sign-in wall | Sign in to the site in the browser, then **Resume**. |

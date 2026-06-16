@@ -82,6 +82,11 @@ const IconSettings = () => (
 /** Prepend plain-language guidance to a raw model/endpoint error (U6). */
 function friendlyError(message: string, t: (k: string) => string): string {
   const m = message.toLowerCase();
+  // Rate limits must be checked before the generic "model" branch below, since a
+  // 429 message contains the word "model".
+  if (m.includes('429') || m.includes('too_many_requests') || m.includes('rate limit')) {
+    return `${t('error.rateLimited')} (${message})`;
+  }
   if (m.includes('401') || m.includes('403') || m.includes('unauthor') || m.includes('api key')) {
     return `${t('error.checkKey')} (${message})`;
   }

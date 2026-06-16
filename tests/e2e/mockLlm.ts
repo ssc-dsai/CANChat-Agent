@@ -34,6 +34,11 @@ export interface MockLlm {
 
 const FINAL_TEXT = 'SUMMARY_OK: This page is a deterministic test fixture.';
 
+// Tracks how many times each RATE_LIMIT request has been seen, so the first
+// attempt 429s and the retry succeeds. Keyed by the message text, so different
+// tests (different text) don't interfere.
+const rateLimitSeen = new Map<string, number>();
+
 function textOf(message: ChatMessage | undefined): string {
   if (!message) return '';
   if (typeof message.content === 'string') return message.content;
@@ -118,6 +123,20 @@ export async function startMockLlm(): Promise<MockLlm> {
       if (latestUserText(parsed.messages).includes('SLOW')) {
         await new Promise((r) => setTimeout(r, 1500));
         if (res.writableEnded || req.destroyed) return; // client aborted (Stop)
+      }
+      // Rate-limit path: 429 (with Retry-After) the first time, then succeed —
+      // so a client with auto-retry on recovers, and one with it off surfaces it.
+      if (latestUserText(parsed.messages).includes('RATE_LIMIT')) {
+        const key = latestUserText(parsed.messages);
+        const seen = (rateLimitSeen.get(key) ?? 0) + 1;
+        rateLimitSeen.set(key, seen);
+        if (seen === 1) {
+          res.statusCode = 429;
+          res.setHeader('Retry-After', '1');
+          res.end(JSON.stringify({ error: { message: 'Too Many Requests', type: 'too_many_requests', code: 'too_many_requests' } }));
+          return;
+        }
+        // fall through on the retry → normal final answer
       }
       const message = decide(parsed);
       res.end(JSON.stringify({ id: 'chatcmpl-mock', choices: [{ index: 0, message, finish_reason: message.tool_calls ? 'tool_calls' : 'stop' }] }));

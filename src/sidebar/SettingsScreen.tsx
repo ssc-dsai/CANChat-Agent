@@ -94,6 +94,7 @@ export function SettingsScreen({ onClose }: Props) {
       transcriptionModel: settings.transcriptionModel?.trim() || undefined,
       transcriptionBaseUrl: settings.transcriptionBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       transcriptionApiKey: settings.transcriptionApiKey?.trim() || undefined,
+      retryOnRateLimit: settings.retryOnRateLimit ?? true,
     };
     await chrome.storage.local.set({ ba_settings: trimmed });
     setSaved(true);
@@ -184,6 +185,16 @@ export function SettingsScreen({ onClose }: Props) {
           />
         </label>
         <p class="settings-note">{t('settings.apiVersionNote')}</p>
+
+        <label class="memory-toggle">
+          <input
+            type="checkbox"
+            checked={settings.retryOnRateLimit ?? true}
+            onChange={(e) => update({ retryOnRateLimit: (e.target as HTMLInputElement).checked })}
+          />
+          <span>{t('settings.retryOnRateLimit')}</span>
+        </label>
+        <p class="settings-note">{t('settings.retryOnRateLimitNote')}</p>
 
         <div class="field-row">
           <label class="field">

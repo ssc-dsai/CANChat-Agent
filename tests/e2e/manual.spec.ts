@@ -78,6 +78,37 @@ test.describe('user-manual screenshots', () => {
     await expect(sidebar.locator('.banner-error')).toHaveCount(0);
   });
 
+  test('rate limit (429) is backed off and retried automatically', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    // Mock 429s the first attempt (Retry-After: 1) then succeeds.
+    await sendChat(sidebar, 'RATE_LIMIT please summarize the page.');
+    // A "retrying" notice appears while it backs off...
+    await expect(sidebar.locator('.msg-notice', { hasText: 'retrying' })).toBeVisible();
+    // ...then the answer arrives, with no error banner — the retry recovered it.
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+    await expect(sidebar.locator('.banner-error')).toHaveCount(0);
+  });
+
+  test('rate limit surfaces an error when auto-retry is turned off', async ({ context, extensionId, mockLlm }) => {
+    const page = await context.newPage();
+    await page.setViewportSize(PANEL);
+    await page.goto(`chrome-extension://${extensionId}/sidebar.html`);
+    await page.evaluate(
+      (baseUrl) =>
+        chrome.storage.local.set({
+          ba_settings: { baseUrl, apiKey: 'test-key', model: 'mock-model', retryOnRateLimit: false },
+        }),
+      `${mockLlm.url}/v1`,
+    );
+    await page.reload();
+
+    await sendChat(page, 'RATE_LIMIT no-retry path.');
+    // With retries disabled the 429 surfaces immediately as a (rate-limit) error.
+    await expect(page.locator('.banner-error')).toBeVisible();
+    await expect(page.locator('.banner-error')).toContainText('rate-limit');
+    await expect(page.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toHaveCount(0);
+  });
+
   test('agent execution — plan panel and tool activity', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sendChat(sidebar, 'PLAN_DEMO: research this topic for me.');

@@ -49,6 +49,8 @@ const EN: Dict = {
   'error.checkKey': 'Check your API key in Settings.',
   'error.checkEndpoint': 'Check the endpoint URL in Settings.',
   'error.checkModel': 'Check the model name in Settings.',
+  'error.rateLimited':
+    'The model endpoint is rate-limiting requests. It kept retrying, but the endpoint is still over capacity — try again shortly.',
   // chat
   'chat.empty':
     'Ask about the current page, your open tabs, or anything on the web — the agent will use the browser when it needs to. Type @ to insert a bookmark, # to reference a knowledge base.',
@@ -117,6 +119,9 @@ const EN: Dict = {
   'settings.apiVersion': 'Azure API version (optional)',
   'settings.apiVersionNote':
     'Set this only for Azure OpenAI (e.g. 2024-02-01). When filled, requests use Azure’s api-version query parameter and api-key header. Your endpoint URL should point at the deployment, e.g. https://NAME.openai.azure.com/openai/deployments/DEPLOYMENT',
+  'settings.retryOnRateLimit': 'Auto-retry when the endpoint is rate-limited',
+  'settings.retryOnRateLimitNote':
+    'When the model endpoint is busy (HTTP 429 or a temporary server error), wait and retry automatically instead of failing — honoring the server’s Retry-After hint. Recommended for capacity-limited endpoints like Azure OpenAI.',
   'settings.temperature': 'Temperature (optional)',
   'settings.maxTokens': 'Max tokens (optional)',
   'settings.embeddingModel':
@@ -200,6 +205,8 @@ const FR: Dict = {
   'error.checkKey': 'Vérifiez votre clé d’API dans les paramètres.',
   'error.checkEndpoint': 'Vérifiez l’URL du point de terminaison dans les paramètres.',
   'error.checkModel': 'Vérifiez le nom du modèle dans les paramètres.',
+  'error.rateLimited':
+    'Le point de terminaison limite le débit des requêtes. Les tentatives ont été répétées, mais il est toujours surchargé — réessayez sous peu.',
   // chat
   'chat.empty':
     'Posez des questions sur la page actuelle, vos onglets ouverts ou le Web — l’agent utilisera le navigateur au besoin. Tapez @ pour insérer un signet, # pour référencer une base de connaissances.',
@@ -269,6 +276,9 @@ const FR: Dict = {
   'settings.apiVersion': 'Version d’API Azure (facultatif)',
   'settings.apiVersionNote':
     'À remplir uniquement pour Azure OpenAI (p. ex. 2024-02-01). Si renseigné, les requêtes utilisent le paramètre api-version et l’en-tête api-key d’Azure. L’URL du point de terminaison doit viser le déploiement, p. ex. https://NOM.openai.azure.com/openai/deployments/DEPLOIEMENT',
+  'settings.retryOnRateLimit': 'Réessayer automatiquement en cas de limitation du débit',
+  'settings.retryOnRateLimitNote':
+    'Lorsque le point de terminaison est occupé (HTTP 429 ou erreur serveur temporaire), patienter et réessayer automatiquement au lieu d’échouer — en respectant l’indication Retry-After du serveur. Recommandé pour les points de terminaison à capacité limitée comme Azure OpenAI.',
   'settings.temperature': 'Température (facultatif)',
   'settings.maxTokens': 'Jetons maximum (facultatif)',
   'settings.embeddingModel':
