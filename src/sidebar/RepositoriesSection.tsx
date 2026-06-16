@@ -70,11 +70,11 @@ export function RepositoriesSection() {
   };
 
   return (
-    <div class="sites-section">
-      <div class="settings-header">
+    <details class="sites-section settings-acc">
+      <summary class="settings-header settings-acc-summary">
         <strong>{t('repos.title')}</strong>
         <span class="sites-count">{repos.length}</span>
-      </div>
+      </summary>
       <p class="settings-note">{t('repos.note')}</p>
       {loading ? (
         <p class="settings-note">{t('repos.loading')}</p>
@@ -129,6 +129,6 @@ export function RepositoriesSection() {
           ))}
         </ul>
       )}
-    </div>
+    </details>
   );
 }

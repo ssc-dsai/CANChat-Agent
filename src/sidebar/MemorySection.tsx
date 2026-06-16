@@ -116,11 +116,11 @@ export function MemorySection() {
   };
 
   return (
-    <div class="sites-section">
-      <div class="settings-header">
+    <details class="sites-section settings-acc">
+      <summary class="settings-header settings-acc-summary">
         <strong>Memory</strong>
         <span class="sites-count">{entries.length}</span>
-      </div>
+      </summary>
 
       <label class="memory-toggle">
         <input type="checkbox" checked={enabled} onChange={(e) => toggle((e.target as HTMLInputElement).checked)} />
@@ -218,6 +218,6 @@ export function MemorySection() {
       {feedback && (
         <div class={`banner ${feedback.ok ? 'banner-ok' : 'banner-error'}`}>{feedback.text}</div>
       )}
-    </div>
+    </details>
   );
 }

@@ -322,17 +322,8 @@ export function SettingsScreen({ onClose }: Props) {
         {tab === 'data' && (
         <>
         <KnownSitesSection />
-
-        <hr class="settings-divider" />
-
         <MemorySection />
-
-        <hr class="settings-divider" />
-
         <RepositoriesSection />
-
-        <hr class="settings-divider" />
-
         <BackupRestoreSection />
         </>
         )}

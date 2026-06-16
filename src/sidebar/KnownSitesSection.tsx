@@ -143,11 +143,11 @@ export function KnownSitesSection() {
   };
 
   return (
-    <div class="sites-section">
-      <div class="settings-header">
-        <strong>Hints</strong>
+    <details class="sites-section settings-acc">
+      <summary class="settings-header settings-acc-summary">
+        <strong>Known sites</strong>
         <span class="sites-count">{sites.length}</span>
-      </div>
+      </summary>
       <p class="settings-note">
         Preload the agent with sites worth checking for data. It consults this directory before
         falling back to a web search. Search templates with a {'{query}'} placeholder let it jump
@@ -284,6 +284,6 @@ export function KnownSitesSection() {
       {feedback && (
         <div class={`banner ${feedback.ok ? 'banner-ok' : 'banner-error'}`}>{feedback.text}</div>
       )}
-    </div>
+    </details>
   );
 }

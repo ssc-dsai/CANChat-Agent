@@ -80,12 +80,14 @@ const MULTI_TAB_CHARS = 5000;
 const CONVERSATION_CHAR_BUDGET = 90000; // compact older tool output beyond this
 const FINDINGS_SHOWN = 20;
 
-// Single-word names for each conversation's tab group.
+// Single-word animal names for each conversation's tab group — a bilingual mix
+// of English and French (Canadian wildlife), fitting the bilingual context.
 const GROUP_NAMES = [
-  'Wolf', 'Otter', 'Falcon', 'Bison', 'Heron', 'Lynx', 'Moose', 'Raven', 'Seal',
-  'Fox', 'Hawk', 'Crane', 'Elk', 'Puma', 'Loon', 'Marten', 'Bear', 'Owl', 'Pike',
-  'Trout', 'Badger', 'Beaver', 'Caribou', 'Eagle', 'Ferret', 'Gull', 'Ibis',
-  'Jay', 'Kestrel', 'Mink', 'Newt', 'Osprey', 'Quail', 'Robin', 'Stoat',
+  'Wolf', 'Loutre', 'Falcon', 'Héron', 'Moose', 'Corbeau', 'Seal', 'Renard',
+  'Hawk', 'Castor', 'Elk', 'Huard', 'Marten', 'Ours', 'Owl', 'Truite',
+  'Badger', 'Carcajou', 'Eagle', 'Harfang', 'Otter', 'Faucon', 'Raven', 'Phoque',
+  'Fox', 'Loup', 'Crane', 'Hibou', 'Bison', 'Lièvre', 'Lynx', 'Écureuil',
+  'Beaver', 'Balbuzard', 'Caribou', 'Geai',
 ];
 
 interface PlanStep {

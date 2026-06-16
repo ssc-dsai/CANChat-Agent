@@ -1271,6 +1271,48 @@ body {
   margin: 6px 0;
 }
 
+/* Collapsible Data & privacy sections — native <details> for keyboard a11y.
+   Collapsed by default, so the tab reads as a scannable four-item menu rather
+   than one long scroll. A rotating caret on the title signals expand state. */
+.settings-acc {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.settings-card .settings-acc:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+.settings-acc-summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.settings-acc-summary::-webkit-details-marker {
+  display: none;
+}
+.settings-acc-summary strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.settings-acc-summary strong::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 2px solid var(--text-dim);
+  border-bottom: 2px solid var(--text-dim);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+.settings-acc[open] > .settings-acc-summary strong::before {
+  transform: rotate(45deg);
+}
+.settings-acc-summary:hover strong,
+.settings-acc-summary:hover strong::before {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .backup-check {
   display: flex;
   align-items: center;

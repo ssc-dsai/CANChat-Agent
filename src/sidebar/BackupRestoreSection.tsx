@@ -120,10 +120,10 @@ export function BackupRestoreSection() {
   };
 
   return (
-    <div class="sites-section">
-      <div class="settings-header">
+    <details class="sites-section settings-acc">
+      <summary class="settings-header settings-acc-summary">
         <strong>Backup &amp; Restore</strong>
-      </div>
+      </summary>
       <p class="settings-note">
         Export your configuration — endpoint settings, hints, skills, memory, and on-device
         repositories — to a single JSON file, and restore it on this or another device.
@@ -169,6 +169,6 @@ export function BackupRestoreSection() {
         </label>
       </div>
       {message && <div class={`banner ${message.ok ? 'banner-ok' : 'banner-error'}`}>{message.text}</div>}
-    </div>
+    </details>
   );
 }
