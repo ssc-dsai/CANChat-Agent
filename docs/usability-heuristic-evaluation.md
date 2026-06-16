@@ -157,9 +157,13 @@ for many users · **Medium** — noticeable friction, workaround exists · **Low
 
 A second pass loaded a real Backup & Restore export (14 conversations, a label, 5 skills, 3 memory
 entries, populated model settings) into a throwaway harness context and walked the **populated** UI.
-No live model calls were made, and the evidence screenshots are withheld from the repo because they
-contain personal data; findings are described textually with `file:line`. This pass surfaced issues
-invisible in the empty/mock state.
+No live model calls were made. The evidence screenshots below were captured from that real run with all
+personal data (conversation titles/previews, memory entries) **replaced by synthetic placeholders in
+the DOM before capture**, and the API key is masked by the field itself — so they carry no PII. This
+pass surfaced issues invisible in the empty/mock state.
+
+![populated history with redacted titles/previews](usability/real-screenshots/history-populated.png)
+![settings — memory/repos/backup, redacted memory](usability/real-screenshots/settings-lower.png)
 
 ### U13 — History previews render raw Markdown
 - **Severity:** High
@@ -168,7 +172,8 @@ invisible in the empty/mock state.
   `### Current tab: WSJ article confirmed …`, `## Salt comparison **Greek yogurt is usually …**`,
   `## Summary This Ars Technica …`. Previews are derived from raw assistant text
   ([`conversationMeta.ts`](../src/shared/conversationMeta.ts) `derivePreview`) and rendered as plain
-  text, so heading/emphasis syntax leaks through.
+  text, so heading/emphasis syntax leaks through (the `## …` / `**…**` in `history-populated.png` above
+  is the synthetic stand-in showing the same leak).
 - **Recommendation:** Strip Markdown when deriving the preview (drop leading `#`s, unwrap
   `**`/`*`/backticks). One-line, high visible payoff.
 
