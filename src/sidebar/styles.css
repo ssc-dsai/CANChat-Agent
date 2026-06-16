@@ -845,6 +845,27 @@ body {
   font-weight: 700;
 }
 
+/* The chat composer is the primary action, so make it more pronounced than the
+   reused .chat-input fields (Settings/skill textareas keep the plainer style):
+   taller, a stronger 2px accent-tinted border, larger text, a bolder placeholder
+   and a subtle lift. */
+.chat-input-row .chat-input {
+  min-height: 3.4em;
+  padding: 11px 13px;
+  font-size: 14px;
+  border-width: 2px;
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.chat-input-row .chat-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.chat-input-row .chat-input:empty::before {
+  color: color-mix(in srgb, var(--text-dim) 75%, var(--text));
+  font-weight: 500;
+}
+
 .chat-buttons {
   display: flex;
   gap: 6px;
