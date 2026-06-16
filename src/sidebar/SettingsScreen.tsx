@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
 import { BackupRestoreSection } from './BackupRestoreSection';
+import { DOCS_URL } from './links';
 import { LANGUAGE_STORAGE_KEY, useT, type LangPref } from './i18n';
 import { KnownSitesSection } from './KnownSitesSection';
 import { MemorySection } from './MemorySection';
@@ -335,6 +336,13 @@ export function SettingsScreen({ onClose }: Props) {
         <BackupRestoreSection />
         </>
         )}
+
+        <div class="settings-about">
+          <span>CANChat Agent · build {__APP_VERSION__}</span>
+          <a href={DOCS_URL} target="_blank" rel="noopener noreferrer">
+            {t('settings.help')}
+          </a>
+        </div>
       </div>
     </div>
   );

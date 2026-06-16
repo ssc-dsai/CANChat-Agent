@@ -65,6 +65,14 @@ test.describe('walkthrough', () => {
     await sidebar.screenshot({ path: `${SHOTS}/07-label-picker.png` });
   });
 
+  test('09 — error banner offers plain guidance + Retry (U6)', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    await sendChat(sidebar, 'FORCE_ERROR to exercise the error path.');
+    await expect(sidebar.locator('.banner-error')).toBeVisible();
+    await expect(sidebar.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await sidebar.screenshot({ path: `${SHOTS}/10-error-retry.png` });
+  });
+
   test('07/08 — tabbed settings: Model tab and Data tab (U1)', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear

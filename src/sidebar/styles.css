@@ -1,14 +1,20 @@
 /* Follows the browser/OS theme: light palette by default, dark via media query. */
 :root {
   color-scheme: light dark;
+  /* Brand palette (derived from the MySSC+ indigo→magenta gradient). The
+     gradient is used once (header); --accent drives every interactive accent.
+     Magenta is decorative/large-UI only — never body text (~4:1 on white). */
   --bg: #ffffff;
-  --bg-panel: #f2f3f6;
-  --bg-input: #eceef2;
-  --border: #d6d8de;
-  --text: #1d1e23;
-  --text-dim: #686a74;
-  --accent: #2f6fdb;
-  --accent-dim: #2558b0;
+  --bg-panel: #f7f4fa;
+  --bg-input: #efeaf4;
+  --border: #e0d8e8;
+  --text: #1c1726;
+  --text-dim: #5a5366;
+  --accent: #6e2a8c;
+  --accent-dim: #56206e;
+  --brand-soft: #f1e9f6;
+  --magenta: #c0249e;
+  --brand-grad: linear-gradient(135deg, #6e2a8c 0%, #c0249e 100%);
   --ok: #1f8f4d;
   --warn: #9a7110;
   --error: #c43c3c;
@@ -34,14 +40,19 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1e1f24;
-    --bg-panel: #26272e;
-    --bg-input: #2e2f37;
-    --border: #3a3b44;
-    --text: #e8e8ec;
-    --text-dim: #9b9ca6;
-    --accent: #4f8cff;
-    --accent-dim: #2c5cbb;
+    --bg: #181421;
+    --bg-panel: #211b2d;
+    --bg-input: #2a2338;
+    --border: #3a3147;
+    --text: #ece8f2;
+    --text-dim: #a79fb6;
+    /* Medium orchid: reads as link text on the dark bg (~4.6:1) and carries
+       white button text (~3.6:1). --accent-dim is the deeper bubble/hover tone. */
+    --accent: #a86fc8;
+    --accent-dim: #8a4fb0;
+    --brand-soft: #2c2440;
+    --magenta: #d85ab8;
+    --brand-grad: linear-gradient(135deg, #7e3aa0 0%, #c0249e 100%);
     --ok: #3fb96c;
     --warn: #d8a01d;
     --error: #e05d5d;
@@ -69,6 +80,15 @@
   box-sizing: border-box;
 }
 
+/* Visible keyboard focus for every interactive control (a11y). Inputs add their
+   own brand-soft ring on :focus; this covers buttons, links, tabs and icons.
+   :focus-visible only fires for keyboard/AT users, so mouse clicks stay clean. */
+:where(a[href], button, [role='tab'], [tabindex]:not([tabindex='-1'])):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
 html,
 body,
 #app {
@@ -88,13 +108,15 @@ body {
   height: 100%;
 }
 
-/* Header */
+/* Header — the one place the brand gradient appears, as a thin bottom rule so
+   the dark title/icons keep full contrast above it. */
 .header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid transparent;
+  border-image: var(--brand-grad) 1;
   background: linear-gradient(var(--bg-panel), var(--bg));
 }
 
@@ -116,7 +138,7 @@ body {
 
 .title {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 14px;
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
@@ -134,22 +156,32 @@ body {
   padding: 1px 6px;
 }
 
+/* At rest (idle) the status is just a quiet dot + dim label under the title —
+   no filled pill, so it never competes with the brand. The pill fill is applied
+   only to working/attention states below. */
 .status {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
   box-sizing: border-box;
   height: 22px;
-  min-width: 92px;
   font-size: 12px;
   font-weight: 600;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: var(--bg-input);
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
+}
+
+/* Filled pill only while something is happening or needs attention. */
+.status-thinking,
+.status-acting,
+.status-paused,
+.status-auth_required,
+.status-awaiting_approval,
+.status-error {
+  padding: 0 10px;
+  border-radius: 999px;
 }
 
 .status::before {
@@ -167,22 +199,22 @@ body {
   color: var(--accent);
 }
 
-/* Per-letter "ransom note" status animation. Colour is left to the pill; font
-   family, weight, and italics are randomised in JS (Sidebar.tsx), and size via
-   transform:scale. Each letter gets a fixed slot and scales within it, so the
-   animation never reflows the pill or the header text around it. */
-.status-anim {
-  display: inline-flex;
-  align-items: center;
-  line-height: 1;
+/* Working states are signalled by a calm pulse on the status dot — legible and
+   accessible (gated below for reduced-motion), replacing the old per-letter
+   "ransom note" animation. */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
 }
-.status-char {
-  display: inline-block;
-  width: 0.6em;
-  text-align: center;
-  white-space: pre;
-  transform-origin: center;
-  transition: transform 0.18s ease;
+.status-thinking::before,
+.status-acting::before {
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-thinking::before,
+  .status-acting::before {
+    animation: none;
+  }
 }
 .status-paused,
 .status-auth_required,
@@ -219,6 +251,10 @@ body {
   cursor: pointer;
   line-height: 0;
   padding: 7px;
+  /* Taller hit area for touch/pointer accessibility; width stays compact so the
+     header's icon cluster doesn't crowd out the brand title. */
+  min-width: 32px;
+  min-height: 36px;
   border-radius: 8px;
   transition: background 0.12s ease, color 0.12s ease;
 }
@@ -286,6 +322,15 @@ body {
   padding: 8px 12px;
   font-size: 13px;
 }
+.banner-msg {
+  min-width: 0;
+}
+.banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
 .banner-error {
   background: rgba(224, 93, 93, 0.15);
   color: var(--error);
@@ -327,7 +372,7 @@ body {
   min-width: 0;
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--text);
   padding: 4px 22px 4px 8px;
   font-size: 12px;
@@ -335,6 +380,7 @@ body {
 .repo-input:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 .repo-clear {
   position: absolute;
@@ -540,10 +586,10 @@ body {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 14px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .chat-empty {
@@ -557,7 +603,7 @@ body {
 
 .msg {
   max-width: 92%;
-  padding: 8px 11px;
+  padding: 9px 12px;
   border-radius: 10px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -787,6 +833,7 @@ body {
 .chat-input:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 .chat-input:empty::before {
   content: attr(data-placeholder);
@@ -959,13 +1006,17 @@ body {
   background: var(--bg-input);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 7px;
+  border-radius: 8px;
   padding: 6px 12px;
   cursor: pointer;
   font-size: 13px;
+  transition: border-color 0.12s ease, background 0.12s ease, transform 0.08s ease;
 }
 .btn:hover:not(:disabled) {
   border-color: var(--accent);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 .btn:disabled {
   opacity: 0.45;
@@ -979,6 +1030,7 @@ body {
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-dim);
+  border-color: var(--accent-dim);
 }
 
 .btn-small {
@@ -1075,7 +1127,7 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .settings-header {
@@ -1139,6 +1191,38 @@ body {
   font-size: 12px;
 }
 
+/* Settings footer — relocated build stamp + help link (U3, U8). */
+.settings-about {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.settings-about a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.settings-about a:hover {
+  text-decoration: underline;
+}
+
+.chat-empty-help {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.chat-empty-help:hover {
+  text-decoration: underline;
+}
+
 .settings-note {
   margin: 0;
   font-size: 12px;
@@ -1158,7 +1242,7 @@ body {
 .field input {
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--text);
   padding: 7px 9px;
   font-size: 13px;
@@ -1166,6 +1250,7 @@ body {
 .field input:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 
 .field-row {
@@ -1338,7 +1423,9 @@ body {
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--border);
+  /* Grouped by fill + spacing, not a resting outline (Gestalt). The accent
+     border appears on hover to signal the click target. */
+  border: 1px solid transparent;
   border-radius: 10px;
   background: var(--bg-panel);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -1446,6 +1533,36 @@ body {
   flex-wrap: wrap;
   gap: 5px;
   margin: 2px 0 4px;
+}
+
+/* History search + sort (U15) */
+.conv-search-row {
+  display: flex;
+  gap: 6px;
+}
+.conv-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 6px 9px;
+  font-size: 13px;
+}
+.conv-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.conv-sort {
+  flex: none;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 /* --- label popover (filter + assign) --------------------------------------- */

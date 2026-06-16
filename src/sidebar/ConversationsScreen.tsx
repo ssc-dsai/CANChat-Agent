@@ -82,6 +82,8 @@ export function ConversationsScreen({ send, onClose }: Props) {
   const [filter, setFilter] = useState<string[]>([]); // selected label ids (OR)
   const [filterOpen, setFilterOpen] = useState(false);
   const [assignFor, setAssignFor] = useState<string | null>(null); // conversation id
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<'recent' | 'oldest'>('recent');
 
   // Read the index + label registry now and re-read whenever the runtime (or this
   // screen) rewrites either, so the list and chips stay live.
@@ -106,12 +108,18 @@ export function ConversationsScreen({ send, onClose }: Props) {
     return m;
   }, [labels]);
 
-  // OR semantics: a conversation matches when it carries any selected label.
+  // Filter by label (OR semantics) and free-text query (title + preview), then
+  // sort by recency. `items` already arrives newest-first.
   const visible = useMemo(() => {
-    if (filter.length === 0) return items;
     const want = new Set(filter);
-    return items.filter((c) => (c.labels ?? []).some((id) => want.has(id)));
-  }, [items, filter]);
+    const q = query.trim().toLowerCase();
+    const filtered = items.filter((c) => {
+      if (filter.length > 0 && !(c.labels ?? []).some((id) => want.has(id))) return false;
+      if (q && !`${c.title} ${c.preview}`.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    return sort === 'oldest' ? [...filtered].reverse() : filtered;
+  }, [items, filter, query, sort]);
 
   // --- label registry mutations (direct storage writes) ----------------------
   const persistLabels = (next: ConversationLabel[]) => {
@@ -256,6 +264,26 @@ export function ConversationsScreen({ send, onClose }: Props) {
           </button>
         </div>
 
+        {items.length > 0 && (
+          <div class="conv-search-row">
+            <input
+              class="conv-search"
+              type="search"
+              placeholder={t('conversations.search')}
+              value={query}
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            />
+            <select
+              class="conv-sort"
+              value={sort}
+              onChange={(e) => setSort((e.target as HTMLSelectElement).value as 'recent' | 'oldest')}
+            >
+              <option value="recent">{t('conversations.sortRecent')}</option>
+              <option value="oldest">{t('conversations.sortOldest')}</option>
+            </select>
+          </div>
+        )}
+
         {filter.length > 0 && (
           <div class="filter-chips">
             {filter.map((id) => {
@@ -280,7 +308,9 @@ export function ConversationsScreen({ send, onClose }: Props) {
         {items.length === 0 ? (
           <p class="settings-note">{t('conversations.empty')}</p>
         ) : visible.length === 0 ? (
-          <p class="settings-note">{t('conversations.noMatches')}</p>
+          <p class="settings-note">
+            {query.trim() ? t('conversations.noSearchMatches') : t('conversations.noMatches')}
+          </p>
         ) : (
           <ul class="conv-list">
             {visible.map((item) => (

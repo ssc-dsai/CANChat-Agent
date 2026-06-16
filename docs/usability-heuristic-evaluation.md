@@ -61,64 +61,71 @@ for many users · **Medium** — noticeable friction, workaround exists · **Low
 
   ![first-run onboarding](usability/screenshots/01-first-run-onboarding.png)
 
-### U3 — App identity is truncated; a cryptic build stamp is shown prominently
+### U3 — App identity is truncated; a cryptic build stamp is shown prominently — ✅ Resolved
 - **Severity:** Medium
 - **Heuristic:** #2 Match between system & the real world (also #8)
-- **Evidence:** At panel width the title "CANChat Agent" renders as **"C…"**, and the raw build stamp
-  `2616710` sits directly under the brand ([`Sidebar.tsx:257-262`](../src/sidebar/Sidebar.tsx)):
+- **Evidence (original):** At panel width the title "CANChat Agent" rendered as **"C…"**, and the raw
+  build stamp `2616710` sat directly under the brand.
+- **Fix:** The status pill moved below the title so "CANChat Agent" shows in full; the build-stamp chip
+  was removed from the header and relocated to a Settings footer ("CANChat Agent · build …", also a
+  Help link). The exact build is still available as a tooltip on the brand ([`Sidebar.tsx`](../src/sidebar/Sidebar.tsx)).
 
   ![chat header](usability/screenshots/04-chat-response.png)
-- **Recommendation:** Keep the product name legible (smaller font / icon + wordmark) and move the build
-  stamp into Settings/About or an `aria`-hidden tooltip — users don't parse `2616710`.
 
-### U4 — Jargon in primary chrome
+### U4 — Jargon in primary chrome — ✅ Resolved
 - **Severity:** Medium
 - **Heuristic:** #2 Match between system & the real world
-- **Evidence:** The context toolbar shows **"Snapshot" vs "Snapshot Page"**, **"Repo name"**, **"+ Tab
-  / + Group"** with no explanation (`04-chat-response.png`); the Repositories help text exposes the raw
-  tool names `add_to_repo` / `search_repo` (`09-settings-data-tab.png`); elsewhere: **"WebMCP"**, **"Save
-  this workflow as a reusable skill?" (distill)**. These are implementation terms, not user language.
-- **Recommendation:** Relabel in task terms ("Capture screenshot" / "Capture whole page", "Add page to
-  a knowledge base") and drop internal tool names from user-facing copy; keep them in tooltips if
-  needed.
+- **Evidence (original):** The context toolbar showed "Snapshot" vs "Snapshot Page", "Repo name",
+  "+ Tab / + Group"; the Repositories help text exposed raw tool names `add_to_repo` / `search_repo`;
+  the composer placeholder said "# repos".
+- **Fix:** Relabelled in task terms ([`TabContextPanel.tsx`](../src/sidebar/TabContextPanel.tsx),
+  [`RepositoriesSection.tsx`](../src/sidebar/RepositoriesSection.tsx)): **Screenshot**, **Capture full
+  page**, **Knowledge base name**, **Add tab**, **Add group**; "Repositories" → **Knowledge bases** with
+  plain help text (no tool names); composer hint → "# knowledge bases". (`04-chat-response.png` shows
+  the new toolbar.)
 
-### U5 — Icon-only controls depend on hover tooltips
+### U5 — Icon-only controls depend on hover tooltips — ✅ Resolved (accessibility)
 - **Severity:** Medium
 - **Heuristic:** #6 Recognition rather than recall
-- **Evidence:** The four header actions (history, save, clear, settings) are icon-only with meaning
-  carried solely by `title=` ([`Sidebar.tsx:277-298`](../src/sidebar/Sidebar.tsx)); the history rows
-  likewise use icon-only Save/Export/Delete ([`ConversationsScreen.tsx`](../src/sidebar/ConversationsScreen.tsx)).
-  Tooltips don't exist on touch and aren't discoverable. See `04-chat-response.png`.
-- **Recommendation:** Add visible labels or at least an overflow menu with text; ensure every icon
-  button has an `aria-label` (some already do) and a non-hover affordance.
+- **Evidence (original):** The header actions and text-scale buttons carried meaning solely via
+  `title=` (no accessible name for screen readers / touch).
+- **Fix:** Added `aria-label` to every icon-only control — header history/save/clear/settings, the
+  text-scale buttons, the knowledge-base clear/delete buttons ([`Sidebar.tsx`](../src/sidebar/Sidebar.tsx),
+  [`TabContextPanel.tsx`](../src/sidebar/TabContextPanel.tsx), [`RepositoriesSection.tsx`](../src/sidebar/RepositoriesSection.tsx);
+  history rows already had them). A full visible-label/overflow-menu redesign remains optional future
+  work.
 
-### U6 — Errors surface raw provider text with no recovery action
+### U6 — Errors surface raw provider text with no recovery action — ✅ Resolved
 - **Severity:** Medium
 - **Heuristic:** #9 Help users recognize, diagnose & recover from errors
-- **Evidence:** Failures bubble up verbatim, e.g. `Model endpoint returned 400: …`
-  ([`llmProvider.ts:223`](../src/background/llmProvider.ts)), into a dismissable banner
-  ([`Sidebar.tsx:302-309`](../src/sidebar/Sidebar.tsx)) with **no Retry** and no plain-language guidance.
-- **Recommendation:** Map common failures (401 → "Check your API key", 404/400 → "Check the endpoint
-  URL / model name") and add a **Retry** action on the failed turn.
+- **Evidence (original):** Failures bubbled up verbatim (e.g. `Model endpoint returned 400: …`) into a
+  dismissable banner with no Retry and no guidance.
+- **Fix:** The error banner now prepends plain-language guidance — 401/403 → "Check your API key",
+  unreachable/404 → "Check the endpoint URL", 400/model → "Check the model name" — keeping the raw
+  detail in parentheses, and adds a **Retry** action that re-sends the last user message
+  ([`Sidebar.tsx`](../src/sidebar/Sidebar.tsx) `friendlyError` + `retryLast`).
 
-### U7 — Localization is inconsistent
+  ![error banner with Retry](usability/screenshots/10-error-retry.png)
+
+### U7 — Localization is inconsistent — ✅ Resolved (cited surfaces)
 - **Severity:** Medium
 - **Heuristic:** #4 Consistency & standards
-- **Evidence:** The app ships an EN/FR dictionary ([`i18n.tsx`](../src/sidebar/i18n.tsx)), but several
-  surfaces are hard-coded English — e.g. [`RepositoriesSection.tsx`](../src/sidebar/RepositoriesSection.tsx)
-  ("Repositories", "Loading…", "No repositories yet.") and the context-toolbar buttons in
-  [`TabContextPanel.tsx`](../src/sidebar/TabContextPanel.tsx). A French user sees a mixed-language UI.
-- **Recommendation:** Route all user-facing strings through `useT()`; add a lint/CI check for literal
-  JSX text in `src/sidebar`.
+- **Evidence (original):** Several surfaces were hard-coded English while the app ships an EN/FR dict —
+  e.g. `RepositoriesSection` and the `TabContextPanel` toolbar.
+- **Fix:** Routed the cited surfaces through `useT()` with full EN/FR keys
+  ([`i18n.tsx`](../src/sidebar/i18n.tsx), [`RepositoriesSection.tsx`](../src/sidebar/RepositoriesSection.tsx),
+  [`TabContextPanel.tsx`](../src/sidebar/TabContextPanel.tsx)), plus the new error/help/onboarding/
+  history strings. A lint/CI guard against literal JSX text remains a good follow-up.
 
-### U8 — No in-app help or documentation entry point
+### U8 — No in-app help or documentation entry point — ✅ Resolved
 - **Severity:** Medium
 - **Heuristic:** #10 Help & documentation
-- **Evidence:** There is no "?", Help, or docs link anywhere in the chrome (`04-chat-response.png`);
-  thorough docs exist only in the repo (`README.md`). New users get field placeholders and the
-  "configure a model" banner, nothing more.
-- **Recommendation:** Add a Help affordance (link to README/usage, keyboard shortcuts, the @/# mention
-  syntax) and a one-time empty-state tip.
+- **Evidence (original):** No "?", Help, or docs link anywhere in the chrome; docs lived only in the
+  repo README.
+- **Fix:** Added a **Help & tips** link in the chat empty state and a **Help & docs** link in the
+  Settings footer, both pointing at the documentation ([`links.ts`](../src/sidebar/links.ts),
+  [`ChatPanel.tsx`](../src/sidebar/ChatPanel.tsx), [`SettingsScreen.tsx`](../src/sidebar/SettingsScreen.tsx)).
+  The empty state already explains the `@`/`#` mention syntax.
 
 ### U9 — "Clear" looks destructive, isn't confirmed, and hides that it's recoverable
 - **Severity:** Low
@@ -191,13 +198,15 @@ pass surfaced issues invisible in the empty/mock state.
 - **Recommendation:** Hide the row when there are no labels; fold the "+ label" control in with the
   action icons.
 
-### U15 — No text search or sort in History
+### U15 — No text search or sort in History — ✅ Resolved
 - **Severity:** Medium
 - **Heuristic:** #7 Flexibility & efficiency of use
-- **Evidence:** With 14 saved conversations the only filter is the single-label dropdown — no free-text
-  search and no sort control ([`ConversationsScreen.tsx`](../src/sidebar/ConversationsScreen.tsx)).
-  Finding a past chat means scrolling; this scales poorly toward the 100-conversation cap.
-- **Recommendation:** Add a search box (title + preview) and a recent/oldest sort toggle.
+- **Evidence (original):** With many saved conversations the only filter was the single-label
+  dropdown — no free-text search, no sort.
+- **Fix:** Added a **search box** (matches title + preview) and a **Newest/Oldest** sort toggle to the
+  History overlay, combined with the existing label filter ([`ConversationsScreen.tsx`](../src/sidebar/ConversationsScreen.tsx)).
+
+  ![history search + sort](usability/screenshots/06-history.png)
 
 ### U16 — Settings form flashes empty placeholders on open
 - **Severity:** Low
@@ -229,16 +238,17 @@ pass surfaced issues invisible in the empty/mock state.
 
 ## Summary
 
-| Severity | Count | Issues |
+| Severity | Count (open) | Issues |
 |----------|-------|--------|
 | Critical | 0 | — |
-| High | 1 | U13 (Markdown in previews) · ~~U1 (settings overload)~~ ✅ · ~~U2 (first-run dump)~~ ✅ |
-| Medium | 7 | U3 (brand/build stamp), U4 (jargon), U5 (icon-only), U6 (error recovery), U7 (localization), U8 (no help), U15 (no history search) |
+| High | 1 | U13 (Markdown in previews) · ~~U1~~ ✅ · ~~U2~~ ✅ |
+| Medium | 0 | all resolved — ~~U3~~ ~~U4~~ ~~U5~~ ~~U6~~ ~~U7~~ ~~U8~~ ~~U15~~ ✅ |
 | Low | 6 | U9 (clear), U10 (status animation), U11 (settings guards), U12 (iconography), U14 (empty label row), U16 (settings flash) |
 
-**Resolved:** U1 (Settings split into Model / Advanced / Skills / Data & privacy tabs) and U2 (focused
-first-run onboarding). **Next priorities:** strip Markdown from history previews (U13 — quick win),
-history search (U15), plain-language errors with Retry (U6), and a Help entry point (U8).
+**Resolved:** U1, U2 (High) and all seven Medium issues — U3 (brand/build stamp), U4 (jargon), U5
+(icon a11y labels), U6 (error guidance + Retry), U7 (localization of cited surfaces), U8 (in-app help
+links), U15 (history search & sort). **Remaining:** U13 (strip Markdown from previews — the last High,
+a quick win) and the six Low polish items.
 
 > Regenerate the evidence screenshots any time with `npx playwright test walkthrough` (writes to
 > `docs/usability/screenshots/`).

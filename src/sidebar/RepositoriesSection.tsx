@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { RepoDoc, RepoInfo } from '../shared/messages';
+import { useT } from './i18n';
 
 function hostOf(url: string): string {
   try {
@@ -10,6 +11,7 @@ function hostOf(url: string): string {
 }
 
 export function RepositoriesSection() {
+  const t = useT();
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -70,18 +72,14 @@ export function RepositoriesSection() {
   return (
     <div class="sites-section">
       <div class="settings-header">
-        <strong>Repositories</strong>
+        <strong>{t('repos.title')}</strong>
         <span class="sites-count">{repos.length}</span>
       </div>
-      <p class="settings-note">
-        On-device document stores (OPFS). The agent fills these with <code>add_to_repo</code> and
-        answers from them with <code>search_repo</code>; embeddings use the endpoint above. Stored
-        only on this device.
-      </p>
+      <p class="settings-note">{t('repos.note')}</p>
       {loading ? (
-        <p class="settings-note">Loading…</p>
+        <p class="settings-note">{t('repos.loading')}</p>
       ) : repos.length === 0 ? (
-        <p class="settings-note">No repositories yet.</p>
+        <p class="settings-note">{t('repos.empty')}</p>
       ) : (
         <ul class="sites-list">
           {repos.map((r) => (
@@ -89,34 +87,35 @@ export function RepositoriesSection() {
               <div class="site-row">
                 <button
                   class="repo-toggle"
-                  title={expanded === r.name ? 'Hide documents' : 'Show documents'}
+                  title={expanded === r.name ? t('repos.hideDocs') : t('repos.showDocs')}
                   onClick={() => toggle(r.name)}
                 >
                   {expanded === r.name ? '▾' : '▸'} {r.name}
                 </button>
                 <span class="site-desc">
-                  {r.docs} doc{r.docs === 1 ? '' : 's'}, {r.chunks} chunk{r.chunks === 1 ? '' : 's'}
+                  {r.docs} {t('repos.docs')}, {r.chunks} {t('repos.chunks')}
                 </span>
-                <button class="icon-btn" title="Delete repository" onClick={() => remove(r.name)}>
+                <button class="icon-btn" aria-label={t('repos.deleteRepo')} title={t('repos.deleteRepo')} onClick={() => remove(r.name)}>
                   ✕
                 </button>
               </div>
               {expanded === r.name && (
                 <ul class="repo-docs">
                   {docsLoading ? (
-                    <li class="settings-note">Loading…</li>
+                    <li class="settings-note">{t('repos.loading')}</li>
                   ) : docs.length === 0 ? (
-                    <li class="settings-note">No documents.</li>
+                    <li class="settings-note">{t('repos.noDocs')}</li>
                   ) : (
                     docs.map((d) => (
                       <li key={d.id} class="repo-doc-row" title={d.url}>
                         <span class="repo-doc-name">{d.name || hostOf(d.url)}</span>
                         <span class="repo-doc-meta">
-                          {hostOf(d.url)} · {d.chunkCount} chunk{d.chunkCount === 1 ? '' : 's'}
+                          {hostOf(d.url)} · {d.chunkCount} {t('repos.chunks')}
                         </span>
                         <button
                           class="icon-btn"
-                          title="Delete this document"
+                          aria-label={t('repos.deleteDoc')}
+                          title={t('repos.deleteDoc')}
                           onClick={() => removeDoc(r.name, d.id)}
                         >
                           ✕

@@ -11,6 +11,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SidebarCommand } from '../shared/messages';
 import type { AgentStatus, ChatMessageView, DataExport, FileArtifact, Skill } from '../shared/types';
+import { DOCS_URL } from './links';
+import { useT } from './i18n';
 import { Markdown } from './Markdown';
 
 function toCsv(columns: string[], rows: string[][]): string {
@@ -166,6 +168,7 @@ export function ChatPanel({
   send,
   disabled,
 }: Props) {
+  const tr = useT();
   // The input is a contenteditable editor (so inserted bookmark URLs can render
   // bold). `text` mirrors its plain text for logic/button state; the element
   // itself is uncontrolled — never re-render its content from state.
@@ -503,8 +506,10 @@ export function ChatPanel({
       <div class="chat-messages" ref={listRef}>
         {messages.length === 0 && (
           <div class="chat-empty">
-            Ask about the current page, your open tabs, or anything on the web — the agent will
-            use the browser when it needs to. Type @ to insert a bookmark, # to reference a repository.
+            <p>{tr('chat.empty')}</p>
+            <a class="chat-empty-help" href={DOCS_URL} target="_blank" rel="noopener noreferrer">
+              {tr('chat.help')}
+            </a>
           </div>
         )}
         {messages.map((m, i) => {
@@ -673,7 +678,7 @@ export function ChatPanel({
           contentEditable={!disabled}
           role="textbox"
           aria-multiline="true"
-          data-placeholder={disabled ? 'Configure a model in Settings first' : 'Ask the agent… (@ bookmarks, # repos)'}
+          data-placeholder={disabled ? tr('chat.placeholderDisabled') : tr('chat.placeholder')}
           onInput={() => {
             // Keep :empty true when only a stray <br> remains, so the placeholder shows.
             if (editorRef.current && !getEditorText().trim()) editorRef.current.innerHTML = '';

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { SidebarCommand } from '../shared/messages';
 import type { Skill, TabContextSummary } from '../shared/types';
+import { useT } from './i18n';
 
 interface Props {
   context: TabContextSummary | null;
@@ -29,6 +30,7 @@ async function downscale(dataUrl: string, maxWidth: number): Promise<string> {
 }
 
 export function TabContextPanel({ context, send, busy }: Props) {
+  const t = useT();
   // Re-render every 30s so staleness indicators stay honest.
   const [, setTick] = useState(0);
   const [repo, setRepo] = useState('');
@@ -95,26 +97,22 @@ export function TabContextPanel({ context, send, busy }: Props) {
   return (
     <div class="context-panel">
       <div class="context-actions">
-        <button
-          class="btn btn-small"
-          title="Capture the visible part of the current tab as an image for the model — for content text extraction can't see (dashboards, canvases, PDFs)"
-          onClick={snapshot}
-        >
-          Snapshot
+        <button class="btn btn-small" title={t('context.screenshotHint')} onClick={snapshot}>
+          {t('context.screenshot')}
         </button>
         <button
           class="btn btn-small"
-          title="OCR the WHOLE page by scrolling top to bottom — captures it as images for the vision model to read (opaque/long pages)"
+          title={t('context.capturePageHint')}
           onClick={() => send({ type: 'capture_page' })}
         >
-          Snapshot Page
+          {t('context.capturePage')}
         </button>
         <button
           class="btn btn-small"
           onClick={() => send({ type: 'refresh_context' })}
           disabled={!context}
         >
-          Refresh
+          {t('context.refresh')}
         </button>
         {buttonSkills.map((s) => (
           <button
@@ -134,7 +132,7 @@ export function TabContextPanel({ context, send, busy }: Props) {
             class="repo-input"
             type="text"
             list="repo-names"
-            placeholder="Repo name"
+            placeholder={t('context.knowledgeBase')}
             value={repo}
             onFocus={loadRepoNames}
             onInput={(e) => setRepo((e.target as HTMLInputElement).value)}
@@ -143,7 +141,8 @@ export function TabContextPanel({ context, send, busy }: Props) {
             <button
               class="repo-clear"
               type="button"
-              title="Clear"
+              aria-label={t('context.clear')}
+              title={t('context.clear')}
               onClick={() => setRepo('')}
             >
               ✕
@@ -157,30 +156,30 @@ export function TabContextPanel({ context, send, busy }: Props) {
         </datalist>
         <button
           class="btn btn-small"
-          title="Capture this tab's text into the named on-device repository (OCR fallback for opaque pages)"
+          title={t('context.addTabHint')}
           disabled={!repo.trim()}
           onClick={() => addToRepo('tab')}
         >
-          + Tab
+          {t('context.addTab')}
         </button>
         <button
           class="btn btn-small"
-          title="Capture every page in this conversation's tab group into the named repository"
+          title={t('context.addGroupHint')}
           disabled={!repo.trim()}
           onClick={() => addToRepo('group')}
         >
-          + Group
+          {t('context.addGroup')}
         </button>
       </div>
       {context && (
         <ul class="context-tabs">
-          {context.tabs.map((t) => (
-            <li key={t.tabId} class="context-tab" title={t.url}>
-              <span class={`dot dot-${t.extractionStatus}`} />
-              <span class="context-tab-title">{t.title || t.url}</span>
-              {isStale(t.capturedAt) && <span class="stale-tag">stale</span>}
-              {t.extractionStatus !== 'ok' && t.extractionStatus !== 'partial' && (
-                <span class="stale-tag">{t.extractionStatus}</span>
+          {context.tabs.map((ct) => (
+            <li key={ct.tabId} class="context-tab" title={ct.url}>
+              <span class={`dot dot-${ct.extractionStatus}`} />
+              <span class="context-tab-title">{ct.title || ct.url}</span>
+              {isStale(ct.capturedAt) && <span class="stale-tag">{t('context.stale')}</span>}
+              {ct.extractionStatus !== 'ok' && ct.extractionStatus !== 'partial' && (
+                <span class="stale-tag">{ct.extractionStatus}</span>
               )}
             </li>
           ))}

@@ -29,56 +29,12 @@ import { SettingsScreen } from './SettingsScreen';
 import { TabContextPanel } from './TabContextPanel';
 import { ToolActivityPanel } from './ToolActivityPanel';
 
-// Pools the per-letter animation randomly draws from. Colour is intentionally
-// left untouched (inherited from the status pill).
-const FUNK_FONTS = [
-  'inherit',
-  'Georgia, serif',
-  '"Courier New", monospace',
-  'Verdana, sans-serif',
-  '"Comic Sans MS", "Comic Sans", cursive',
-];
-const FUNK_WEIGHTS = [400, 500, 600, 700, 800];
-
-const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
-
-/** Per-letter "funky" animated label, shown while the agent is working. */
+/** Status label. Working states (thinking/acting) are conveyed by a calm pulse
+   on the pill's status dot (CSS, gated behind prefers-reduced-motion) rather
+   than per-letter font animation, which hurt legibility and accessibility. */
 function StatusLabel({ status }: { status: AgentStatus }) {
   const t = useT();
-  const label = t(`status.${status}`);
-  const active = status === 'thinking' || status === 'acting';
-  const ref = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    if (!active) return;
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    const el = ref.current;
-    if (!el) return;
-    const tick = () => {
-      el.querySelectorAll<HTMLElement>('.status-char').forEach((c) => {
-        c.style.fontFamily = pick(FUNK_FONTS);
-        c.style.fontWeight = String(pick(FUNK_WEIGHTS));
-        c.style.fontStyle = Math.random() < 0.3 ? 'italic' : 'normal';
-        // Size varies via transform (not font-size) so it never reflows the
-        // surrounding header — each letter scales within its fixed slot.
-        c.style.transform = `scale(${(1 + Math.random() * 0.18).toFixed(2)})`;
-      });
-    };
-    tick();
-    const id = setInterval(tick, 230);
-    return () => clearInterval(id);
-  }, [active, label]);
-
-  if (!active) return <>{label}</>;
-  return (
-    <span ref={ref} class="status-anim">
-      {label.split('').map((ch, i) => (
-        <span key={i} class="status-char">
-          {ch === ' ' ? ' ' : ch}
-        </span>
-      ))}
-    </span>
-  );
+  return <>{t(`status.${status}`)}</>;
 }
 
 // Monochrome line icons (Feather-style, MIT) used in the header. They inherit
@@ -107,12 +63,13 @@ const IconSave = () => (
     <path d="M5 21h14" />
   </svg>
 );
-const IconTrash = () => (
+// "New chat" (compose). Clearing keeps the previous conversation in History
+// (agentRuntime.clearConversation = "new chat", not delete), so a compose icon
+// frames it honestly — far less alarming than the old trash can.
+const IconNew = () => (
   <svg {...svgProps}>
-    <path d="M4 7h16" />
-    <path d="M9 7V4h6v3" />
-    <path d="m6 7 1 13h10l1-13" />
-    <path d="M10 11v6M14 11v6" />
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
   </svg>
 );
 const IconSettings = () => (
@@ -121,6 +78,21 @@ const IconSettings = () => (
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
   </svg>
 );
+
+/** Prepend plain-language guidance to a raw model/endpoint error (U6). */
+function friendlyError(message: string, t: (k: string) => string): string {
+  const m = message.toLowerCase();
+  if (m.includes('401') || m.includes('403') || m.includes('unauthor') || m.includes('api key')) {
+    return `${t('error.checkKey')} (${message})`;
+  }
+  if (m.includes('could not reach') || m.includes('404') || m.includes('enotfound') || m.includes('fetch')) {
+    return `${t('error.checkEndpoint')} (${message})`;
+  }
+  if (m.includes('400') || m.includes('model')) {
+    return `${t('error.checkModel')} (${message})`;
+  }
+  return message;
+}
 
 export function Sidebar() {
   const portRef = useRef<chrome.runtime.Port | null>(null);
@@ -251,36 +223,42 @@ export function Sidebar() {
 
   const t = useT();
 
+  // Most recent user message, for the error banner's Retry action (U6).
+  const lastUserText = [...messages].reverse().find((m) => m.role === 'user')?.text ?? '';
+  const retryLast = () => {
+    if (!lastUserText) return;
+    setErrorBanner(null);
+    send({ type: 'user_message', text: lastUserText });
+  };
+
   return (
     <div class="sidebar">
       <header class="header">
         <div class="brand">
-          <div class="brand-line">
-            <span class="title">CANChat Agent</span>
-            <span class={`status status-${status}`}>
-              <StatusLabel status={status} />
-            </span>
-          </div>
-          <span class="app-version" title="Build stamp (UTC): YY DDD HH">{__APP_VERSION__}</span>
+          <span class="title" title={`CANChat Agent · build ${__APP_VERSION__}`}>CANChat Agent</span>
+          <span class={`status status-${status}`}>
+            <StatusLabel status={status} />
+          </span>
         </div>
         <div class="header-controls">
           <span class="scale-ctl">
-            <button class="scale-btn" title={t('header.smallerText')} onClick={() => applyScale(uiScale - 0.1)}>
+            <button class="scale-btn" aria-label={t('header.smallerText')} title={t('header.smallerText')} onClick={() => applyScale(uiScale - 0.1)}>
               A−
             </button>
-            <button class="scale-val" title={t('header.resetText')} onClick={() => applyScale(1)}>
+            <button class="scale-val" aria-label={t('header.resetText')} title={t('header.resetText')} onClick={() => applyScale(1)}>
               {Math.round(uiScale * 100)}%
             </button>
-            <button class="scale-btn" title={t('header.largerText')} onClick={() => applyScale(uiScale + 0.1)}>
+            <button class="scale-btn" aria-label={t('header.largerText')} title={t('header.largerText')} onClick={() => applyScale(uiScale + 0.1)}>
               A+
             </button>
           </span>
           <span class="header-divider" />
-          <button class="icon-btn" title={t('header.history')} onClick={() => setShowHistory(true)}>
+          <button class="icon-btn" aria-label={t('header.history')} title={t('header.history')} onClick={() => setShowHistory(true)}>
             <IconHistory />
           </button>
           <button
             class="icon-btn"
+            aria-label={t('header.saveConversation')}
             title={t('header.saveConversation')}
             onClick={() => exportConversationHtml(messages)}
             disabled={messages.length === 0}
@@ -289,13 +267,14 @@ export function Sidebar() {
           </button>
           <button
             class="icon-btn"
-            title={t('header.clearConversation')}
+            aria-label={t('header.newChat')}
+            title={t('header.newChat')}
             onClick={() => send({ type: 'clear_conversation' })}
             disabled={messages.length === 0}
           >
-            <IconTrash />
+            <IconNew />
           </button>
-          <button class="icon-btn" title={t('header.settings')} onClick={() => setShowSettings(true)}>
+          <button class="icon-btn" aria-label={t('header.settings')} title={t('header.settings')} onClick={() => setShowSettings(true)}>
             <IconSettings />
           </button>
         </div>
@@ -303,10 +282,17 @@ export function Sidebar() {
 
       {errorBanner && (
         <div class="banner banner-error">
-          <span>{errorBanner}</span>
-          <button class="icon-btn" onClick={() => setErrorBanner(null)}>
-            ✕
-          </button>
+          <span class="banner-msg">{friendlyError(errorBanner, t)}</span>
+          <div class="banner-actions">
+            {lastUserText && (
+              <button class="link-btn" onClick={retryLast}>
+                {t('error.retry')}
+              </button>
+            )}
+            <button class="icon-btn" aria-label={t('common.dismiss')} title={t('common.dismiss')} onClick={() => setErrorBanner(null)}>
+              ✕
+            </button>
+          </div>
         </div>
       )}
 

@@ -92,6 +92,12 @@ export async function startMockLlm(): Promise<MockLlm> {
         /* tolerate malformed bodies in tests */
       }
       requests.push(parsed);
+      // Deterministic failure path for the error-recovery walkthrough (U6).
+      if (latestUserText(parsed.messages).includes('FORCE_ERROR')) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: { message: 'Simulated bad request', code: 'BadRequest' } }));
+        return;
+      }
       const message = decide(parsed);
       res.end(JSON.stringify({ id: 'chatcmpl-mock', choices: [{ index: 0, message, finish_reason: message.tool_calls ? 'tool_calls' : 'stop' }] }));
       return;

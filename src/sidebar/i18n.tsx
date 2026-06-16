@@ -37,12 +37,52 @@ const EN: Dict = {
   'header.history': 'Conversation history',
   'header.saveConversation': 'Save conversation as HTML',
   'header.clearConversation': 'Clear conversation',
+  'header.newChat': 'New chat (this one stays in History)',
   'header.settings': 'Settings',
   'header.smallerText': 'Smaller text',
   'header.resetText': 'Reset text size',
   'header.largerText': 'Larger text',
   'header.noModel': 'No model configured.',
   'header.openSettings': 'Open settings',
+  // errors
+  'error.retry': 'Retry',
+  'error.checkKey': 'Check your API key in Settings.',
+  'error.checkEndpoint': 'Check the endpoint URL in Settings.',
+  'error.checkModel': 'Check the model name in Settings.',
+  // chat
+  'chat.empty':
+    'Ask about the current page, your open tabs, or anything on the web — the agent will use the browser when it needs to. Type @ to insert a bookmark, # to reference a knowledge base.',
+  'chat.help': 'Help & tips',
+  'chat.placeholder': 'Ask the agent… (@ bookmarks, # knowledge bases)',
+  'chat.placeholderDisabled': 'Configure a model in Settings first',
+  // context toolbar (page capture)
+  'context.screenshot': 'Screenshot',
+  'context.screenshotHint':
+    'Capture the visible part of the current tab as an image for the model — for content text extraction can’t see (dashboards, canvases, PDFs).',
+  'context.capturePage': 'Capture full page',
+  'context.capturePageHint':
+    'Capture the WHOLE page by scrolling top to bottom — images the model can read (opaque/long pages).',
+  'context.refresh': 'Refresh',
+  'context.knowledgeBase': 'Knowledge base name',
+  'context.clear': 'Clear',
+  'context.addTab': 'Add tab',
+  'context.addTabHint': 'Save this tab’s text into the named on-device knowledge base.',
+  'context.addGroup': 'Add group',
+  'context.addGroupHint': 'Save every page in this conversation’s tab group into the named knowledge base.',
+  'context.stale': 'stale',
+  // repositories (knowledge bases)
+  'repos.title': 'Knowledge bases',
+  'repos.note':
+    'On-device document stores the agent can search. It fills them when you add pages, and answers from them on demand. Stored only on this device.',
+  'repos.loading': 'Loading…',
+  'repos.empty': 'No knowledge bases yet.',
+  'repos.docs': 'docs',
+  'repos.chunks': 'chunks',
+  'repos.showDocs': 'Show documents',
+  'repos.hideDocs': 'Hide documents',
+  'repos.deleteRepo': 'Delete knowledge base',
+  'repos.deleteDoc': 'Delete this document',
+  'repos.noDocs': 'No documents.',
   // status
   'status.idle': 'Idle',
   'status.thinking': 'Thinking…',
@@ -63,6 +103,7 @@ const EN: Dict = {
   'settings.tabAdvanced': 'Advanced',
   'settings.tabSkills': 'Skills',
   'settings.tabData': 'Data & privacy',
+  'settings.help': 'Help & docs',
   'onboarding.title': 'Welcome to CANChat Agent',
   'onboarding.intro':
     'An AI agent that uses your browser as its tools — ask about the current page, your open tabs, or the web. To begin, connect a model. The key is stored only on this device and never synced.',
@@ -124,6 +165,10 @@ const EN: Dict = {
   'conversations.confirmDeleteLabel': 'Delete the label “{name}”? It will be removed from every conversation.',
   'conversations.clearFilter': 'Clear',
   'conversations.noLabels': 'No labels yet. Create one below.',
+  'conversations.search': 'Search conversations…',
+  'conversations.sortRecent': 'Newest first',
+  'conversations.sortOldest': 'Oldest first',
+  'conversations.noSearchMatches': 'No conversations match your search.',
   // Backup & Restore
   'backup.includeConversations': 'Include saved conversations',
   'backup.includeConversationsNote':
@@ -143,12 +188,53 @@ const FR: Dict = {
   'header.history': 'Historique des conversations',
   'header.saveConversation': 'Enregistrer la conversation en HTML',
   'header.clearConversation': 'Effacer la conversation',
+  'header.newChat': 'Nouvelle conversation (celle-ci reste dans l’historique)',
   'header.settings': 'Paramètres',
   'header.smallerText': 'Texte plus petit',
   'header.resetText': 'Réinitialiser la taille du texte',
   'header.largerText': 'Texte plus grand',
   'header.noModel': 'Aucun modèle configuré.',
   'header.openSettings': 'Ouvrir les paramètres',
+  // errors
+  'error.retry': 'Réessayer',
+  'error.checkKey': 'Vérifiez votre clé d’API dans les paramètres.',
+  'error.checkEndpoint': 'Vérifiez l’URL du point de terminaison dans les paramètres.',
+  'error.checkModel': 'Vérifiez le nom du modèle dans les paramètres.',
+  // chat
+  'chat.empty':
+    'Posez des questions sur la page actuelle, vos onglets ouverts ou le Web — l’agent utilisera le navigateur au besoin. Tapez @ pour insérer un signet, # pour référencer une base de connaissances.',
+  'chat.help': 'Aide et astuces',
+  'chat.placeholder': 'Demandez à l’agent… (@ signets, # bases de connaissances)',
+  'chat.placeholderDisabled': 'Configurez d’abord un modèle dans les paramètres',
+  // context toolbar (page capture)
+  'context.screenshot': 'Capture d’écran',
+  'context.screenshotHint':
+    'Capture la partie visible de l’onglet actuel comme image pour le modèle — pour le contenu que l’extraction de texte ne voit pas (tableaux de bord, canevas, PDF).',
+  'context.capturePage': 'Capturer la page entière',
+  'context.capturePageHint':
+    'Capture TOUTE la page en défilant de haut en bas — des images que le modèle peut lire (pages opaques/longues).',
+  'context.refresh': 'Actualiser',
+  'context.knowledgeBase': 'Nom de la base de connaissances',
+  'context.clear': 'Effacer',
+  'context.addTab': 'Ajouter l’onglet',
+  'context.addTabHint': 'Enregistre le texte de cet onglet dans la base de connaissances nommée (sur l’appareil).',
+  'context.addGroup': 'Ajouter le groupe',
+  'context.addGroupHint':
+    'Enregistre chaque page du groupe d’onglets de cette conversation dans la base nommée.',
+  'context.stale': 'périmé',
+  // repositories (knowledge bases)
+  'repos.title': 'Bases de connaissances',
+  'repos.note':
+    'Stockages de documents sur l’appareil que l’agent peut interroger. Elles se remplissent lorsque vous ajoutez des pages, et l’agent y répond à la demande. Stockées uniquement sur cet appareil.',
+  'repos.loading': 'Chargement…',
+  'repos.empty': 'Aucune base de connaissances pour l’instant.',
+  'repos.docs': 'docs',
+  'repos.chunks': 'segments',
+  'repos.showDocs': 'Afficher les documents',
+  'repos.hideDocs': 'Masquer les documents',
+  'repos.deleteRepo': 'Supprimer la base de connaissances',
+  'repos.deleteDoc': 'Supprimer ce document',
+  'repos.noDocs': 'Aucun document.',
   // status
   'status.idle': 'Inactif',
   'status.thinking': 'Réflexion…',
@@ -169,6 +255,7 @@ const FR: Dict = {
   'settings.tabAdvanced': 'Avancé',
   'settings.tabSkills': 'Compétences',
   'settings.tabData': 'Données et confidentialité',
+  'settings.help': 'Aide et docs',
   'onboarding.title': 'Bienvenue dans CANChat Agent',
   'onboarding.intro':
     'Un agent IA qui utilise votre navigateur comme outils — posez des questions sur la page actuelle, vos onglets ouverts ou le Web. Pour commencer, connectez un modèle. La clé est stockée uniquement sur cet appareil et n’est jamais synchronisée.',
@@ -234,6 +321,10 @@ const FR: Dict = {
     'Supprimer l’étiquette « {name} »? Elle sera retirée de toutes les conversations.',
   'conversations.clearFilter': 'Effacer',
   'conversations.noLabels': 'Aucune étiquette pour l’instant. Créez-en une ci-dessous.',
+  'conversations.search': 'Rechercher des conversations…',
+  'conversations.sortRecent': 'Plus récentes d’abord',
+  'conversations.sortOldest': 'Plus anciennes d’abord',
+  'conversations.noSearchMatches': 'Aucune conversation ne correspond à votre recherche.',
   // Sauvegarde et restauration
   'backup.includeConversations': 'Inclure les conversations enregistrées',
   'backup.includeConversationsNote':
