@@ -90,8 +90,8 @@ What it can do, at a glance:
 **🎙 Say / 🧑‍💻 Do (point each out):**
 - **Header:** the CANChat Agent title and a live **status** (idle / thinking / acting), a **text-size** control (A− / A+), a **clear-conversation** (trash) button — which also stops a running task — and the **Settings** gear.
 - **Tab-context bar** (under the header):
-  - **Snapshot** — capture the visible part of the current tab as an *image* for the model (for dashboards/charts the text tools can't read). *Needs a vision-capable model.*
-  - **Snapshot Page** — scroll-and-capture the *whole* page as images (for long or canvas-rendered pages). *Vision model, token-heavy — a last resort.*
+  - **Screenshot** — capture the visible part of the current tab as an *image* for the model (for dashboards/charts the text tools can't read). *Needs a vision-capable model.*
+  - **Capture full page** — scroll-and-capture the *whole* page as images (for long or canvas-rendered pages). *Vision model, token-heavy — a last resort.*
   - **Refresh** — re-read what's in context.
   - **Repository box** (with **+ Tab** / **+ Group** and a **✕** to clear) — capture pages into an on-device library (Module 7).
 - **Composer (the message box):** type your request. Two shortcuts:
@@ -100,7 +100,7 @@ What it can do, at a glance:
   - **`/`** → run a **skill** (reusable instruction set), including the built-in **`/learn`**.
 - **Plan panel & Tool activity:** appear during multi-step tasks so you can watch the steps and any **approval** prompts.
 
-**✅ Check:** *Which button would you use to let the agent read a chart image that text extraction can't see?* (Snapshot — with a vision-capable model.)
+**✅ Check:** *Which button would you use to let the agent read a chart image that text extraction can't see?* (Screenshot — with a vision-capable model.)
 
 ---
 
@@ -132,7 +132,7 @@ The browser shows PDFs as an image and *downloads* Office files — so neither i
 3. With a **PowerPoint** deck (`.pptx`): *"Turn this deck into concise speaking notes, slide by slide."*
 4. With an **Excel** file (`.xlsx`): *"Which line items changed the most between the two quarters?"* — remember spreadsheets return **raw cell values**, so verify any figure.
 
-**🎙 Say (limits):** Scanned/image-only PDFs have no text layer (use **Snapshot/OCR + a vision model**). Legacy `.doc/.xls/.ppt` are not supported — re-save as the modern format. Spreadsheets give raw values, not formatted/computed display, so check numbers and dates.
+**🎙 Say (limits):** Scanned/image-only PDFs have no text layer (use **Screenshot + a vision model**). Legacy `.doc/.xls/.ppt` are not supported — re-save as the modern format. Spreadsheets give raw values, not formatted/computed display, so check numbers and dates.
 
 **✅ Check:** *A colleague sends a `.pptx` that your browser downloads. How do you get CANChat Agent to read it?* (Open/point it at the file and ask — it uses `read_office_document`.)
 
@@ -240,10 +240,10 @@ Use these as ready-made practice scenarios. Adapt the wording to your program. *
 |---|---|
 | "No model configured" / Test connection fails | Re-check the **base URL, API key, model** in Settings. Confirm the endpoint is reachable from your network. |
 | Embeddings error (e.g. 403) when building a repository | Set the **Embedding model** field to your endpoint's embeddings model id (it differs from the chat model). |
-| `read_pdf` returns little/no text | The PDF is **scanned/image-only** (no text layer) — use **Snapshot/OCR + a vision model** — or it's behind more than a simple cookie request. |
+| `read_pdf` returns little/no text | The PDF is **scanned/image-only** (no text layer) — use **Screenshot + a vision model** — or it's behind more than a simple cookie request. |
 | An Office file won't read | Must be **OOXML** (`.docx/.pptx/.xlsx`). Re-save legacy `.doc/.xls/.ppt` to the modern format. |
 | SharePoint search fails or "files I edited" is empty | Ensure you're **signed into SharePoint**, the **base URL** is set, and your tenant's search is configured; the editor filter matches by display name and varies by tenant. |
-| Snapshot/OCR gives a weak answer | You need a **vision-capable model** configured. |
+| Screenshot gives a weak answer | You need a **vision-capable model** configured. |
 | Can't load the extension | Managed-device restriction — **contact IT**, don't bypass controls. |
 
 ---
