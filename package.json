@@ -8,7 +8,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "npm run build && playwright test",
+    "test:e2e:headed": "npm run build && playwright test --headed",
+    "test:e2e:debug": "npm run build && PWDEBUG=1 playwright test"
   },
   "dependencies": {
     "docx": "^9.7.1",
@@ -19,6 +22,7 @@
     "preact": "^10.24.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "@preact/preset-vite": "^2.9.1",
     "@types/chrome": "^0.0.287",
     "@vitest/coverage-v8": "^4.1.8",

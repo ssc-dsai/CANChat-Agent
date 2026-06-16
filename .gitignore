@@ -3,6 +3,11 @@ dist/
 *.local
 .DS_Store
 
+# Playwright E2E artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+
 # Unrelated local files
 atlassian-mcp-skill.json
 atlassian-mcp-skill.md

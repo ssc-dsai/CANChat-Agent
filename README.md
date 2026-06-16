@@ -528,10 +528,14 @@ the tool-definition contract (`src/shared/schemas.ts`), and the MCP transport pa
 (`src/background/mcpClient.ts`). Run them with `mise run test` (or `npm test`); `npm run
 test:watch` for a watch loop and `npm run test:coverage` for a coverage report.
 
-CI runs the full gate (`typecheck → test → build`) on every push to `main` and every pull
-request via GitHub Actions (`.github/workflows/ci.yml`), using the Node version pinned in
-`mise.toml`.
+Browser-level behaviour — the extension loading, the service worker, content-script injection, the
+agent's approval gating, and WebMCP capture — is covered by a **Playwright** end-to-end suite that
+loads the built extension against a mock model endpoint (`npm run test:e2e`).
 
-> Scope: these are unit tests for the pure logic. The `chrome.*`-bound surface (service worker,
-> content scripts, offscreen DOM/OPFS) is exercised by build + manual verification today;
-> browser-level integration tests (e.g. Playwright) are a separate, larger effort.
+CI runs the unit gate (`typecheck → test → build`, `.github/workflows/ci.yml`) and the E2E suite
+(`.github/workflows/e2e.yml`) on every push to `main` and every pull request, using the Node version
+pinned in `mise.toml`.
+
+> See **[TESTING.md](TESTING.md)** for the full testing how-to: running unit and E2E tests, the
+> harness architecture, writing new tests, debugging failures, and notes on MCP-driven exploratory
+> testing.

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Contact Form</title>
+  </head>
+  <body>
+    <h1 id="headline">Contact Us</h1>
+    <form id="contact" onsubmit="document.getElementById('result').textContent = 'submitted'; return false;">
+      <label for="name">Name</label>
+      <input id="name" name="name" type="text" />
+
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" />
+
+      <label for="message">Message</label>
+      <textarea id="message" name="message"></textarea>
+
+      <button id="submit" type="submit">Send</button>
+    </form>
+    <p id="result"></p>
+  </body>
+</html>

@@ -574,7 +574,7 @@ export function ChatPanel({
         )}
 
         {approval && (
-          <div class="prompt-card">
+          <div class="prompt-card" data-testid="approval">
             <div>
               <strong>Approve action?</strong>
               <div class="prompt-reason">{approval.description}</div>
@@ -669,6 +669,7 @@ export function ChatPanel({
         <div
           ref={editorRef}
           class="chat-input"
+          data-testid="chat-input"
           contentEditable={!disabled}
           role="textbox"
           aria-multiline="true"
@@ -726,7 +727,7 @@ export function ChatPanel({
           </div>
         )}
         <div class="chat-buttons">
-          <button class="btn btn-primary" onClick={submit} disabled={disabled || busy || !text.trim()}>
+          <button class="btn btn-primary" data-testid="send" onClick={submit} disabled={disabled || busy || !text.trim()}>
             Send
           </button>
           {hasTranscription && (

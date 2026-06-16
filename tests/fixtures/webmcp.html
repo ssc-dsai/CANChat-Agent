@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>WebMCP Demo Page</title>
+  </head>
+  <body>
+    <h1 id="headline">WebMCP Demo</h1>
+    <p>This page registers a WebMCP tool so the extension's bridge can capture it.</p>
+    <p id="status">registering…</p>
+    <script>
+      // The extension's webmcpBridge installs a navigator.modelContext shim in the
+      // MAIN world at document_start, so it is present by the time this runs.
+      (function () {
+        var mc = navigator.modelContext;
+        if (mc && typeof mc.registerTool === 'function') {
+          mc.registerTool({
+            name: 'echo',
+            description: 'Echo back the provided text.',
+            inputSchema: { type: 'object', properties: { text: { type: 'string' } } },
+            execute: function (args) {
+              return { content: String((args && args.text) || '') };
+            },
+          });
+          document.getElementById('status').textContent = 'registered';
+        } else {
+          document.getElementById('status').textContent = 'no modelContext';
+        }
+      })();
+    </script>
+  </body>
+</html>
