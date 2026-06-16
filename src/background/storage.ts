@@ -8,6 +8,7 @@
 import { pruneIndex } from '../shared/conversationMeta';
 import type {
   ChatMessageView,
+  ConversationLabel,
   ConversationSummary,
   MemoryEntry,
   PlanStepStatus,
@@ -31,6 +32,7 @@ export const MEMORY_MAX_ENTRIES = 100;
 // body instead of one giant blob.
 export const CONVERSATION_INDEX_KEY = 'ba_conv_index';
 export const CONVERSATION_KEY_PREFIX = 'ba_conv_';
+export const CONVERSATION_LABELS_KEY = 'ba_conv_labels';
 export const MAX_SAVED_CONVERSATIONS = 100;
 
 /** Storage key for a conversation body. Index entries are keyed by id alone. */
@@ -52,6 +54,8 @@ export interface StoredConversation {
   conversation: LlmMessage[];
   /** True once an LLM topic title has been generated, so autosave stops re-deriving the heuristic. */
   autoTitled?: boolean;
+  /** Ids of the labels assigned to this conversation (mirrors the index entry). */
+  labels?: string[];
   /** Best-effort working state, so a resumed thread keeps its plan/findings. */
   plan?: { text: string; status: PlanStepStatus }[];
   findings?: string[];
@@ -140,12 +144,43 @@ export async function saveConversation(
     id: record.id,
     createdAt: existing?.createdAt ?? record.createdAt,
     ...summary,
+    // Label assignments are owned by the UI, not the autosave summary — preserve
+    // whatever is already on the index entry (or the record) so a per-turn
+    // autosave of the active conversation never wipes them.
+    labels: existing?.labels ?? record.labels ?? [],
   };
   const next = [...index.filter((c) => c.id !== record.id), entry];
   const { kept, evicted } = pruneIndex(next, MAX_SAVED_CONVERSATIONS);
   await chrome.storage.local.set({ [CONVERSATION_INDEX_KEY]: kept });
   if (evicted.length > 0) {
     await chrome.storage.local.remove(evicted.map(conversationKey));
+  }
+}
+
+/** The label registry: every user-defined label. Editable directly by the UI. */
+export async function getConversationLabels(): Promise<ConversationLabel[]> {
+  const result = await chrome.storage.local.get(CONVERSATION_LABELS_KEY);
+  const labels = result[CONVERSATION_LABELS_KEY];
+  return Array.isArray(labels) ? (labels as ConversationLabel[]) : [];
+}
+
+export async function saveConversationLabels(labels: ConversationLabel[]): Promise<void> {
+  await chrome.storage.local.set({ [CONVERSATION_LABELS_KEY]: labels });
+}
+
+/**
+ * Assign labels to one conversation: rewrite its index entry's `labels` and, if
+ * the body record still exists, the body's `labels` too (so file export/import
+ * carries the assignment). Routed through the runtime to avoid racing autosave.
+ */
+export async function setConversationLabels(id: string, labels: string[]): Promise<void> {
+  const index = await getConversationIndex();
+  const next = index.map((c) => (c.id === id ? { ...c, labels } : c));
+  await chrome.storage.local.set({ [CONVERSATION_INDEX_KEY]: next });
+
+  const body = await getConversation(id);
+  if (body) {
+    await chrome.storage.local.set({ [conversationKey(id)]: { ...body, labels } });
   }
 }
 

@@ -32,7 +32,15 @@ import type {
   PlanView,
   ToolActivity,
 } from '../shared/types';
-import type { DataExport, FileArtifact, MemoryEntry, Settings, SiteEntry, Skill } from '../shared/types';
+import type {
+  ConversationLabel,
+  DataExport,
+  FileArtifact,
+  MemoryEntry,
+  Settings,
+  SiteEntry,
+  Skill,
+} from '../shared/types';
 import { documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
@@ -45,6 +53,7 @@ import {
   clearAllConversations,
   deleteConversation as deleteStoredConversation,
   getConversation,
+  getConversationLabels,
   getMemories,
   getMemoryEnabled,
   getSettings,
@@ -52,8 +61,10 @@ import {
   getSkills,
   MEMORY_MAX_ENTRIES,
   saveConversation,
+  saveConversationLabels,
   saveMemories,
   saveSkills,
+  setConversationLabels as setStoredConversationLabels,
   type StoredConversation,
 } from './storage';
 import { deriveTitle, derivePreview } from '../shared/conversationMeta';
@@ -368,6 +379,10 @@ export class AgentRuntime {
   private currentConversationTitle: string | null = null;
   private titleIsAuto = false;
   private titlingInFlight = false;
+  // Label ids assigned to the active conversation. Kept in memory so a per-turn
+  // autosave re-emits them on the record; the UI mutates them via
+  // `setConversationLabels`.
+  private currentConversationLabels: string[] = [];
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
 
@@ -499,6 +514,7 @@ export class AgentRuntime {
       this.conversationCreatedAt = new Date().toISOString();
       this.currentConversationTitle = null;
       this.titleIsAuto = false;
+      this.currentConversationLabels = [];
     }
 
     this.pushChat({
@@ -573,6 +589,7 @@ export class AgentRuntime {
       messages: this.messages,
       conversation: this.conversation,
       autoTitled: this.titleIsAuto,
+      labels: this.currentConversationLabels.length > 0 ? this.currentConversationLabels : undefined,
       plan: this.plan ?? undefined,
       findings: this.findings.length > 0 ? this.findings : undefined,
       lastTaskUrl: this.lastTaskUrl || undefined,
@@ -660,6 +677,7 @@ export class AgentRuntime {
     this.lastTaskUrl = record.lastTaskUrl ?? '';
     this.currentConversationId = record.id;
     this.conversationCreatedAt = record.createdAt;
+    this.currentConversationLabels = record.labels ?? [];
     // Keep the saved title; only re-title if it was never auto-generated.
     this.currentConversationTitle = record.title || null;
     this.titleIsAuto = record.autoTitled ?? false;
@@ -685,6 +703,19 @@ export class AgentRuntime {
       this.conversationCreatedAt = '';
       this.currentConversationTitle = null;
       this.titleIsAuto = false;
+      this.currentConversationLabels = [];
+    }
+  }
+
+  /**
+   * Assign labels to a saved conversation. Routed through the runtime (rather than
+   * a direct UI storage write) so it can't race the active conversation's autosave:
+   * if `id` is the active thread, the in-memory label set is updated too.
+   */
+  async setConversationLabels(id: string, labels: string[]): Promise<void> {
+    await setStoredConversationLabels(id, labels);
+    if (this.currentConversationId === id) {
+      this.currentConversationLabels = labels;
     }
   }
 
@@ -694,7 +725,7 @@ export class AgentRuntime {
    * resume path so it appears on screen and is continuable. `record` was already
    * shape-checked by `parseConversationFile` in the UI; we re-verify defensively.
    */
-  async importConversation(record: unknown): Promise<void> {
+  async importConversation(record: unknown, labelDefs?: ConversationLabel[]): Promise<void> {
     if (this.running) {
       this.emit({ type: 'error', message: 'Finish or stop the current task before loading a conversation.' });
       return;
@@ -703,6 +734,15 @@ export class AgentRuntime {
     if (!body || !Array.isArray(body.messages) || !Array.isArray(body.conversation)) {
       this.emit({ type: 'error', message: 'That file is not a valid conversation.' });
       return;
+    }
+    // Re-register any label definitions bundled in the file so the imported
+    // thread's chips resolve to a colour/name on this device. Merge by id;
+    // existing local labels win (we don't clobber the user's own names/colours).
+    if (labelDefs && labelDefs.length > 0) {
+      const existing = await getConversationLabels();
+      const known = new Set(existing.map((l) => l.id));
+      const merged = [...existing, ...labelDefs.filter((l) => l && l.id && !known.has(l.id))];
+      if (merged.length !== existing.length) await saveConversationLabels(merged);
     }
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
@@ -718,6 +758,7 @@ export class AgentRuntime {
       messages,
       conversation: body.conversation as LlmMessage[],
       autoTitled: body.autoTitled ?? false,
+      labels: Array.isArray(body.labels) ? body.labels : undefined,
       plan: body.plan,
       findings: body.findings,
       lastTaskUrl: body.lastTaskUrl,
@@ -782,6 +823,7 @@ export class AgentRuntime {
     this.conversationCreatedAt = '';
     this.currentConversationTitle = null;
     this.titleIsAuto = false;
+    this.currentConversationLabels = [];
     // New conversation ⇒ fresh tab group (old group/tabs are left open).
     this.groupName = null;
     this.groupId = null;

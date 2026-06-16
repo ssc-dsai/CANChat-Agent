@@ -227,6 +227,20 @@ export interface ConversationSummary {
   messageCount: number;
   /** Short snippet of the latest message, for the list row. */
   preview: string;
+  /** Ids of the labels assigned to this conversation (see ConversationLabel). */
+  labels?: string[];
+}
+
+/**
+ * A user-defined, colored label for organizing the History list. Stored as a
+ * small registry under `ba_conv_labels`; conversations reference labels by id.
+ * `color` is a palette *key* (see shared/labelColors.ts), never a raw hex, so
+ * theming stays in CSS.
+ */
+export interface ConversationLabel {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export type PlanStepStatus = 'pending' | 'in_progress' | 'done' | 'skipped';

@@ -4,6 +4,7 @@ import {
   deriveTitle,
   derivePreview,
   parseConversationFile,
+  parseConversationLabels,
   pruneIndex,
   slugifyTitle,
 } from './conversationMeta';
@@ -119,5 +120,23 @@ describe('parseConversationFile', () => {
     expect(parseConversationFile(wrap(body, { kind: 'backup' }))).toBeNull();
     expect(parseConversationFile(wrap({ messages: [] }))).toBeNull();
     expect(parseConversationFile(wrap({ conversation: [] }))).toBeNull();
+  });
+});
+
+describe('parseConversationLabels', () => {
+  it('returns well-formed label definitions from the envelope', () => {
+    const labels = [{ id: 'a', name: 'Work', color: 'blue' }];
+    const text = JSON.stringify({ ...CONVERSATION_FILE, conversation: {}, labels });
+    expect(parseConversationLabels(text)).toEqual(labels);
+  });
+
+  it('drops malformed entries and tolerates an absent labels field', () => {
+    const text = JSON.stringify({
+      ...CONVERSATION_FILE,
+      labels: [{ id: 'a', name: 'Work', color: 'blue' }, { id: 1 }, null, 'nope'],
+    });
+    expect(parseConversationLabels(text)).toEqual([{ id: 'a', name: 'Work', color: 'blue' }]);
+    expect(parseConversationLabels(JSON.stringify({ ...CONVERSATION_FILE }))).toEqual([]);
+    expect(parseConversationLabels('{not json')).toEqual([]);
   });
 });

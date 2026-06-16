@@ -1,27 +1,73 @@
 // =============================================================================
 // History overlay — lists conversations the runtime auto-saves to local storage
-// and lets the user reopen ("Continue"), export, or delete them.
+// and lets the user reopen ("Continue"), export, delete, and organize them with
+// colored labels.
 //
 // The list is read straight from `ba_conv_index` (mirroring how SettingsScreen
 // reads `ba_settings`), with a storage subscription so it refreshes live as the
-// agent autosaves. Continue/Delete are runtime mutations, so they go through the
-// Port via the `send` callback the Sidebar passes in. Export reads the full body
-// (`ba_conv_<id>`) on demand and reuses the existing HTML exporter.
+// agent autosaves. The label *registry* (`ba_conv_labels`) is likewise read and
+// edited directly — the agent loop never touches it, so there's no race. Per-
+// conversation actions (Continue/Delete/label assignment) are runtime mutations,
+// so they go through the Port via `send`; assignment in particular is routed
+// there so it can't clobber the active conversation's autosave.
 // =============================================================================
 
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import {
   CONVERSATION_FILE,
   parseConversationFile,
+  parseConversationLabels,
   slugifyTitle,
 } from '../shared/conversationMeta';
+import { labelColorClass } from '../shared/labelColors';
 import type { SidebarCommand } from '../shared/messages';
-import type { ChatMessageView, ConversationSummary } from '../shared/types';
+import type { ChatMessageView, ConversationLabel, ConversationSummary } from '../shared/types';
 import { downloadBlob, exportConversationHtml } from './conversationExport';
 import { useT } from './i18n';
+import { LabelPicker } from './LabelPicker';
 
 const INDEX_KEY = 'ba_conv_index';
+const LABELS_KEY = 'ba_conv_labels';
 const BODY_PREFIX = 'ba_conv_';
+
+const svgProps = {
+  width: 15,
+  height: 15,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  'stroke-width': 2,
+  'stroke-linecap': 'round' as const,
+  'stroke-linejoin': 'round' as const,
+};
+const IconSave = () => (
+  <svg {...svgProps}>
+    <path d="M12 3v12" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M5 21h14" />
+  </svg>
+);
+const IconExport = () => (
+  <svg {...svgProps}>
+    <path d="M14 3h7v7" />
+    <path d="M10 14 21 3" />
+    <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+  </svg>
+);
+const IconTrash = () => (
+  <svg {...svgProps}>
+    <path d="M4 7h16" />
+    <path d="M9 7V4h6v3" />
+    <path d="m6 7 1 13h10l1-13" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
+const IconTag = () => (
+  <svg {...svgProps}>
+    <path d="M20.6 13.4 12 22l-9-9V4a1 1 0 0 1 1-1h8z" />
+    <circle cx="7.5" cy="7.5" r="1.3" />
+  </svg>
+);
 
 interface Props {
   send: (command: SidebarCommand) => void;
@@ -31,23 +77,75 @@ interface Props {
 export function ConversationsScreen({ send, onClose }: Props) {
   const t = useT();
   const [items, setItems] = useState<ConversationSummary[]>([]);
+  const [labels, setLabels] = useState<ConversationLabel[]>([]);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [filter, setFilter] = useState<string[]>([]); // selected label ids (OR)
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [assignFor, setAssignFor] = useState<string | null>(null); // conversation id
 
-  // Read the index now and re-read whenever the runtime rewrites it (each turn).
+  // Read the index + label registry now and re-read whenever the runtime (or this
+  // screen) rewrites either, so the list and chips stay live.
   useEffect(() => {
     const load = () =>
-      chrome.storage.local.get(INDEX_KEY).then((r) => {
+      chrome.storage.local.get([INDEX_KEY, LABELS_KEY]).then((r) => {
         const index = Array.isArray(r[INDEX_KEY]) ? (r[INDEX_KEY] as ConversationSummary[]) : [];
-        // Newest first.
         setItems([...index].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+        setLabels(Array.isArray(r[LABELS_KEY]) ? (r[LABELS_KEY] as ConversationLabel[]) : []);
       });
     void load();
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'local' && changes[INDEX_KEY]) void load();
+      if (area === 'local' && (changes[INDEX_KEY] || changes[LABELS_KEY])) void load();
     };
     chrome.storage.onChanged.addListener(onChange);
     return () => chrome.storage.onChanged.removeListener(onChange);
   }, []);
+
+  const labelById = useMemo(() => {
+    const m = new Map<string, ConversationLabel>();
+    for (const l of labels) m.set(l.id, l);
+    return m;
+  }, [labels]);
+
+  // OR semantics: a conversation matches when it carries any selected label.
+  const visible = useMemo(() => {
+    if (filter.length === 0) return items;
+    const want = new Set(filter);
+    return items.filter((c) => (c.labels ?? []).some((id) => want.has(id)));
+  }, [items, filter]);
+
+  // --- label registry mutations (direct storage writes) ----------------------
+  const persistLabels = (next: ConversationLabel[]) => {
+    setLabels(next);
+    void chrome.storage.local.set({ [LABELS_KEY]: next });
+  };
+  const createLabel = (name: string, color: string) =>
+    persistLabels([...labels, { id: crypto.randomUUID(), name, color }]);
+  const renameLabel = (id: string, name: string) =>
+    persistLabels(labels.map((l) => (l.id === id ? { ...l, name } : l)));
+  const recolorLabel = (id: string, color: string) =>
+    persistLabels(labels.map((l) => (l.id === id ? { ...l, color } : l)));
+  const deleteLabel = (label: ConversationLabel) => {
+    persistLabels(labels.filter((l) => l.id !== label.id));
+    setFilter((f) => f.filter((id) => id !== label.id));
+    // Strip the deleted label from every conversation that carried it.
+    for (const c of items) {
+      if ((c.labels ?? []).includes(label.id)) {
+        send({ type: 'set_conversation_labels', id: c.id, labels: (c.labels ?? []).filter((x) => x !== label.id) });
+      }
+    }
+  };
+
+  // --- per-conversation assignment (routed through the runtime) ---------------
+  const toggleAssign = (conv: ConversationSummary, labelId: string) => {
+    const current = conv.labels ?? [];
+    const next = current.includes(labelId)
+      ? current.filter((x) => x !== labelId)
+      : [...current, labelId];
+    send({ type: 'set_conversation_labels', id: conv.id, labels: next });
+  };
+
+  const toggleFilter = (id: string) =>
+    setFilter((f) => (f.includes(id) ? f.filter((x) => x !== id) : [...f, id]));
 
   const continueConversation = (id: string) => {
     send({ type: 'load_conversation', id });
@@ -67,26 +165,31 @@ export function ConversationsScreen({ send, onClose }: Props) {
     if (body?.messages?.length) exportConversationHtml(body.messages);
   };
 
-  // Save one conversation to a portable, re-importable JSON file.
+  // Save one conversation to a portable, re-importable JSON file. Bundle the
+  // definitions of any labels it carries so they re-register on import elsewhere.
   const saveOne = async (item: ConversationSummary) => {
     const key = `${BODY_PREFIX}${item.id}`;
     const r = await chrome.storage.local.get(key);
     const body = r[key];
     if (!body) return;
-    const file = JSON.stringify({ ...CONVERSATION_FILE, conversation: body });
+    const defs = (item.labels ?? [])
+      .map((id) => labelById.get(id))
+      .filter((l): l is ConversationLabel => !!l);
+    const file = JSON.stringify({ ...CONVERSATION_FILE, conversation: body, labels: defs });
     downloadBlob(file, 'application/json', `canchat-agent-conversation-${slugifyTitle(item.title)}.json`);
   };
 
-  // Load a conversation file: validate, then hand the body to the runtime, which
-  // stores it and opens it on screen.
+  // Load a conversation file: validate, then hand the body (and any bundled label
+  // definitions) to the runtime, which stores it and opens it on screen.
   const loadFromFile = async (file: File) => {
     setNotice(null);
-    const body = parseConversationFile(await file.text());
+    const text = await file.text();
+    const body = parseConversationFile(text);
     if (!body) {
       setNotice({ ok: false, text: t('conversations.importError') });
       return;
     }
-    send({ type: 'import_conversation', record: body });
+    send({ type: 'import_conversation', record: body, labels: parseConversationLabels(text) });
     onClose();
   };
 
@@ -94,6 +197,14 @@ export function ConversationsScreen({ send, onClose }: Props) {
     if (items.length === 0) return;
     if (!confirm(t('conversations.confirmClearAll', { n: String(items.length) }))) return;
     send({ type: 'clear_conversations' });
+  };
+
+  const sharedPickerProps = {
+    labels,
+    onCreate: createLabel,
+    onRename: renameLabel,
+    onRecolor: recolorLabel,
+    onDelete: deleteLabel,
   };
 
   return (
@@ -107,6 +218,25 @@ export function ConversationsScreen({ send, onClose }: Props) {
         </div>
 
         <div class="settings-actions">
+          <div class="label-filter">
+            <button
+              class={`btn ${filter.length > 0 ? 'btn-primary' : ''}`}
+              onClick={() => setFilterOpen((v) => !v)}
+            >
+              <IconTag /> {t('conversations.labels')}
+              {filter.length > 0 ? ` (${filter.length})` : ''}
+            </button>
+            {filterOpen && (
+              <LabelPicker
+                {...sharedPickerProps}
+                selected={filter}
+                onToggle={toggleFilter}
+                onClose={() => setFilterOpen(false)}
+                clearLabel={filter.length > 0 ? t('conversations.clearFilter') : undefined}
+                onClear={() => setFilter([])}
+              />
+            )}
+          </div>
           <label class="btn">
             {t('conversations.load')}
             <input
@@ -126,34 +256,102 @@ export function ConversationsScreen({ send, onClose }: Props) {
           </button>
         </div>
 
+        {filter.length > 0 && (
+          <div class="filter-chips">
+            {filter.map((id) => {
+              const l = labelById.get(id);
+              if (!l) return null;
+              return (
+                <button
+                  key={id}
+                  class={`conv-label-chip is-removable ${labelColorClass(l.color)}`}
+                  onClick={() => toggleFilter(id)}
+                  title={t('conversations.clearFilter')}
+                >
+                  {l.name} ✕
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {notice && <div class={`banner ${notice.ok ? 'banner-ok' : 'banner-error'}`}>{notice.text}</div>}
 
         {items.length === 0 ? (
           <p class="settings-note">{t('conversations.empty')}</p>
+        ) : visible.length === 0 ? (
+          <p class="settings-note">{t('conversations.noMatches')}</p>
         ) : (
           <ul class="conv-list">
-            {items.map((item) => (
+            {visible.map((item) => (
               <li class="conv-item" key={item.id}>
-                <div class="conv-meta">
+                <button class="conv-body" onClick={() => continueConversation(item.id)}>
                   <span class="conv-title">{item.title || t('conversations.untitled')}</span>
                   <span class="conv-sub">
                     {new Date(item.updatedAt).toLocaleString()} ·{' '}
                     {t('conversations.messageCount', { n: String(item.messageCount) })}
                   </span>
                   {item.preview && <span class="conv-preview">{item.preview}</span>}
+                </button>
+
+                <div class="conv-labels-row">
+                  {(item.labels ?? []).map((id) => {
+                    const l = labelById.get(id);
+                    if (!l) return null;
+                    return (
+                      <span key={id} class={`conv-label-chip ${labelColorClass(l.color)}`}>
+                        {l.name}
+                      </span>
+                    );
+                  })}
+                  <div class="label-assign">
+                    <button
+                      class="icon-btn conv-tag-btn"
+                      title={t('conversations.assignLabels')}
+                      aria-label={t('conversations.assignLabels')}
+                      onClick={() => setAssignFor((id) => (id === item.id ? null : item.id))}
+                    >
+                      <IconTag />
+                    </button>
+                    {assignFor === item.id && (
+                      <LabelPicker
+                        {...sharedPickerProps}
+                        selected={item.labels ?? []}
+                        onToggle={(labelId) => toggleAssign(item, labelId)}
+                        onClose={() => setAssignFor(null)}
+                      />
+                    )}
+                  </div>
                 </div>
+
                 <div class="conv-actions">
-                  <button class="btn btn-primary" onClick={() => continueConversation(item.id)}>
+                  <button class="btn btn-primary btn-small" onClick={() => continueConversation(item.id)}>
                     {t('conversations.continue')}
                   </button>
-                  <button class="btn" onClick={() => void saveOne(item)}>
-                    {t('conversations.save')}
+                  <span class="conv-actions-spacer" />
+                  <button
+                    class="icon-btn"
+                    title={t('conversations.save')}
+                    aria-label={t('conversations.save')}
+                    onClick={() => void saveOne(item)}
+                  >
+                    <IconSave />
                   </button>
-                  <button class="btn" onClick={() => void exportOne(item.id)}>
-                    {t('conversations.export')}
+                  <button
+                    class="icon-btn"
+                    title={t('conversations.export')}
+                    aria-label={t('conversations.export')}
+                    onClick={() => void exportOne(item.id)}
+                  >
+                    <IconExport />
                   </button>
-                  <button class="btn" onClick={() => remove(item)}>
-                    {t('conversations.delete')}
+                  <button
+                    class="icon-btn"
+                    title={t('conversations.delete')}
+                    aria-label={t('conversations.delete')}
+                    onClick={() => remove(item)}
+                  >
+                    <IconTrash />
                   </button>
                 </div>
               </li>

@@ -7,12 +7,20 @@ import { useT } from './i18n';
 const STORAGE_KEYS = ['ba_settings', 'ba_sites', 'ba_skills', 'ba_memory', 'ba_memory_enabled', 'ba_language'];
 const CONVERSATION_INDEX_KEY = 'ba_conv_index';
 const CONVERSATION_KEY_PREFIX = 'ba_conv_';
+const CONVERSATION_LABELS_KEY = 'ba_conv_labels';
 
-/** Gather the conversation index plus every conversation body for an opt-in export. */
+/**
+ * Gather the conversation index, the label registry, and every conversation body
+ * for an opt-in export. Labels travel with conversations (they reference them by id).
+ */
 async function collectConversationStorage(): Promise<Record<string, unknown>> {
   const idx = (await chrome.storage.local.get(CONVERSATION_INDEX_KEY))[CONVERSATION_INDEX_KEY];
   const index = Array.isArray(idx) ? (idx as ConversationSummary[]) : [];
-  const keys = [CONVERSATION_INDEX_KEY, ...index.map((c) => `${CONVERSATION_KEY_PREFIX}${c.id}`)];
+  const keys = [
+    CONVERSATION_INDEX_KEY,
+    CONVERSATION_LABELS_KEY,
+    ...index.map((c) => `${CONVERSATION_KEY_PREFIX}${c.id}`),
+  ];
   return (await chrome.storage.local.get(keys)) as Record<string, unknown>;
 }
 

@@ -14,6 +14,7 @@
 import type {
   AgentStatus,
   ChatMessageView,
+  ConversationLabel,
   PlanView,
   Settings,
   TabContextSummary,
@@ -29,8 +30,11 @@ export type SidebarCommand =
   | { type: 'delete_conversation'; id: string }
   // `record` is a conversation body already validated by parseConversationFile in
   // the UI; typed as unknown to avoid leaking the background StoredConversation type.
-  | { type: 'import_conversation'; record: unknown }
+  // `labels` carries any label definitions bundled in the file so the runtime can
+  // re-register them on import (best-effort portability).
+  | { type: 'import_conversation'; record: unknown; labels?: ConversationLabel[] }
   | { type: 'clear_conversations' }
+  | { type: 'set_conversation_labels'; id: string; labels: string[] }
   | { type: 'distill_skill' }
   | { type: 'dismiss_distill' }
   | { type: 'pause_agent' }

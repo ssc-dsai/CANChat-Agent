@@ -7,7 +7,7 @@
 // and `storage.saveConversation` (pruneIndex).
 // =============================================================================
 
-import type { ConversationSummary } from './types';
+import type { ConversationLabel, ConversationSummary } from './types';
 
 const TITLE_MAX = 60;
 const PREVIEW_MAX = 120;
@@ -105,4 +105,29 @@ export function parseConversationFile(
   if (!body || typeof body !== 'object') return null;
   if (!Array.isArray(body.messages) || !Array.isArray(body.conversation)) return null;
   return body as { messages: unknown[]; conversation: unknown[] };
+}
+
+/**
+ * Pull the optional label *definitions* bundled at the envelope level of a saved
+ * conversation file, so an imported thread's chips resolve to a name/colour on a
+ * device that never had those labels. Returns only well-formed `{id,name,color}`
+ * entries; an absent/old file (no `labels`) yields `[]`. Pure, like the rest.
+ */
+export function parseConversationLabels(text: string): ConversationLabel[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  const raw = (parsed as Record<string, unknown> | null)?.labels;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (l): l is ConversationLabel =>
+      !!l &&
+      typeof l === 'object' &&
+      typeof (l as ConversationLabel).id === 'string' &&
+      typeof (l as ConversationLabel).name === 'string' &&
+      typeof (l as ConversationLabel).color === 'string',
+  );
 }
