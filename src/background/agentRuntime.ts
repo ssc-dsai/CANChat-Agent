@@ -342,6 +342,12 @@ export class AgentRuntime {
   private status: AgentStatus = 'idle';
   private running = false;
   private stopRequested = false;
+  // Monotonic token identifying the active task. stop()/clearConversation bump
+  // it to "orphan" a loop that's stuck in a non-cancellable tool call: when that
+  // tool finally resolves, the loop sees a stale epoch and bails instead of
+  // mutating state or continuing. This is what makes Stop / New chat reliable
+  // even while a browser/network tool is hung.
+  private taskEpoch = 0;
   private pauseRequested = false;
   private pauseWaiter: (() => void) | null = null;
   private pendingApproval: PendingApproval | null = null;
@@ -529,6 +535,7 @@ export class AgentRuntime {
     this.stopRequested = false;
     this.pauseRequested = false;
     this.abortController = new AbortController();
+    const epoch = ++this.taskEpoch;
     // Reset per-task working state.
     this.lastUserText = text;
     this.plan = null;
@@ -541,9 +548,12 @@ export class AgentRuntime {
     this.emit({ type: 'plan_update', plan: null });
 
     try {
-      await this.runLoop(taskText, snapshots);
+      await this.runLoop(taskText, snapshots, epoch);
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError' && this.stopRequested) {
+      // A stale epoch means the task was stopped/cleared while a tool was
+      // mid-flight; swallow whatever that orphaned work throws.
+      const stale = this.taskEpoch !== epoch;
+      if (stale || (err instanceof DOMException && err.name === 'AbortError' && this.stopRequested)) {
         // User stopped or cleared the task; the abort is expected.
       } else {
         const message =
@@ -556,16 +566,21 @@ export class AgentRuntime {
         this.emit({ type: 'error', message });
       }
     } finally {
-      this.abortController = null;
-      this.running = false;
-      if (this.status !== 'error') this.setStatus('idle');
-      // Autosave every settled turn (including errored/stopped ones) so the
-      // thread survives service-worker eviction and shows up in History.
-      void this.persistCurrentConversation();
-      // Once the first exchange exists, generate a descriptive topic title.
-      // Fire-and-forget so it never delays the user's next message; retries on
-      // later turns until it succeeds, then locks (see titleIsAuto).
-      void this.maybeGenerateTitle();
+      // Only the current task owns the shared running/abort/status state. An
+      // orphaned loop (stale epoch — stop() already reset things, and a new task
+      // may be under way) must not touch it.
+      if (this.taskEpoch === epoch) {
+        this.abortController = null;
+        this.running = false;
+        if (this.status !== 'error') this.setStatus('idle');
+        // Autosave every settled turn (including errored ones) so the thread
+        // survives service-worker eviction and shows up in History.
+        void this.persistCurrentConversation();
+        // Once the first exchange exists, generate a descriptive topic title.
+        // Fire-and-forget so it never delays the user's next message; retries on
+        // later turns until it succeeds, then locks (see titleIsAuto).
+        void this.maybeGenerateTitle();
+      }
     }
   }
 
@@ -804,6 +819,20 @@ export class AgentRuntime {
       this.pauseWaiter = null;
       w();
     }
+    // Free the UI immediately rather than waiting for the loop to unwind — a
+    // browser/network tool call can't be cancelled and may still be hanging.
+    // Bumping the epoch orphans that loop (its eventual result is discarded),
+    // so Stop / New chat always take effect even mid-tool.
+    if (this.running) {
+      this.taskEpoch++;
+      this.running = false;
+      this.abortController = null;
+      if (this.status !== 'error') this.setStatus('idle');
+      this.notice('Task stopped.');
+      // Snapshot the partial thread to History now (captures array refs
+      // synchronously, so a following clearConversation can't blank it).
+      void this.persistCurrentConversation();
+    }
   }
 
   clearConversation(): void {
@@ -957,9 +986,15 @@ export class AgentRuntime {
    * while the plan still has open steps, up to `HARD_STEP_CEILING`; past that it
    * forces a final answer via `wrapUp`.
    */
+  /** True once this task has been stopped/cleared or superseded by a newer one. */
+  private aborted(epoch: number): boolean {
+    return this.stopRequested || this.taskEpoch !== epoch;
+  }
+
   private async runLoop(
     userText: string,
     snapshots: Array<{ dataUrl: string; title: string; url: string }> = [],
+    epoch: number = this.taskEpoch,
   ): Promise<void> {
     const settings = (await getSettings())!;
 
@@ -1028,12 +1063,9 @@ export class AgentRuntime {
     }
 
     for (;;) {
-      if (this.stopRequested) {
-        this.notice('Task stopped.');
-        return;
-      }
+      if (this.aborted(epoch)) return;
       await this.waitIfPaused();
-      if (this.stopRequested) return;
+      if (this.aborted(epoch)) return;
 
       // Budget: extend if the plan still has open steps, else wrap up gracefully.
       if (this.stepsUsed >= this.stepBudget) {
@@ -1052,7 +1084,7 @@ export class AgentRuntime {
 
       this.setStatus('thinking');
       const reply = await complete(settings, this.conversation, tools, this.makeSignal());
-      if (this.stopRequested) return;
+      if (this.aborted(epoch)) return;
 
       if (!reply.tool_calls || reply.tool_calls.length === 0) {
         const text = reply.content ?? '(no response)';
@@ -1073,7 +1105,8 @@ export class AgentRuntime {
       }
 
       this.stepsUsed++;
-      await this.executeToolCalls(reply.tool_calls);
+      await this.executeToolCalls(reply.tool_calls, epoch);
+      if (this.aborted(epoch)) return;
       this.flushToolImages();
     }
   }
@@ -1171,16 +1204,19 @@ export class AgentRuntime {
    * appended to the conversation in the model's original call order regardless
    * of completion order, which the chat-completions protocol requires.
    */
-  private async executeToolCalls(calls: LlmToolCall[]): Promise<void> {
+  private async executeToolCalls(calls: LlmToolCall[], epoch: number = this.taskEpoch): Promise<void> {
     this.toolCallCount += calls.length;
     const results = new Map<string, string>();
     const run = async (call: LlmToolCall) => {
-      results.set(call.id, this.stopRequested ? 'Task stopped by user.' : await this.executeToolCall(call));
+      results.set(call.id, this.aborted(epoch) ? 'Task stopped by user.' : await this.executeToolCall(call));
     };
     await Promise.all(calls.filter((c) => READ_ONLY_TOOLS.has(c.function.name)).map(run));
     for (const c of calls.filter((c) => !READ_ONLY_TOOLS.has(c.function.name))) {
       await run(c);
     }
+    // If the task was stopped/superseded while a tool was running, don't push
+    // its results — the conversation now belongs to a different (or cleared) task.
+    if (this.aborted(epoch)) return;
     // Preserve original call order in the conversation.
     for (const c of calls) {
       this.conversation.push({ role: 'tool', tool_call_id: c.id, content: results.get(c.id) ?? '' });

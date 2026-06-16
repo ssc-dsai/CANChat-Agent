@@ -113,6 +113,12 @@ export async function startMockLlm(): Promise<MockLlm> {
         res.end(JSON.stringify({ error: { message: 'Simulated bad request', code: 'BadRequest' } }));
         return;
       }
+      // Slow path: hold the response so a task is genuinely in-flight, letting
+      // the Stop test cancel it mid-request (the client aborts the fetch).
+      if (latestUserText(parsed.messages).includes('SLOW')) {
+        await new Promise((r) => setTimeout(r, 1500));
+        if (res.writableEnded || req.destroyed) return; // client aborted (Stop)
+      }
       const message = decide(parsed);
       res.end(JSON.stringify({ id: 'chatcmpl-mock', choices: [{ index: 0, message, finish_reason: message.tool_calls ? 'tool_calls' : 'stop' }] }));
       return;

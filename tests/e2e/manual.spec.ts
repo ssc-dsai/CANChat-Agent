@@ -59,6 +59,25 @@ test.describe('user-manual screenshots', () => {
     expect(String(opts.filename)).toContain('canchat-agent-backup-');
   });
 
+  test('Stop ends a running task and frees the UI', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    await sendChat(sidebar, 'SLOW — take your time then answer.');
+    // The task is now in-flight: Stop is enabled (status is not idle).
+    const stop = sidebar.getByRole('button', { name: 'Stop' });
+    await expect(stop).toBeEnabled();
+
+    await stop.click();
+    // Stopping is immediate: status returns to Idle and a notice confirms it,
+    // even though the mock's response is still pending server-side.
+    await expect(sidebar.locator('.status')).toContainText('Idle');
+    await expect(sidebar.locator('.msg-notice', { hasText: 'Task stopped' })).toBeVisible();
+
+    // The UI is freed — a brand-new request works (no "already running" error).
+    await sendChat(sidebar, 'Now please summarize the page.');
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+    await expect(sidebar.locator('.banner-error')).toHaveCount(0);
+  });
+
   test('agent execution — plan panel and tool activity', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sendChat(sidebar, 'PLAN_DEMO: research this topic for me.');
