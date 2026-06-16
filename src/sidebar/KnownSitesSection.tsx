@@ -116,7 +116,7 @@ export function KnownSitesSection() {
         return;
       }
       if (!e.url?.trim() && !e.mcpUrl?.trim()) {
-        setFeedback({ ok: false, text: `Entry ${i + 1} needs a url or an mcpUrl.` });
+        setFeedback({ ok: false, text: `Entry ${i + 1} needs a web address or a tool server address.` });
         return;
       }
       if (e.searchUrlTemplate && !e.searchUrlTemplate.includes('{query}')) {
@@ -149,10 +149,10 @@ export function KnownSitesSection() {
         <span class="sites-count">{sites.length}</span>
       </summary>
       <p class="settings-note">
-        Preload the agent with sites worth checking for data. It consults this directory before
-        falling back to a web search. Search templates with a {'{query}'} placeholder let it jump
-        straight to a site's results. An entry can also be an MCP server (give it an MCP endpoint
-        URL) — the agent discovers and calls its methods on demand.
+        Tell the agent which sites are worth checking first. It looks here before falling back to a
+        web search. Add a search shortcut by putting {'{query}'} in the address, and it jumps
+        straight to that site's results. Advanced: an entry can also point at a tool server (an MCP
+        endpoint URL), and the agent will use its tools when needed.
       </p>
 
       {sites.length > 0 && (
@@ -160,7 +160,7 @@ export function KnownSitesSection() {
           {sites.map((s) => (
             <li key={s.id} class="site-row" title={`${s.mcpUrl || s.url}\n${s.description}`}>
               <span class="site-name">{s.name}</span>
-              {s.mcpUrl && <span class="stale-tag">MCP</span>}
+              {s.mcpUrl && <span class="stale-tag" title="Tool server (MCP)">Tool</span>}
               <span class="site-desc">{s.description}</span>
               <button class="icon-btn" title="Edit" onClick={() => edit(s)}>
                 ✎
@@ -185,7 +185,7 @@ export function KnownSitesSection() {
             />
           </label>
           <label class="field">
-            <span>URL (optional if this is an MCP server)</span>
+            <span>Web address (optional if you add a tool server below)</span>
             <input
               type="url"
               placeholder="https://jira.example.com"
@@ -214,7 +214,7 @@ export function KnownSitesSection() {
             />
           </label>
           <label class="field">
-            <span>MCP endpoint URL (optional) — makes this hint a callable MCP server</span>
+            <span>Tool server address (optional) — lets the agent call its tools (MCP endpoint)</span>
             <input
               type="url"
               placeholder="https://mcp.example.com/mcp"
@@ -223,7 +223,7 @@ export function KnownSitesSection() {
             />
           </label>
           <label class="field">
-            <span>MCP token (optional) — bearer token for the MCP server</span>
+            <span>Tool server token (optional) — access token, if the server needs one</span>
             <input
               type="password"
               placeholder="token"
