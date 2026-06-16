@@ -63,6 +63,19 @@ test.describe('walkthrough', () => {
     await sidebar.getByRole('button', { name: /labels/i }).first().click();
     await expect(sidebar.locator('.label-picker')).toBeVisible();
     await sidebar.screenshot({ path: `${SHOTS}/07-label-picker.png` });
+
+    // The per-row "assign labels" popover must not be clipped by the History
+    // card's overflow (regression: it used to anchor right:0 and get cut off).
+    await sidebar.keyboard.press('Escape');
+    await expect(sidebar.locator('.label-picker')).toHaveCount(0);
+    await sidebar.locator('.conv-tag-btn').first().click();
+    const rowPicker = sidebar.locator('.label-picker');
+    await expect(rowPicker).toBeVisible();
+    const box = await rowPicker.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(PANEL.width + 1);
+    await sidebar.screenshot({ path: `${SHOTS}/11-row-label-picker.png` });
   });
 
   test('09 — error banner offers plain guidance + Retry (U6)', async ({ sidebar }) => {

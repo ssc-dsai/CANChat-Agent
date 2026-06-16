@@ -7,7 +7,7 @@
 // button and controls visibility; we handle outside-click / Esc dismissal.
 // =============================================================================
 
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { DEFAULT_LABEL_COLOR, LABEL_COLORS, labelColorClass } from '../shared/labelColors';
 import type { ConversationLabel } from '../shared/types';
 import { useT } from './i18n';
@@ -63,6 +63,42 @@ export function LabelPicker({
   const [draftName, setDraftName] = useState('');
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState<string>(DEFAULT_LABEL_COLOR);
+
+  // Position as a viewport-fixed popover anchored to the trigger (the wrapper
+  // that holds it). This escapes the History card's `overflow:auto` clipping —
+  // a plain absolutely-positioned panel gets cut off, especially on rows where
+  // label chips push the tag button toward the edge (see clipping bug). We clamp
+  // to the viewport on both axes and flip upward when there's no room below.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const trigger = el?.parentElement;
+    if (!el || !trigger) return;
+    const place = () => {
+      const r = trigger.getBoundingClientRect();
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      const m = 8; // viewport margin
+      let left = Math.min(r.left, window.innerWidth - w - m);
+      if (left < m) left = m;
+      let top = r.bottom + 6;
+      if (top + h > window.innerHeight - m) {
+        const above = r.top - h - 6;
+        top = above >= m ? above : Math.max(m, window.innerHeight - h - m);
+      }
+      el.style.position = 'fixed';
+      el.style.left = `${Math.round(left)}px`;
+      el.style.top = `${Math.round(top)}px`;
+      el.style.right = 'auto';
+    };
+    place();
+    // Track the trigger if anything scrolls (capture catches the card's scroll).
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, []);
 
   // Dismiss on outside click or Esc. The boundary is the *wrapper* (which holds
   // both the trigger button and this panel), so clicking the trigger to close
