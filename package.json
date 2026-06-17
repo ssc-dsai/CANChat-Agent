@@ -11,7 +11,11 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && playwright test --headed",
-    "test:e2e:debug": "npm run build && PWDEBUG=1 playwright test"
+    "test:e2e:debug": "npm run build && PWDEBUG=1 playwright test",
+    "addin:typecheck": "tsc --noEmit -p word-addin/tsconfig.json",
+    "addin:build": "vite build --config word-addin/vite.config.ts",
+    "addin:dev": "vite --config word-addin/vite.config.ts",
+    "addin:proxy": "node word-addin/proxy.mjs"
   },
   "dependencies": {
     "docx": "^9.7.1",

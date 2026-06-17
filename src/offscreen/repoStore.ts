@@ -3,8 +3,7 @@
 // so it uses the async OPFS API (no sync access handles, which are Worker-only).
 
 import type { ExportedRepo } from '../shared/messages';
-
-const QUANT = 127;
+import { normalizeVector, quantizeVector, searchVectors, type SearchHit } from '../shared/vectorSearch';
 
 interface DocMeta {
   id: string;
@@ -82,22 +81,6 @@ async function writeVectors(dir: FileSystemDirectoryHandle, data: Int8Array): Pr
   await w.close();
 }
 
-function normalize(v: number[]): number[] {
-  let n = 0;
-  for (const x of v) n += x * x;
-  n = Math.sqrt(n) || 1;
-  return v.map((x) => x / n);
-}
-
-function quantize(v: number[], scale: number[]): Int8Array {
-  const out = new Int8Array(v.length);
-  for (let d = 0; d < v.length; d++) {
-    const s = scale[d] || 1;
-    out[d] = Math.max(-QUANT, Math.min(QUANT, Math.round((v[d] / s) * QUANT)));
-  }
-  return out;
-}
-
 export async function repoAdd(
   repo: string,
   doc: { name: string; url: string },
@@ -116,7 +99,7 @@ export async function repoAdd(
     docs: [],
     chunkCount: 0,
   });
-  const normed = vectors.map(normalize);
+  const normed = vectors.map(normalizeVector);
   if (meta.dim === 0) {
     meta.dim = normed[0].length;
     const scale = new Array(meta.dim).fill(0);
@@ -128,7 +111,7 @@ export async function repoAdd(
   }
 
   const packed = new Int8Array(normed.length * meta.dim);
-  normed.forEach((v, i) => packed.set(quantize(v, meta.perDimScale), i * meta.dim));
+  normed.forEach((v, i) => packed.set(quantizeVector(v, meta.perDimScale), i * meta.dim));
   await appendVectors(dir, packed);
 
   const allChunks = await readJson<ChunkRec[]>(dir, 'chunks.json', []);
@@ -153,42 +136,22 @@ export async function repoSearch(
   repo: string,
   queryVector: number[],
   k: number,
-): Promise<{ results: Array<{ text: string; name: string; url: string; score: number }> }> {
+): Promise<{ results: SearchHit[] }> {
   const dir = await repoDir(repo);
   const meta = await readJson<RepoMeta | null>(dir, 'meta.json', null);
   if (!meta || meta.chunkCount === 0) return { results: [] };
-  if (queryVector.length !== meta.dim) {
-    throw new Error(`Query embedding dimension ${queryVector.length} does not match repo dimension ${meta.dim}.`);
-  }
-  const q = quantize(normalize(queryVector), meta.perDimScale);
-  const dim = meta.dim;
-  // Fold the query-constant factors (q[d] and the per-dim scale²) into one
-  // weight vector so the hot per-vector loop is a single multiply-add.
-  const qw = new Float32Array(dim);
-  for (let d = 0; d < dim; d++) qw[d] = q[d] * meta.perDimScale[d] * meta.perDimScale[d];
-  const vecs = await readVectors(dir);
+  const vectors = await readVectors(dir);
   const chunks = await readJson<ChunkRec[]>(dir, 'chunks.json', []);
-  const top: Array<{ i: number; score: number }> = [];
-  for (let i = 0; i < meta.chunkCount; i++) {
-    const base = i * dim;
-    let score = 0;
-    for (let d = 0; d < dim; d++) score += vecs[base + d] * qw[d];
-    if (top.length < k) {
-      top.push({ i, score });
-      if (top.length === k) top.sort((a, b) => a.score - b.score);
-    } else if (score > top[0].score) {
-      top[0] = { i, score };
-      top.sort((a, b) => a.score - b.score);
-    }
-  }
-  top.sort((a, b) => b.score - a.score);
   return {
-    results: top
-      .map(({ i, score }) => {
-        const c = chunks[i];
-        return c ? { text: c.text, name: c.name, url: c.url, score } : null;
-      })
-      .filter((r): r is { text: string; name: string; url: string; score: number } => r !== null),
+    results: searchVectors({
+      dim: meta.dim,
+      perDimScale: meta.perDimScale,
+      chunkCount: meta.chunkCount,
+      vectors,
+      chunks,
+      queryVector,
+      k,
+    }),
   };
 }
 
