@@ -53,11 +53,31 @@ function latestUserText(messages: ChatMessage[]): string {
   return '';
 }
 
+function systemTextOf(messages: ChatMessage[]): string {
+  return textOf(messages.find((m) => m.role === 'system'));
+}
+
 function toolCall(name: string, args: Record<string, unknown>): ToolCall {
   return { id: `call_${name}`, type: 'function', function: { name, arguments: JSON.stringify(args) } };
 }
 
 function decide(req: ChatRequest): ChatMessage {
+  // Answer-verification gate: default "ok" so every existing flow finishes
+  // unchanged; REFLECT_DEMO drives exactly one self-correction cycle.
+  const system = systemTextOf(req.messages);
+  if (system.includes('strict reviewer')) {
+    const wantsRevise = latestUserText(req.messages).includes('REFLECT_DEMO');
+    return {
+      role: 'assistant',
+      content: wantsRevise ? '{"verdict":"revise","issues":"add a source link"}' : '{"verdict":"ok"}',
+    };
+  }
+  // Observation summarizer: echo one short digest per numbered tool output.
+  if (system.includes('compress a browser agent')) {
+    const n = (latestUserText(req.messages).match(/--- Tool output \d+ ---/g) ?? []).length || 1;
+    return { role: 'assistant', content: JSON.stringify(new Array(n).fill('digest of an earlier result')) };
+  }
+
   const hasToolResult = req.messages.some((m) => m.role === 'tool');
   if (hasToolResult) return { role: 'assistant', content: FINAL_TEXT };
 
@@ -112,6 +132,16 @@ export async function startMockLlm(): Promise<MockLlm> {
         /* tolerate malformed bodies in tests */
       }
       requests.push(parsed);
+      // Internal model-assisted loop steps (the self-check gate and the
+      // observation summarizer) are answered directly so they never trip the
+      // failure / slow / rate-limit paths, which key off the original request
+      // text that these prompts embed.
+      const systemText = systemTextOf(parsed.messages);
+      if (systemText.includes('strict reviewer') || systemText.includes('compress a browser agent')) {
+        const message = decide(parsed);
+        res.end(JSON.stringify({ id: 'chatcmpl-mock', choices: [{ index: 0, message, finish_reason: 'stop' }] }));
+        return;
+      }
       // Deterministic failure path for the error-recovery walkthrough (U6).
       if (latestUserText(parsed.messages).includes('FORCE_ERROR')) {
         res.statusCode = 400;

@@ -109,6 +109,16 @@ test.describe('user-manual screenshots', () => {
     await expect(page.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toHaveCount(0);
   });
 
+  test('self-check gate sends a weak answer back for one revision', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    // The mock's verifier returns "revise" once for a REFLECT_DEMO task, so the
+    // loop runs a single self-correction cycle before settling on the answer.
+    await sendChat(sidebar, 'REFLECT_DEMO summarize the page.');
+    await expect(sidebar.locator('.msg-notice', { hasText: 'Self-checking' })).toBeVisible();
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+    await expect(sidebar.locator('.banner-error')).toHaveCount(0);
+  });
+
   test('agent execution — plan panel and tool activity', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sendChat(sidebar, 'PLAN_DEMO: research this topic for me.');

@@ -169,6 +169,19 @@ export interface Settings {
    * set false to surface those errors immediately instead.
    */
   retryOnRateLimit?: boolean;
+  /**
+   * Summarize old tool outputs (with a cheap model call) when compacting a long
+   * conversation, instead of blanking them — preserves salient facts/URLs the
+   * findings list may have missed. Absent = on; set false to skip the extra call
+   * and fall back to a static placeholder.
+   */
+  summarizeObservations?: boolean;
+  /**
+   * Run one self-check pass over a tool-free final answer before accepting it,
+   * giving the agent a chance to fix an incomplete or unverified result. Absent =
+   * on; set false to skip the extra call and accept the first answer.
+   */
+  verifyAnswers?: boolean;
 }
 
 export type AgentStatus =

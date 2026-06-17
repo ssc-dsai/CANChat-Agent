@@ -122,6 +122,12 @@ const EN: Dict = {
   'settings.retryOnRateLimit': 'Auto-retry when the endpoint is rate-limited',
   'settings.retryOnRateLimitNote':
     'When the model endpoint is busy (HTTP 429 or a temporary server error), wait and retry automatically instead of failing — honoring the server’s Retry-After hint. Recommended for capacity-limited endpoints like Azure OpenAI.',
+  'settings.verifyAnswers': 'Self-check answers before finishing',
+  'settings.verifyAnswersNote':
+    'Run one quick review pass over a finished answer and let the agent fix it if it looks incomplete or unverified. Improves reliability at the cost of one extra model call per task. Turn off to accept the first answer.',
+  'settings.summarizeObservations': 'Summarize old results when compacting',
+  'settings.summarizeObservationsNote':
+    'On a long task, condense older tool results with a quick model call (keeping key facts and links) instead of dropping them. Turn off to skip the extra call and just trim them.',
   'settings.temperature': 'Temperature (optional)',
   'settings.maxTokens': 'Max tokens (optional)',
   'settings.embeddingModel':
@@ -279,6 +285,12 @@ const FR: Dict = {
   'settings.retryOnRateLimit': 'Réessayer automatiquement en cas de limitation du débit',
   'settings.retryOnRateLimitNote':
     'Lorsque le point de terminaison est occupé (HTTP 429 ou erreur serveur temporaire), patienter et réessayer automatiquement au lieu d’échouer — en respectant l’indication Retry-After du serveur. Recommandé pour les points de terminaison à capacité limitée comme Azure OpenAI.',
+  'settings.verifyAnswers': 'Vérifier la réponse avant de conclure',
+  'settings.verifyAnswersNote':
+    'Effectuer une rapide passe de révision sur une réponse terminée et laisser l’agent la corriger si elle paraît incomplète ou non vérifiée. Améliore la fiabilité au prix d’un appel de modèle supplémentaire par tâche. Désactiver pour accepter la première réponse.',
+  'settings.summarizeObservations': 'Résumer les anciens résultats lors du compactage',
+  'settings.summarizeObservationsNote':
+    'Sur une tâche longue, condenser les anciens résultats d’outils par un rapide appel de modèle (en conservant les faits et liens clés) au lieu de les supprimer. Désactiver pour éviter l’appel supplémentaire et simplement les tronquer.',
   'settings.temperature': 'Température (facultatif)',
   'settings.maxTokens': 'Jetons maximum (facultatif)',
   'settings.embeddingModel':

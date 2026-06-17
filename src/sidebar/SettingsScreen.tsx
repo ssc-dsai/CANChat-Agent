@@ -95,6 +95,8 @@ export function SettingsScreen({ onClose }: Props) {
       transcriptionBaseUrl: settings.transcriptionBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       transcriptionApiKey: settings.transcriptionApiKey?.trim() || undefined,
       retryOnRateLimit: settings.retryOnRateLimit ?? true,
+      verifyAnswers: settings.verifyAnswers ?? true,
+      summarizeObservations: settings.summarizeObservations ?? true,
     };
     await chrome.storage.local.set({ ba_settings: trimmed });
     setSaved(true);
@@ -195,6 +197,26 @@ export function SettingsScreen({ onClose }: Props) {
           <span>{t('settings.retryOnRateLimit')}</span>
         </label>
         <p class="settings-note">{t('settings.retryOnRateLimitNote')}</p>
+
+        <label class="memory-toggle">
+          <input
+            type="checkbox"
+            checked={settings.verifyAnswers ?? true}
+            onChange={(e) => update({ verifyAnswers: (e.target as HTMLInputElement).checked })}
+          />
+          <span>{t('settings.verifyAnswers')}</span>
+        </label>
+        <p class="settings-note">{t('settings.verifyAnswersNote')}</p>
+
+        <label class="memory-toggle">
+          <input
+            type="checkbox"
+            checked={settings.summarizeObservations ?? true}
+            onChange={(e) => update({ summarizeObservations: (e.target as HTMLInputElement).checked })}
+          />
+          <span>{t('settings.summarizeObservations')}</span>
+        </label>
+        <p class="settings-note">{t('settings.summarizeObservationsNote')}</p>
 
         <div class="field-row">
           <label class="field">

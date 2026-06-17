@@ -10,7 +10,7 @@
 //
 // Cross-cutting concerns this class owns:
 //   - Working state injected into the model each step (active tab, plan,
-//     findings, remaining budget) — see `buildStateBlock`/`refreshSystemMessage`.
+//     findings, remaining budget) — see `buildStateBlock`/`withWorkingState`.
 //   - Human-in-the-loop gates: approval for state-changing tools, pause/stop,
 //     and login waits — see `executeToolCall` and the `*Wait` fields.
 //   - Step budgeting to bound cost (`SOFT_STEP_BUDGET` → `HARD_STEP_CEILING`).
@@ -46,6 +46,7 @@ import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
 import { complete, embed, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
+import { parseReflectionVerdict, parseSummaryArray } from './loopHelpers';
 import { generateDocument, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { ingestTab } from './repoIngest';
 import { normalizeUrl } from '../shared/repoChunk';
@@ -164,7 +165,7 @@ Planning multi-step tasks:
 - For any task that needs more than two or three tool calls, FIRST call set_plan with an ordered list of steps. Keep exactly one step in_progress (update_plan), and mark steps done as you finish them. Revise with set_plan if the situation changes.
 - Size the plan to the actual work: use as few or as many steps as the task genuinely needs — a 2-step plan for something small, 8+ for something involved. Do NOT pad to a fixed number, and skip planning entirely for trivial one-shot tasks.
 - As you discover important intermediate results, call record_finding to save them. Do not rely on scrolling back through history — older tool output gets compacted away, but findings and the plan stay in view in the working-state block.
-- A live working-state block (active tab, plan, findings, step budget) is kept at the top of your context and refreshed every step. Watch the remaining step budget and pace yourself; when it runs low, record what matters and produce your best answer.
+- A live working-state block (active tab, plan, findings, step budget) is provided as a status update at the END of the conversation and refreshed every step — always read the latest one. Watch the remaining step budget and pace yourself; when it runs low, record what matters and produce your best answer.
 - You can issue several independent read-only tool calls in one turn — they run in parallel (e.g. get_tab_content on several tabs at once).
 - Before giving your final answer, verify the goal is actually met (re-read the page or re-check the result) rather than assuming an action worked.
 - When the task is to collect structured information (one row per item, often across several pages), gather it as you go and call export_data with columns and rows — the user gets a downloadable CSV/JSON table.
@@ -365,6 +366,9 @@ export class AgentRuntime {
   private stepsUsed = 0;
   private stepBudget = SOFT_STEP_BUDGET;
   private toolCallCount = 0;
+  // How many times the answer-verification gate has sent the task back for a fix
+  // this turn. Capped at 1 so a self-check can't loop indefinitely.
+  private reflectionsDone = 0;
   private canDistill = false;
   private lastUserText = '';
   private activeHost = '';
@@ -545,6 +549,7 @@ export class AgentRuntime {
     this.stepsUsed = 0;
     this.stepBudget = SOFT_STEP_BUDGET;
     this.toolCallCount = 0;
+    this.reflectionsDone = 0;
     this.setDistill(false);
     this.emit({ type: 'plan_update', plan: null });
 
@@ -1028,7 +1033,7 @@ export class AgentRuntime {
       // No active tab (or restricted); playbooks just won't auto-activate.
     }
     // The base system prompt is fixed for the task; the live state block is
-    // refreshed each turn (see refreshSystemMessage).
+    // appended as a trailing message each turn (see withWorkingState).
     const sites = await getSites();
     this.knownSiteNames = sites.map((s) => s.name);
     this.systemBase =
@@ -1038,10 +1043,15 @@ export class AgentRuntime {
       skillsPromptBlock(await getSkills(), this.activeHost) +
       (memoryEnabled ? memoryPromptBlock(await getMemories()) : '') +
       customInstructions;
+    // Keep conversation[0] = the byte-stable system base (no volatile state).
+    // The live working-state is appended as a trailing message at call time (see
+    // withWorkingState), so this large system+tools prefix stays identical across
+    // a task's steps and the provider's prompt cache can hit it.
     if (this.conversation.length === 0) {
       this.conversation.push({ role: 'system', content: this.systemBase });
+    } else {
+      this.conversation[0] = { role: 'system', content: this.systemBase };
     }
-    this.refreshSystemMessage();
 
     const contextBlock = this.buildContextBlock();
     let textContent = contextBlock ? `${contextBlock}\n\n${userText}` : userText;
@@ -1080,15 +1090,40 @@ export class AgentRuntime {
       }
 
       await this.refreshActiveTabLabel();
-      this.compactConversation();
-      this.refreshSystemMessage();
+      await this.compactConversation(settings);
 
       this.setStatus('thinking');
-      const reply = await complete(settings, this.conversation, tools, this.makeSignal(), this.rateLimitNotice);
+      const reply = await complete(settings, this.withWorkingState(), tools, this.makeSignal(), this.rateLimitNotice);
       if (this.aborted(epoch)) return;
 
       if (!reply.tool_calls || reply.tool_calls.length === 0) {
         const text = reply.content ?? '(no response)';
+        // Self-check gate: before accepting a tool-free answer, optionally verify
+        // it actually satisfies the request. On "revise", keep the draft and loop
+        // once more with the critique attached; capped at one cycle and only while
+        // budget remains. A skipped, "ok", or failed check finalizes unchanged.
+        if (
+          (settings.verifyAnswers ?? true) &&
+          this.reflectionsDone < 1 &&
+          this.stepsUsed < this.stepBudget &&
+          text.trim() &&
+          text !== '(no response)'
+        ) {
+          const verdict = await this.reflect(settings, text);
+          if (this.aborted(epoch)) return;
+          if (verdict.revise) {
+            this.reflectionsDone++;
+            this.conversation.push({ role: 'assistant', content: text });
+            this.conversation.push({
+              role: 'user',
+              content:
+                `[Self-check] Your draft answer may be incomplete or unverified: ${verdict.issues || 'verify it actually satisfies the request'}. ` +
+                'Verify and fix it — call tools if needed — then give your final answer.',
+            });
+            this.notice('Self-checking the answer and refining it…');
+            continue;
+          }
+        }
         this.conversation.push({ role: 'assistant', content: text });
         this.pushChat({ role: 'assistant', text, timestamp: new Date().toISOString() });
         this.maybeOfferDistill();
@@ -1236,19 +1271,55 @@ export class AgentRuntime {
   /** Force a final, tools-disabled answer when the budget is exhausted. */
   private async wrapUp(settings: Settings): Promise<void> {
     this.notice('Step budget reached — composing a final answer from what I have.');
-    this.refreshSystemMessage();
     this.conversation.push({
       role: 'user',
       content:
         'You have reached your step budget — do not call any more tools. Using your findings and what you already know, give the user your best final answer now, clearly noting anything you could not verify.',
     });
     this.setStatus('thinking');
-    const reply = await complete(settings, this.conversation, undefined, this.makeSignal(), this.rateLimitNotice);
+    const reply = await complete(settings, this.withWorkingState(), undefined, this.makeSignal(), this.rateLimitNotice);
     if (this.stopRequested) return;
     const text = reply.content ?? '(no answer)';
     this.conversation.push({ role: 'assistant', content: text });
     this.pushChat({ role: 'assistant', text, timestamp: new Date().toISOString() });
     this.maybeOfferDistill();
+  }
+
+  /**
+   * One self-check pass over a draft final answer. Asks the model whether the
+   * request is actually satisfied and nothing is claimed-but-unverified, given the
+   * task, plan, and findings. Best-effort and fail-open: any error/abort returns
+   * "don't revise" so a flaky check never blocks the user's answer.
+   */
+  private async reflect(settings: Settings, draft: string): Promise<{ revise: boolean; issues: string }> {
+    try {
+      const planText = this.plan?.map((s, i) => `${i + 1}. [${s.status}] ${s.text}`).join('\n') ?? '(no plan)';
+      const prompt: LlmMessage[] = [
+        {
+          role: 'system',
+          content:
+            "You are a strict reviewer of a browser agent's draft answer. Decide whether it actually satisfies the user's request and whether it claims anything the tools/findings did not verify. Reply with ONLY {\"verdict\":\"ok\"|\"revise\",\"issues\":\"<short reason if revise>\"}. Use \"revise\" only for a concrete, fixable gap (missing or unverified information, an unanswered part of the request); otherwise \"ok\". No prose, no code fence.",
+        },
+        {
+          role: 'user',
+          content:
+            `Request:\n${this.lastUserText || '(unknown)'}\n\n` +
+            `Plan:\n${planText}\n\n` +
+            `Findings:\n${this.findings.join('\n') || '(none)'}\n\n` +
+            `Draft answer:\n${draft}`,
+        },
+      ];
+      const reply = await complete(
+        { ...settings, maxTokens: 200, temperature: 0 },
+        prompt,
+        undefined,
+        this.makeSignal(),
+        this.rateLimitNotice,
+      );
+      return parseReflectionVerdict(typeof reply.content === 'string' ? reply.content : '');
+    } catch {
+      return { revise: false, issues: '' };
+    }
   }
 
   /** Rough char count of a message's content (string or multimodal parts). */
@@ -1260,25 +1331,93 @@ export class AgentRuntime {
     return 0;
   }
 
+  // Placeholder left in place of an evicted tool output we don't (or can't)
+  // summarize; its prefix is also the marker that a message was already evicted.
+  private static readonly COMPACT_PLACEHOLDER = '[compacted — important results are in Findings]';
+  // Only outputs bigger than this are worth a summarization call; tinier ones
+  // just get the placeholder.
+  private static readonly SUMMARIZE_MIN_CHARS = 1500;
+
   /**
-   * Keep the conversation under `CONVERSATION_CHAR_BUDGET` by replacing the
-   * oldest, bulkiest tool outputs with a short placeholder. Safe because the
-   * agent is told to persist anything important via `record_finding`, and the
-   * plan + findings are re-injected every step in the working-state block — so
-   * compacting raw history doesn't lose the thread. The most recent few messages
-   * are left intact so the model retains immediate context.
+   * Keep the conversation under `CONVERSATION_CHAR_BUDGET` by evicting the
+   * oldest, bulkiest tool outputs. With `summarizeObservations` on (default), the
+   * larger evicted outputs are replaced by a cheap LLM digest that preserves
+   * their salient facts/URLs; otherwise (or on any summarizer failure) they get a
+   * short static placeholder. Safe either way because the plan + findings are
+   * re-injected every step in the working-state block, and the most recent few
+   * messages are left intact so the model retains immediate context.
    */
-  private compactConversation(): void {
+  private async compactConversation(settings: Settings): Promise<void> {
     let total = this.conversation.reduce((n, m) => n + AgentRuntime.messageLen(m), 0);
     if (total <= CONVERSATION_CHAR_BUDGET) return;
     const protectedTail = 6; // leave the most recent messages intact
+    // Pick the oldest not-yet-evicted tool outputs, in order, until back under budget.
+    const victims: number[] = [];
     for (let i = 1; i < this.conversation.length - protectedTail && total > CONVERSATION_CHAR_BUDGET; i++) {
       const m = this.conversation[i];
-      if (m.role === 'tool' && typeof m.content === 'string' && !m.content.startsWith('[compacted')) {
-        const before = m.content.length;
-        m.content = '[compacted — important results are in Findings]';
-        total -= before - m.content.length;
+      if (
+        m.role === 'tool' &&
+        typeof m.content === 'string' &&
+        !m.content.startsWith('[compacted') &&
+        !m.content.startsWith('[summary]')
+      ) {
+        victims.push(i);
+        total -= m.content.length - AgentRuntime.COMPACT_PLACEHOLDER.length;
       }
+    }
+    if (victims.length === 0) return;
+
+    // Summarize the worthwhile (large) victims in one batched call; tiny ones and
+    // any we couldn't summarize fall back to the static placeholder.
+    const toSummarize = (settings.summarizeObservations ?? true)
+      ? victims.filter((i) => (this.conversation[i].content as string).length > AgentRuntime.SUMMARIZE_MIN_CHARS)
+      : [];
+    const digestByIndex = new Map<number, string>();
+    if (toSummarize.length > 0) {
+      const digests = await this.summarizeEvicted(
+        settings,
+        toSummarize.map((i) => this.conversation[i].content as string),
+      );
+      if (digests) toSummarize.forEach((i, k) => digestByIndex.set(i, digests[k]));
+    }
+    for (const i of victims) {
+      const digest = digestByIndex.get(i);
+      this.conversation[i].content = digest ? `[summary] ${digest}` : AgentRuntime.COMPACT_PLACEHOLDER;
+    }
+  }
+
+  /**
+   * Summarize a batch of evicted tool outputs in a single cheap model call.
+   * Returns one digest per input (order preserved), or null on any failure so the
+   * caller falls back to the static placeholder. Best-effort: never throws, and
+   * aborts with the task.
+   */
+  private async summarizeEvicted(settings: Settings, outputs: string[]): Promise<string[] | null> {
+    try {
+      const numbered = outputs
+        .map((o, i) => `--- Tool output ${i + 1} ---\n${o.slice(0, 8000)}`)
+        .join('\n\n');
+      const prompt: LlmMessage[] = [
+        {
+          role: 'system',
+          content:
+            "You compress a browser agent's old tool outputs to save context. For each numbered tool output, write a digest of ONLY the facts that matter for the user's task — keep URLs, names, numbers, and dates; drop boilerplate. 1–3 sentences each. Reply with ONLY a JSON array of strings, one digest per tool output, in the same order. No prose, no code fence.",
+        },
+        {
+          role: 'user',
+          content: `User's task:\n${this.lastUserText || '(unknown)'}\n\n${numbered}`,
+        },
+      ];
+      const reply = await complete(
+        { ...settings, maxTokens: 600, temperature: 0 },
+        prompt,
+        undefined,
+        this.makeSignal(),
+        this.rateLimitNotice,
+      );
+      return parseSummaryArray(typeof reply.content === 'string' ? reply.content : '', outputs.length);
+    } catch {
+      return null;
     }
   }
 
@@ -1802,9 +1941,13 @@ export class AgentRuntime {
 
   // ----- working state (plan, findings, budget) -----
 
-  private refreshSystemMessage(): void {
-    if (this.conversation.length === 0) return;
-    this.conversation[0] = { role: 'system', content: this.systemBase + this.buildStateBlock() };
+  // Build the outgoing message array for a model call: the persisted conversation
+  // (whose system prefix is byte-stable) plus the live working-state as a trailing
+  // system status message. Built fresh per call and never stored, so the volatile
+  // state never lands in history/compaction/persistence and never invalidates the
+  // cacheable system+tools prefix.
+  private withWorkingState(): LlmMessage[] {
+    return [...this.conversation, { role: 'system', content: this.buildStateBlock() }];
   }
 
   private buildStateBlock(): string {
