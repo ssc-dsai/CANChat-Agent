@@ -128,6 +128,9 @@ interface Props {
   permissionNotice: { origin: string; message: string } | null;
   pendingSnapshots: string[];
   canDistill: boolean;
+  /** Prompt text to drop into the composer after an undo (null = nothing pending). */
+  restoreDraft: string | null;
+  onRestoreConsumed: () => void;
   send: (command: SidebarCommand) => void;
   disabled: boolean;
 }
@@ -156,6 +159,8 @@ export function ChatPanel({
   permissionNotice,
   pendingSnapshots,
   canDistill,
+  restoreDraft,
+  onRestoreConsumed,
   send,
   disabled,
 }: Props) {
@@ -203,6 +208,15 @@ export function ChatPanel({
     setMention(null);
     setMentionItems([]);
   };
+
+  // After an undo, drop the removed prompt back into the composer for editing.
+  useEffect(() => {
+    if (restoreDraft != null) {
+      setEditorText(restoreDraft);
+      onRestoreConsumed();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreDraft]);
 
   useEffect(() => {
     const load = () =>

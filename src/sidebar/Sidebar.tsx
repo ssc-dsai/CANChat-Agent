@@ -72,6 +72,13 @@ const IconNew = () => (
     <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
   </svg>
 );
+// "Undo last exchange" — a counter-clockwise arrow.
+const IconUndo = () => (
+  <svg {...svgProps}>
+    <path d="M3 7v6h6" />
+    <path d="M3.5 13a9 9 0 1 0 2.6-6.4L3 9" />
+  </svg>
+);
 const IconSettings = () => (
   <svg {...svgProps}>
     <circle cx="12" cy="12" r="3" />
@@ -111,6 +118,9 @@ export function Sidebar() {
   const [pendingSnapshots, setPendingSnapshots] = useState<string[]>([]);
   const [plan, setPlan] = useState<PlanView | null>(null);
   const [canDistill, setCanDistill] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  // Pending prompt text to drop back into the composer after an undo.
+  const [restoreDraft, setRestoreDraft] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -160,6 +170,7 @@ export function Sidebar() {
             setPendingSnapshots(event.pendingSnapshots);
             setPlan(event.plan);
             setCanDistill(event.canDistill);
+            setCanUndo(event.canUndo);
             break;
           case 'chat_message':
             setMessages((m) => [...m, event.message]);
@@ -203,6 +214,12 @@ export function Sidebar() {
             break;
           case 'distill_offer':
             setCanDistill(event.available);
+            break;
+          case 'undo_available':
+            setCanUndo(event.available);
+            break;
+          case 'undo_done':
+            setRestoreDraft(event.restoredText);
             break;
           case 'error':
             setErrorBanner(event.message);
@@ -272,6 +289,15 @@ export function Sidebar() {
           </button>
           <button
             class="icon-btn"
+            aria-label={t('header.undo')}
+            title={t('header.undo')}
+            onClick={() => send({ type: 'undo_exchange' })}
+            disabled={!canUndo || status !== 'idle'}
+          >
+            <IconUndo />
+          </button>
+          <button
+            class="icon-btn"
             aria-label={t('header.newChat')}
             title={t('header.newChat')}
             onClick={() => send({ type: 'clear_conversation' })}
@@ -326,6 +352,8 @@ export function Sidebar() {
         permissionNotice={permissionNotice}
         pendingSnapshots={pendingSnapshots}
         canDistill={canDistill}
+        restoreDraft={restoreDraft}
+        onRestoreConsumed={() => setRestoreDraft(null)}
         send={send}
         disabled={configured === false}
       />

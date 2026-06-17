@@ -26,6 +26,7 @@ export type SidebarCommand =
   | { type: 'user_message'; text: string; mentions?: Array<{ kind: 'bookmark' | 'repo'; value: string }> }
   | { type: 'stop_task' }
   | { type: 'clear_conversation' }
+  | { type: 'undo_exchange' }
   | { type: 'load_conversation'; id: string }
   | { type: 'delete_conversation'; id: string }
   // `record` is a conversation body already validated by parseConversationFile in
@@ -62,6 +63,8 @@ export type BackgroundEvent =
   | { type: 'pending_snapshots'; thumbs: string[] }
   | { type: 'plan_update'; plan: PlanView | null }
   | { type: 'distill_offer'; available: boolean }
+  | { type: 'undo_available'; available: boolean }
+  | { type: 'undo_done'; restoredText: string }
   | { type: 'error'; message: string }
   | {
       type: 'full_state';
@@ -75,6 +78,7 @@ export type BackgroundEvent =
       pendingSnapshots: string[];
       plan: PlanView | null;
       canDistill: boolean;
+      canUndo: boolean;
     };
 
 /** One-shot messages handled by chrome.runtime.onMessage. */

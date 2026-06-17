@@ -72,6 +72,9 @@ chrome.runtime.onConnect.addListener((port) => {
       case 'clear_conversation':
         runtime.clearConversation();
         break;
+      case 'undo_exchange':
+        runtime.undoLastExchange();
+        break;
       case 'load_conversation':
         void runtime.loadConversation(command.id);
         break;

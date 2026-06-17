@@ -119,6 +119,46 @@ test.describe('user-manual screenshots', () => {
     await expect(sidebar.locator('.banner-error')).toHaveCount(0);
   });
 
+  test('undo removes the last exchange and refills the composer', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    const undo = sidebar.getByRole('button', { name: /Undo last exchange/ });
+    const input = sidebar.getByTestId('chat-input');
+
+    // Nothing to undo on a fresh thread.
+    await expect(undo).toBeDisabled();
+
+    await sendChat(sidebar, 'first prompt please summarize.');
+    await expect(sidebar.locator('.msg-user', { hasText: 'first prompt' })).toBeVisible();
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+    await expect(undo).toBeEnabled();
+
+    await undo.click();
+    // The exchange is gone and the removed prompt is back in the composer.
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toHaveCount(0);
+    await expect(sidebar.locator('.msg-user', { hasText: 'first prompt' })).toHaveCount(0);
+    await expect(input).toHaveText('first prompt please summarize.');
+    await expect(undo).toBeDisabled();
+  });
+
+  test('undo can be repeated back through multiple exchanges', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    const undo = sidebar.getByRole('button', { name: /Undo last exchange/ });
+
+    await sendChat(sidebar, 'message one.');
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+    await sendChat(sidebar, 'message two.');
+    await expect(sidebar.locator('.msg-user', { hasText: 'message two' })).toBeVisible();
+
+    await undo.click(); // removes exchange two
+    await expect(sidebar.locator('.msg-user', { hasText: 'message two' })).toHaveCount(0);
+    await expect(sidebar.locator('.msg-user', { hasText: 'message one' })).toBeVisible();
+    await expect(undo).toBeEnabled();
+
+    await undo.click(); // removes exchange one → empty thread
+    await expect(sidebar.locator('.msg-user', { hasText: 'message one' })).toHaveCount(0);
+    await expect(undo).toBeDisabled();
+  });
+
   test('plan-execution guard nudges a task that answers over an unstarted plan', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     // The mock sets a 3-step plan, never works it, and tries to answer at 0/3.

@@ -400,6 +400,17 @@ export class AgentRuntime {
   // autosave re-emits them on the record; the UI mutates them via
   // `setConversationLabels`.
   private currentConversationLabels: string[] = [];
+  // Per-turn checkpoints for "Undo last exchange": each entry records the array
+  // lengths (and working state) just before a user turn, so undo can truncate
+  // both threads back to that point. In-memory only — cleared on new/load/import
+  // and lost on service-worker eviction (undo is a live-session affordance).
+  private undoStack: Array<{
+    conv: number;
+    msgs: number;
+    plan: PlanStep[] | null;
+    findings: string[];
+    lastTaskUrl: string;
+  }> = [];
 
   constructor(private emit: (event: BackgroundEvent) => void) {}
 
@@ -426,7 +437,12 @@ export class AgentRuntime {
       pendingSnapshots: this.pendingSnapshots.map((s) => s.dataUrl),
       plan: this.planView(),
       canDistill: this.canDistill,
+      canUndo: this.undoStack.length > 0,
     };
+  }
+
+  private emitUndoState(): void {
+    this.emit({ type: 'undo_available', available: this.undoStack.length > 0 });
   }
 
   private planView(): PlanView | null {
@@ -533,6 +549,19 @@ export class AgentRuntime {
       this.titleIsAuto = false;
       this.currentConversationLabels = [];
     }
+
+    // Checkpoint the thread BEFORE this turn so "Undo last exchange" can roll it
+    // back. Captures the prior end-of-turn lengths and working state (plan,
+    // findings still hold last turn's values; reset below).
+    this.undoStack.push({
+      conv: this.conversation.length,
+      msgs: this.messages.length,
+      plan: this.plan ? this.plan.map((s) => ({ ...s })) : null,
+      findings: [...this.findings],
+      lastTaskUrl: this.lastTaskUrl,
+    });
+    if (this.undoStack.length > 20) this.undoStack.shift();
+    this.emitUndoState();
 
     this.pushChat({
       role: 'user',
@@ -715,6 +744,7 @@ export class AgentRuntime {
     this.activities = [];
     this.pendingSnapshots = [];
     this.pendingToolImages = [];
+    this.undoStack = [];
     this.stepsUsed = 0;
     this.toolCallCount = 0;
     this.canDistill = false;
@@ -846,6 +876,40 @@ export class AgentRuntime {
     }
   }
 
+  /**
+   * Remove the last user turn and its response, rolling both threads back to the
+   * checkpoint taken before that turn and restoring the prior plan/findings. The
+   * removed prompt is sent back so the composer can be repopulated for editing.
+   * Refuses while a task is running.
+   */
+  undoLastExchange(): void {
+    if (this.running) {
+      this.emit({ type: 'error', message: 'Stop the current task before undoing the last exchange.' });
+      return;
+    }
+    const checkpoint = this.undoStack.pop();
+    if (!checkpoint) {
+      this.notice('Nothing to undo.');
+      return;
+    }
+    // The removed prompt is this turn's user message (the first one dropped).
+    const restoredText = this.messages.slice(checkpoint.msgs).find((m) => m.role === 'user')?.text ?? '';
+    // Roll both threads back and restore the prior working state.
+    this.conversation.length = Math.min(this.conversation.length, checkpoint.conv);
+    this.messages.length = Math.min(this.messages.length, checkpoint.msgs);
+    this.plan = checkpoint.plan;
+    this.findings = checkpoint.findings;
+    this.lastTaskUrl = checkpoint.lastTaskUrl;
+    this.activities = [];
+    this.setDistill(false);
+    // Keep History in sync with the trimmed thread (no-op when it's now empty).
+    void this.persistCurrentConversation();
+    this.emit({ type: 'plan_update', plan: this.planView() });
+    this.emit(this.fullState());
+    this.emit({ type: 'undo_done', restoredText });
+    this.emitUndoState();
+  }
+
   clearConversation(): void {
     this.stop();
     this.conversation = [];
@@ -853,6 +917,7 @@ export class AgentRuntime {
     this.activities = [];
     this.pendingSnapshots = [];
     this.pendingToolImages = [];
+    this.undoStack = [];
     this.plan = null;
     this.findings = [];
     this.stepsUsed = 0;
