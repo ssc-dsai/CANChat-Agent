@@ -15,6 +15,9 @@
     "addin:typecheck": "tsc --noEmit -p word-addin/tsconfig.json",
     "addin:build": "vite build --config word-addin/vite.config.ts",
     "addin:dev": "vite --config word-addin/vite.config.ts",
+    "addin:certs": "office-addin-dev-certs install",
+    "addin:sideload": "office-addin-debugging start word-addin/manifest.xml",
+    "addin:stop": "office-addin-debugging stop word-addin/manifest.xml",
     "addin:proxy": "node word-addin/proxy.mjs"
   },
   "dependencies": {
@@ -29,7 +32,10 @@
     "@playwright/test": "^1.48.0",
     "@preact/preset-vite": "^2.9.1",
     "@types/chrome": "^0.0.287",
+    "@types/office-js": "^1.0.592",
     "@vitest/coverage-v8": "^4.1.8",
+    "office-addin-debugging": "^6.1.1",
+    "office-addin-dev-certs": "^2.0.9",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vitest": "^4.1.8"

@@ -25,7 +25,7 @@ export async function getDocumentText(): Promise<string> {
 /** Insert text at the end of the current selection (or at the cursor). */
 export async function insertAtSelection(text: string): Promise<void> {
   await Word.run(async (context) => {
-    context.document.getSelection().insertText(text, 'End');
+    context.document.getSelection().insertText(text, Word.InsertLocation.end);
     await context.sync();
   });
 }

@@ -9,6 +9,10 @@ You bring your own model: any OpenAI-compatible endpoint works, from OpenAI's AP
   <sub><em>Ask about the page you're on and get an answer right in the side panel — with a Copy button and source citations.</em></sub>
 </p>
 
+> **Companion Word add-in:** a Microsoft Word task-pane add-in can reuse your model, skills, and
+> knowledge bases *inside Word* by importing a backup. See **[word-addin/](word-addin/)** for what it
+> does and how to install it.
+
 ---
 
 ## Table of contents

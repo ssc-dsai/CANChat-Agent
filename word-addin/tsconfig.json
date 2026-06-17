@@ -11,7 +11,7 @@
     "noUnusedParameters": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": []
+    "types": ["office-js"]
   },
   "include": ["src", "vite.config.ts"]
 }
