@@ -57,6 +57,12 @@ function systemTextOf(messages: ChatMessage[]): string {
   return textOf(messages.find((m) => m.role === 'system'));
 }
 
+function hasToolCall(messages: ChatMessage[], name: string): boolean {
+  return messages.some(
+    (m) => m.role === 'assistant' && (m.tool_calls ?? []).some((tc) => tc.function.name === name),
+  );
+}
+
 function toolCall(name: string, args: Record<string, unknown>): ToolCall {
   return { id: `call_${name}`, type: 'function', function: { name, arguments: JSON.stringify(args) } };
 }
@@ -79,24 +85,49 @@ function decide(req: ChatRequest): ChatMessage {
   }
 
   const hasToolResult = req.messages.some((m) => m.role === 'tool');
+  const userMentions = (needle: string) =>
+    req.messages.some((m) => m.role === 'user' && textOf(m).includes(needle));
+
+  // Healthy multi-step task for the user manual: plan, run a tool, mark a step
+  // done, then answer — so it shows the Plan/Tool-activity panels and does NOT
+  // trip the plan-execution guard. Spans three turns.
+  if (userMentions('PLAN_DEMO')) {
+    if (!hasToolResult) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          toolCall('set_plan', {
+            steps: ['Read the current page', 'Search the web for context', 'Summarize the findings'],
+          }),
+          toolCall('list_tabs', {}),
+        ],
+      };
+    }
+    if (!hasToolCall(req.messages, 'update_plan')) {
+      return { role: 'assistant', content: null, tool_calls: [toolCall('update_plan', { step: 1, status: 'done' })] };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
+  // Misbehaving task: sets a plan, never works it, then tries to answer at 0/N —
+  // exercises the plan-execution guard (which nudges once, then accepts).
+  if (userMentions('PLAN_STALL')) {
+    if (!hasToolResult) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          toolCall('set_plan', { steps: ['Search the strategy', 'Read passages', 'Summarize and cite'] }),
+        ],
+      };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
   if (hasToolResult) return { role: 'assistant', content: FINAL_TEXT };
 
   const prompt = latestUserText(req.messages);
-  // Drives a multi-step view for the user manual: a visible plan plus a
-  // read-only tool call, then (next round, with the tool result present) a final
-  // answer. Lets the docs spec screenshot the Plan and Tool-activity panels.
-  if (prompt.includes('PLAN_DEMO')) {
-    return {
-      role: 'assistant',
-      content: null,
-      tool_calls: [
-        toolCall('set_plan', {
-          steps: ['Read the current page', 'Search the web for context', 'Summarize the findings'],
-        }),
-        toolCall('list_tabs', {}),
-      ],
-    };
-  }
   if (prompt.includes('RUN_JS')) {
     return {
       role: 'assistant',

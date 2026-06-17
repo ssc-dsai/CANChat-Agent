@@ -163,6 +163,7 @@ Decision policy:
 
 Planning multi-step tasks:
 - For any task that needs more than two or three tool calls, FIRST call set_plan with an ordered list of steps. Keep exactly one step in_progress (update_plan), and mark steps done as you finish them. Revise with set_plan if the situation changes.
+- Once you set a plan, EXECUTE it — do not give a final answer while it still has pending or in_progress steps. If a step turns out to be unnecessary, mark it done or skipped with update_plan first; only then answer.
 - Size the plan to the actual work: use as few or as many steps as the task genuinely needs — a 2-step plan for something small, 8+ for something involved. Do NOT pad to a fixed number, and skip planning entirely for trivial one-shot tasks.
 - As you discover important intermediate results, call record_finding to save them. Do not rely on scrolling back through history — older tool output gets compacted away, but findings and the plan stay in view in the working-state block.
 - A live working-state block (active tab, plan, findings, step budget) is provided as a status update at the END of the conversation and refreshed every step — always read the latest one. Watch the remaining step budget and pace yourself; when it runs low, record what matters and produce your best answer.
@@ -369,6 +370,9 @@ export class AgentRuntime {
   // How many times the answer-verification gate has sent the task back for a fix
   // this turn. Capped at 1 so a self-check can't loop indefinitely.
   private reflectionsDone = 0;
+  // How many times the plan-execution guard has pushed the task back for trying
+  // to finish over an unstarted plan. Capped at 1.
+  private planNudgesDone = 0;
   private canDistill = false;
   private lastUserText = '';
   private activeHost = '';
@@ -550,6 +554,7 @@ export class AgentRuntime {
     this.stepBudget = SOFT_STEP_BUDGET;
     this.toolCallCount = 0;
     this.reflectionsDone = 0;
+    this.planNudgesDone = 0;
     this.setDistill(false);
     this.emit({ type: 'plan_update', plan: null });
 
@@ -1098,6 +1103,28 @@ export class AgentRuntime {
 
       if (!reply.tool_calls || reply.tool_calls.length === 0) {
         const text = reply.content ?? '(no response)';
+        // Plan-execution guard (deterministic, runs before the self-check): if the
+        // model tries to finish while its plan is untouched (open steps, none done)
+        // and budget remains, push it back once to actually work the plan. Targets
+        // the "Plan (0/N) but answered anyway" failure.
+        if (
+          this.planUnstarted() &&
+          this.planNudgesDone < 1 &&
+          this.stepsUsed < this.stepBudget &&
+          text.trim() &&
+          text !== '(no response)'
+        ) {
+          this.planNudgesDone++;
+          this.conversation.push({ role: 'assistant', content: text });
+          this.conversation.push({
+            role: 'user',
+            content:
+              'Your plan still has unfinished steps and none are marked done. Carry out the steps now using ' +
+              'tools, or if a step no longer applies mark it done/skipped with update_plan — then give your final answer.',
+          });
+          this.notice('The plan still has unfinished steps — continuing to work it…');
+          continue;
+        }
         // Self-check gate: before accepting a tool-free answer, optionally verify
         // it actually satisfies the request. On "revise", keep the draft and loop
         // once more with the critique attached; capped at one cycle and only while
@@ -2084,6 +2111,18 @@ export class AgentRuntime {
 
   private planHasOpenSteps(): boolean {
     return this.plan?.some((s) => s.status === 'pending' || s.status === 'in_progress') ?? false;
+  }
+
+  /**
+   * True when the model laid out a real plan (≥2 steps) but hasn't worked it at
+   * all — open steps remain and none are marked done. This is the "set a plan,
+   * then answer without executing it" signature; a partially-done plan is trusted
+   * as a legitimate early finish.
+   */
+  private planUnstarted(): boolean {
+    if (!this.plan || this.plan.length < 2) return false;
+    if (!this.planHasOpenSteps()) return false;
+    return !this.plan.some((s) => s.status === 'done');
   }
 
   // ----- helpers -----

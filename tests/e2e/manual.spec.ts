@@ -119,6 +119,16 @@ test.describe('user-manual screenshots', () => {
     await expect(sidebar.locator('.banner-error')).toHaveCount(0);
   });
 
+  test('plan-execution guard nudges a task that answers over an unstarted plan', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    // The mock sets a 3-step plan, never works it, and tries to answer at 0/3.
+    await sendChat(sidebar, 'PLAN_STALL summarize the strategy.');
+    // The guard pushes it back once before accepting the final answer.
+    await expect(sidebar.locator('.msg-notice', { hasText: 'plan still has unfinished steps' })).toBeVisible();
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+    await expect(sidebar.locator('.banner-error')).toHaveCount(0);
+  });
+
   test('agent execution — plan panel and tool activity', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sendChat(sidebar, 'PLAN_DEMO: research this topic for me.');
