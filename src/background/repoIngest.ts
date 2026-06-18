@@ -102,6 +102,17 @@ export async function ingestTab(
   if (!text || text.trim().length < 30) {
     return { ok: false, needsOcr: true, error: 'No extractable text from this page.' };
   }
+  return storeText(settings, repo, title || url, url, text);
+}
+
+/** Chunk → embed → store text as a repo document. Shared by tab and file ingestion. */
+export async function storeText(
+  settings: Settings,
+  repo: string,
+  name: string,
+  url: string,
+  text: string,
+): Promise<IngestResult> {
   const chunks = chunkText(text);
   if (chunks.length === 0) return { ok: false, error: 'No chunks produced.' };
   let vectors: number[][];
@@ -110,7 +121,35 @@ export async function ingestTab(
   } catch (e) {
     return { ok: false, error: String(e) };
   }
-  const res = await repoAdd(repo, { name: title || url, url }, chunks, vectors);
+  const res = await repoAdd(repo, { name, url }, chunks, vectors);
   if (!res.ok) return { ok: false, error: res.error };
   return { ok: true, chunks: chunks.length };
+}
+
+/**
+ * Ingest an uploaded file into a repository. Text-like files arrive with their
+ * text already read in the UI; PDF/Office files arrive as a data URL the
+ * offscreen extractor (pdf.js / OOXML) parses — the same path used for tabs.
+ */
+export async function ingestFile(
+  settings: Settings,
+  repo: string,
+  file: { name: string; kind: 'text' | 'pdf' | 'office'; text?: string; dataUrl?: string },
+): Promise<IngestResult> {
+  let text = (file.text ?? '').trim();
+  try {
+    if (!text && file.kind === 'pdf' && file.dataUrl) {
+      const pdf = await extractPdf(file.dataUrl);
+      if (pdf.ok && pdf.text) text = pdf.text.trim();
+      else if (!pdf.ok) return { ok: false, error: pdf.error ?? 'Could not read the PDF.' };
+    } else if (!text && file.kind === 'office' && file.dataUrl) {
+      const office = await extractOffice(file.dataUrl);
+      if (office.ok && office.text) text = office.text.trim();
+      else if (!office.ok) return { ok: false, error: office.error ?? 'Could not read the document.' };
+    }
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+  if (text.length < 1) return { ok: false, error: 'No extractable text in the file.' };
+  return storeText(settings, repo, file.name, `file:///${file.name}`, text);
 }

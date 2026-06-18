@@ -90,7 +90,26 @@ export type RuntimeRequest =
   | { type: 'repo_doc_delete'; repo: string; docId: string }
   | { type: 'repo_export' }
   | { type: 'repo_import'; repos: ExportedRepo[] }
+  | { type: 'add_files_to_repo'; repo: string; files: UploadFile[] }
   | { type: 'transcribe_audio'; audioDataUrl: string };
+
+/** One picked file on its way into a repository (see shared/uploadFile.ts). */
+export interface UploadFile {
+  name: string;
+  kind: 'text' | 'pdf' | 'office';
+  /** Set for `kind:'text'` — the file's text content. */
+  text?: string;
+  /** Set for `kind:'pdf'|'office'` — a base64 data URL the offscreen extractor fetches. */
+  dataUrl?: string;
+}
+
+export interface AddFilesResponse {
+  ok: boolean;
+  added: number;
+  chunks: number;
+  skipped: string[];
+  error?: string;
+}
 
 // ----- Map workspace channel (background <-> the single map.html tab) -----
 // Mirrors the offscreen request/response pattern: messages carry target:'map'

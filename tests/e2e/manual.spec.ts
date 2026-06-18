@@ -41,6 +41,25 @@ test.describe('user-manual screenshots', () => {
     await expect(row.locator('.conv-preview')).toContainText('A concise summary of the test conversation.');
   });
 
+  test('upload a file into a knowledge base from settings', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear
+    await sidebar.getByRole('tab', { name: 'Data' }).click();
+    await sidebar.getByText('Knowledge bases', { exact: true }).click(); // expand the accordion
+
+    // New repo "uploads", drop a small text file in.
+    await sidebar.locator('.repo-upload input[type="text"]').fill('uploads');
+    await sidebar.locator('.repo-drop input[type="file"]').setInputFiles({
+      name: 'note.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('This is a short uploaded note about arctic shipping lanes for the test.'),
+    });
+
+    // The result line confirms ingestion and the new repo appears in the list.
+    await expect(sidebar.locator('.repo-upload')).toContainText('Added 1 file');
+    await expect(sidebar.locator('.repo-block', { hasText: 'uploads' })).toBeVisible();
+  });
+
   test('settings — repo-search passages (k) persists', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear

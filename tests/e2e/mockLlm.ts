@@ -248,7 +248,15 @@ export async function startMockLlm(): Promise<MockLlm> {
     }
 
     if (url.endsWith('/embeddings')) {
-      res.end(JSON.stringify({ data: [{ embedding: new Array(8).fill(0) }] }));
+      // Return one vector per input so multi-chunk ingestion matches up.
+      let n = 1;
+      try {
+        const body = JSON.parse(await readBody(req)) as { input?: unknown };
+        if (Array.isArray(body.input)) n = Math.max(1, body.input.length);
+      } catch {
+        /* default to one */
+      }
+      res.end(JSON.stringify({ data: Array.from({ length: n }, () => ({ embedding: new Array(8).fill(0) })) }));
       return;
     }
 

@@ -22,6 +22,7 @@ import type { BackgroundEvent, RuntimeRequest, SidebarCommand, TestConnectionRes
 import { AgentRuntime } from './agentRuntime';
 import { LlmError, testConnection, transcribe } from './llmProvider';
 import { repoDelete, repoDeleteDoc, repoDocs, repoExport, repoImport, repoList } from './offscreenClient';
+import { ingestFile } from './repoIngest';
 import { getSettings, seedSkillsIfEmpty } from './storage';
 
 // Clicking the toolbar icon opens the side panel.
@@ -169,6 +170,26 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
   }
   if (request.type === 'repo_import') {
     repoImport(request.repos).then((r) => sendResponse(r));
+    return true;
+  }
+  if (request.type === 'add_files_to_repo') {
+    (async () => {
+      const settings = await getSettings();
+      if (!settings) return { ok: false, added: 0, chunks: 0, skipped: [], error: 'No model configured. Open Settings first.' };
+      let added = 0;
+      let chunks = 0;
+      const skipped: string[] = [];
+      for (const file of request.files) {
+        const res = await ingestFile(settings, request.repo, file);
+        if (res.ok) {
+          added++;
+          chunks += res.chunks ?? 0;
+        } else {
+          skipped.push(`${file.name}${res.error ? ` (${res.error})` : ''}`);
+        }
+      }
+      return { ok: added > 0, added, chunks, skipped };
+    })().then(sendResponse);
     return true;
   }
   if (request.type === 'transcribe_audio') {
