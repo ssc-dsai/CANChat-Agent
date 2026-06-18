@@ -47,16 +47,20 @@ test.describe('user-manual screenshots', () => {
     await sidebar.getByRole('tab', { name: 'Data' }).click();
     await sidebar.getByText('Knowledge bases', { exact: true }).click(); // expand the accordion
 
-    // New repo "uploads", drop a small text file in.
+    // Reveal the uploader, name a new repo, and choose a small text file.
+    await sidebar.locator('.repo-upload-toggle').click();
     await sidebar.locator('.repo-upload input[type="text"]').fill('uploads');
     await sidebar.locator('.repo-drop input[type="file"]').setInputFiles({
       name: 'note.txt',
       mimeType: 'text/plain',
       buffer: Buffer.from('This is a short uploaded note about arctic shipping lanes for the test.'),
     });
+    // The file is queued; Add ingests it.
+    await expect(sidebar.locator('.repo-file', { hasText: 'note.txt' })).toBeVisible();
+    await sidebar.getByRole('button', { name: 'Add files', exact: true }).click();
 
-    // The result line confirms ingestion and the new repo appears in the list.
-    await expect(sidebar.locator('.repo-upload')).toContainText('Added 1 file');
+    // The file shows an "added" status and the new repo appears in the list.
+    await expect(sidebar.locator('.repo-file', { hasText: 'note.txt' })).toContainText('added');
     await expect(sidebar.locator('.repo-block', { hasText: 'uploads' })).toBeVisible();
   });
 

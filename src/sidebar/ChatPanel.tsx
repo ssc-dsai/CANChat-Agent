@@ -9,11 +9,11 @@
 // =============================================================================
 
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { RepoInfo, SidebarCommand } from '../shared/messages';
+import type { SidebarCommand } from '../shared/messages';
 import type { AgentStatus, ChatMessageView, DataExport, FileArtifact, Skill } from '../shared/types';
 import { classifyUpload } from '../shared/uploadFile';
 import { DOCS_URL } from './links';
-import { uploadFilesToRepo } from './repoUploadClient';
+import { RepoUpload } from './RepoUpload';
 import { saveFile } from './download';
 import { useT } from './i18n';
 import { Markdown } from './Markdown';
@@ -177,13 +177,8 @@ export function ChatPanel({
   const [hasTranscription, setHasTranscription] = useState(false);
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
-  // Drag-drop files → add to a repository (picker shown once files are dropped).
+  // Files dropped on the chat → the shared uploader opens, pre-loaded with them.
   const [dropFiles, setDropFiles] = useState<File[] | null>(null);
-  const [dropRepos, setDropRepos] = useState<RepoInfo[]>([]);
-  const [dropTarget, setDropTarget] = useState('');
-  const [dropNewName, setDropNewName] = useState('');
-  const [dropMsg, setDropMsg] = useState<string | null>(null);
-  const [dropBusy, setDropBusy] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -515,37 +510,12 @@ export function ChatPanel({
     setMicState('recording');
   };
 
-  // Files dropped on the chat → show an inline "add to repository" picker.
-  const onDrop = async (e: DragEvent) => {
-    const all = Array.from(e.dataTransfer?.files ?? []);
-    const supported = all.filter((f) => classifyUpload(f.name, f.type));
+  // Files dropped on the chat → open the shared uploader pre-loaded with them.
+  const onDrop = (e: DragEvent) => {
+    const supported = Array.from(e.dataTransfer?.files ?? []).filter((f) => classifyUpload(f.name, f.type));
     if (supported.length === 0) return;
     e.preventDefault();
-    setDropMsg(null);
-    try {
-      const list = (await chrome.runtime.sendMessage({ type: 'repo_list' })) as RepoInfo[];
-      setDropRepos(Array.isArray(list) ? list : []);
-    } catch {
-      setDropRepos([]);
-    }
     setDropFiles(supported);
-  };
-  const confirmDrop = async () => {
-    const repo = (dropTarget || dropNewName).trim();
-    if (!repo || !dropFiles) return;
-    setDropBusy(true);
-    try {
-      const res = await uploadFilesToRepo(repo, dropFiles);
-      const parts = [tr('repos.upload.added', { n: String(res.added), c: String(res.chunks) })];
-      if (res.skipped.length) parts.push(tr('repos.upload.skipped', { items: res.skipped.join('; ') }));
-      setDropMsg(parts.join(' '));
-      setDropFiles(null);
-      setDropNewName('');
-    } catch (err) {
-      setDropMsg(String(err));
-    } finally {
-      setDropBusy(false);
-    }
   };
 
   return (
@@ -655,38 +625,8 @@ export function ChatPanel({
 
       <div class="chat-input-row">
         {dropFiles && (
-          <div class="distill-chip repo-drop-chip">
-            <span>{tr('repos.upload.addN', { n: String(dropFiles.length) })}</span>
-            <select value={dropTarget} onChange={(e) => setDropTarget((e.target as HTMLSelectElement).value)}>
-              <option value="">{tr('repos.upload.newRepo')}</option>
-              {dropRepos.map((r) => (
-                <option key={r.name} value={r.name}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-            {!dropTarget && (
-              <input
-                type="text"
-                placeholder={tr('repos.upload.newNamePlaceholder')}
-                value={dropNewName}
-                onInput={(e) => setDropNewName((e.target as HTMLInputElement).value)}
-              />
-            )}
-            <button class="btn btn-small btn-primary" disabled={dropBusy} onClick={() => void confirmDrop()}>
-              {dropBusy ? tr('repos.upload.working') : tr('repos.upload.add')}
-            </button>
-            <button class="icon-btn" title={tr('common.dismiss')} onClick={() => setDropFiles(null)}>
-              ✕
-            </button>
-          </div>
-        )}
-        {dropMsg && (
-          <div class="distill-chip repo-drop-chip">
-            <span>{dropMsg}</span>
-            <button class="icon-btn" title={tr('common.dismiss')} onClick={() => setDropMsg(null)}>
-              ✕
-            </button>
+          <div class="repo-upload-card">
+            <RepoUpload initialFiles={dropFiles} onClose={() => setDropFiles(null)} onDone={() => {}} />
           </div>
         )}
         {canDistill && (

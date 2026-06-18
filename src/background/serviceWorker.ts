@@ -175,20 +175,15 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
   if (request.type === 'add_files_to_repo') {
     (async () => {
       const settings = await getSettings();
-      if (!settings) return { ok: false, added: 0, chunks: 0, skipped: [], error: 'No model configured. Open Settings first.' };
-      let added = 0;
-      let chunks = 0;
-      const skipped: string[] = [];
+      if (!settings) {
+        return { ok: false, results: [], error: 'No model configured. Open Settings first.' };
+      }
+      const results = [];
       for (const file of request.files) {
         const res = await ingestFile(settings, request.repo, file);
-        if (res.ok) {
-          added++;
-          chunks += res.chunks ?? 0;
-        } else {
-          skipped.push(`${file.name}${res.error ? ` (${res.error})` : ''}`);
-        }
+        results.push({ name: file.name, ok: res.ok, chunks: res.chunks, error: res.error });
       }
-      return { ok: added > 0, added, chunks, skipped };
+      return { ok: results.some((r) => r.ok), results };
     })().then(sendResponse);
     return true;
   }

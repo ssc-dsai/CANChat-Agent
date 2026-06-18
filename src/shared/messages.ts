@@ -103,11 +103,17 @@ export interface UploadFile {
   dataUrl?: string;
 }
 
+/** Per-file outcome of an upload, for the uploader's file list. */
+export interface AddFileResult {
+  name: string;
+  ok: boolean;
+  chunks?: number;
+  error?: string;
+}
+
 export interface AddFilesResponse {
   ok: boolean;
-  added: number;
-  chunks: number;
-  skipped: string[];
+  results: AddFileResult[];
   error?: string;
 }
 

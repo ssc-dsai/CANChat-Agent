@@ -77,7 +77,7 @@ export function RepositoriesSection() {
         <span class="sites-count">{repos.length}</span>
       </summary>
       <p class="settings-note">{t('repos.note')}</p>
-      <RepoUpload repos={repos} onDone={() => void load()} />
+      <RepoUpload onDone={() => void load()} />
       {loading ? (
         <p class="settings-note">{t('repos.loading')}</p>
       ) : repos.length === 0 ? (
