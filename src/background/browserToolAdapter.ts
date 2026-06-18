@@ -27,6 +27,7 @@ import type {
   PageStateResult,
   TabSummary,
 } from '../shared/types';
+import { normalizeUrl } from '../shared/repoChunk';
 import { analyzeAuthState } from './authDetector';
 import { extractOffice, extractPdf } from './offscreenClient';
 import { hasAllUrlsAccess } from './permissions';
@@ -302,6 +303,25 @@ export async function groupTab(
     return groupId;
   } catch {
     return null; // grouping unavailable; non-fatal
+  }
+}
+
+/** Collapse or expand a tab group (best-effort; ignored if the group is gone). */
+export async function setGroupCollapsed(groupId: number, collapsed: boolean): Promise<void> {
+  try {
+    await chrome.tabGroups.update(groupId, { collapsed });
+  } catch {
+    // group closed or grouping unavailable — non-fatal
+  }
+}
+
+/** Normalized URLs of every currently open tab, for de-duping a restore reopen. */
+export async function openTabUrls(): Promise<Set<string>> {
+  try {
+    const tabs = await chrome.tabs.query({});
+    return new Set(tabs.map((t) => normalizeUrl(t.url ?? '')).filter(Boolean));
+  } catch {
+    return new Set();
   }
 }
 

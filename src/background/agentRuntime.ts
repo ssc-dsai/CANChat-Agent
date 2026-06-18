@@ -41,7 +41,7 @@ import type {
   SiteEntry,
   Skill,
 } from '../shared/types';
-import { documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
+import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
@@ -638,6 +638,8 @@ export class AgentRuntime {
     const updatedAt = new Date().toISOString();
     // Prefer the generated LLM title once we have one; otherwise the heuristic.
     const title = this.currentConversationTitle ?? deriveTitle(firstUser?.text ?? '');
+    // Snapshot the conversation's tab-group pages so restore can reopen them.
+    const groupUrls = await this.snapshotGroupTabs();
     const record: StoredConversation = {
       id,
       title,
@@ -650,6 +652,8 @@ export class AgentRuntime {
       plan: this.plan ?? undefined,
       findings: this.findings.length > 0 ? this.findings : undefined,
       lastTaskUrl: this.lastTaskUrl || undefined,
+      groupName: groupUrls.length > 0 ? this.groupName ?? undefined : undefined,
+      groupUrls: groupUrls.length > 0 ? groupUrls : undefined,
     };
     try {
       await saveConversation(record, {
@@ -660,6 +664,17 @@ export class AgentRuntime {
       });
     } catch {
       // A failed autosave must never break the chat; the next turn retries.
+    }
+  }
+
+  /** Live http(s) pages in this conversation's tab group (for save/restore). Empty when no group. */
+  private async snapshotGroupTabs(): Promise<Array<{ url: string; title: string }>> {
+    if (this.groupId === null) return [];
+    try {
+      const tabs = await chrome.tabs.query({ groupId: this.groupId });
+      return collectGroupUrls(tabs.map((t) => ({ url: t.url, title: t.title })));
+    } catch {
+      return [];
     }
   }
 
@@ -751,6 +766,57 @@ export class AgentRuntime {
     this.setStatus('idle');
     this.emit({ type: 'plan_update', plan: this.planView() });
     this.emit(this.fullState());
+    // Reopen the pages this conversation used so they're queryable again
+    // (non-blocking; the transcript is already on screen).
+    void this.reopenConversationTabs(record);
+  }
+
+  /**
+   * On restore, reopen the conversation's pages so they can be queried again: its
+   * tab group (collapsed, named as before) plus the active tab. Deduped against
+   * already-open tabs so a restore won't pile duplicates. Best-effort — a tab
+   * failure never breaks the restore.
+   */
+  private async reopenConversationTabs(record: StoredConversation): Promise<void> {
+    try {
+      const open = await browser.openTabUrls();
+      const groupPages = (record.groupUrls ?? []).filter((p) => !open.has(normalizeUrl(p.url)));
+      let openedGroup = 0;
+      if (groupPages.length > 0) {
+        this.groupName = record.groupName ?? this.groupName;
+        this.groupId = null;
+        const results = await Promise.all(groupPages.map((p) => browser.openUrl(p.url)));
+        for (const r of results) {
+          if (r.tabId > 0) {
+            await this.addToConversationGroup(r.tabId);
+            open.add(normalizeUrl(r.url));
+            openedGroup++;
+          }
+        }
+        if (this.groupId !== null) await browser.setGroupCollapsed(this.groupId, true);
+      }
+      // Reopen the active tab (focused) when it isn't already open / in the group.
+      let openedActive = 0;
+      const activeUrl = record.lastTaskUrl ?? '';
+      if (/^https?:\/\//i.test(activeUrl) && !open.has(normalizeUrl(activeUrl))) {
+        const r = await browser.openUrl(activeUrl);
+        if (r.tabId > 0) {
+          try {
+            await chrome.tabs.update(r.tabId, { active: true });
+          } catch {
+            // couldn't focus it; the tab still opened
+          }
+          openedActive++;
+        }
+      }
+      const total = openedGroup + openedActive;
+      if (total > 0) {
+        const where = this.groupName && openedGroup > 0 ? ` into the "${this.groupName}" group` : '';
+        this.notice(`Reopened ${total} page${total === 1 ? '' : 's'} from this conversation${where} — ready to query.`);
+      }
+    } catch {
+      // Reopening is a convenience; never let it break a restore.
+    }
   }
 
   /** Delete a saved conversation; if it is the active one, detach so a new id is allocated next. */
@@ -820,6 +886,8 @@ export class AgentRuntime {
       plan: body.plan,
       findings: body.findings,
       lastTaskUrl: body.lastTaskUrl,
+      groupName: body.groupName,
+      groupUrls: body.groupUrls,
     };
     await saveConversation(stored, {
       title,

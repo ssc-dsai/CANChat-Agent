@@ -125,6 +125,17 @@ function decide(req: ChatRequest): ChatMessage {
     return { role: 'assistant', content: FINAL_TEXT };
   }
 
+  // Opens a page into the conversation's tab group (for the history-restore /
+  // tab-rehydration test): one open_url for an http(s) URL parsed from the prompt,
+  // then a final answer.
+  if (userMentions('OPEN_TABS')) {
+    if (!hasToolResult) {
+      const url = (latestUserText(req.messages).match(/https?:\/\/\S+/) ?? [''])[0];
+      return { role: 'assistant', content: null, tool_calls: [toolCall('open_url', { url })] };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
   if (hasToolResult) return { role: 'assistant', content: FINAL_TEXT };
 
   const prompt = latestUserText(req.messages);

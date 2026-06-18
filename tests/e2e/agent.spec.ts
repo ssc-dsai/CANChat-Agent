@@ -78,4 +78,26 @@ test.describe('agent loop (mock LLM)', () => {
     expect(tools).toContain('article.html');
     expect(tools).toContain('table.html');
   });
+
+  test('restoring a conversation reopens the pages it used', async ({ context, staticServer, sidebar }) => {
+    const url = `${staticServer.url}/article.html`;
+    const opened = () => context.pages().filter((p) => p.url().includes('/article.html'));
+
+    // The agent opens the page into this conversation's tab group.
+    await sendChat(sidebar, `OPEN_TABS ${url}`);
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+    await expect.poll(() => opened().length).toBeGreaterThan(0);
+
+    // Close it, so restore has to bring it back.
+    await Promise.all(opened().map((p) => p.close()));
+    await expect.poll(() => opened().length).toBe(0);
+
+    // Restore the conversation from History.
+    await sidebar.locator('.header-controls .icon-btn').first().click(); // History
+    await sidebar.locator('.conv-item .conv-body').first().click();
+
+    // The page is reopened and a notice confirms it.
+    await expect(sidebar.locator('.msg-notice', { hasText: 'Reopened' })).toBeVisible();
+    await expect.poll(() => opened().length).toBeGreaterThan(0);
+  });
 });

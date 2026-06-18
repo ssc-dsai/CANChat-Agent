@@ -1,5 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { documentKindForUrl, hostMatches, normalizeHost } from './url';
+import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from './url';
+
+describe('collectGroupUrls', () => {
+  it('keeps http(s) tabs and carries titles', () => {
+    expect(
+      collectGroupUrls([
+        { url: 'https://a.com/', title: 'A' },
+        { url: 'http://b.com/', title: 'B' },
+      ]),
+    ).toEqual([
+      { url: 'https://a.com/', title: 'A' },
+      { url: 'http://b.com/', title: 'B' },
+    ]);
+  });
+
+  it('drops non-http and empty URLs, defaults missing titles', () => {
+    expect(
+      collectGroupUrls([
+        { url: 'chrome://extensions' },
+        { url: 'about:blank' },
+        { url: '' },
+        { url: 'https://ok.com/' },
+      ]),
+    ).toEqual([{ url: 'https://ok.com/', title: '' }]);
+  });
+
+  it('dedupes by URL and caps the count', () => {
+    const dup = collectGroupUrls([
+      { url: 'https://x.com/', title: '1' },
+      { url: 'https://x.com/', title: '2' },
+    ]);
+    expect(dup).toEqual([{ url: 'https://x.com/', title: '1' }]);
+
+    const many = Array.from({ length: 20 }, (_, i) => ({ url: `https://x.com/${i}`, title: '' }));
+    expect(collectGroupUrls(many, 16)).toHaveLength(16);
+  });
+});
 
 describe('normalizeHost', () => {
   it('strips scheme, path, query, hash, and www', () => {

@@ -11,6 +11,28 @@ export function normalizeHost(input: string): string {
 }
 
 /**
+ * Reduce a conversation's tab-group tabs to the persistable pages: keep only
+ * real http(s) URLs (drop chrome://, about:blank, empty), dedupe by URL, and cap
+ * the count so a big research session can't bloat a saved record. Pure — used at
+ * save time to snapshot the group for later rehydration.
+ */
+export function collectGroupUrls(
+  tabs: Array<{ url?: string; title?: string }>,
+  cap = 16,
+): Array<{ url: string; title: string }> {
+  const out: Array<{ url: string; title: string }> = [];
+  const seen = new Set<string>();
+  for (const t of tabs) {
+    const url = t.url ?? '';
+    if (!/^https?:\/\//i.test(url) || seen.has(url)) continue;
+    seen.add(url);
+    out.push({ url, title: t.title ?? '' });
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+/**
  * Classify a URL by file type so the agent reads documents instead of navigating
  * to them (the browser downloads Office/PDF files rather than rendering, leaving
  * nothing to process). Tests the path extension only, ignoring any query string

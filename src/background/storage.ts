@@ -60,6 +60,10 @@ export interface StoredConversation {
   plan?: { text: string; status: PlanStepStatus }[];
   findings?: string[];
   lastTaskUrl?: string;
+  /** Name of this conversation's tab group, so restore can recreate it by name. */
+  groupName?: string;
+  /** Pages in the conversation's tab group, reopened on restore so they stay queryable. */
+  groupUrls?: { url: string; title: string }[];
 }
 
 // chrome.storage.local only — the API key must never sync across devices.
