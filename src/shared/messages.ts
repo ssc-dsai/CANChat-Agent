@@ -92,6 +92,34 @@ export type RuntimeRequest =
   | { type: 'repo_import'; repos: ExportedRepo[] }
   | { type: 'transcribe_audio'; audioDataUrl: string };
 
+// ----- Map workspace channel (background <-> the single map.html tab) -----
+// Mirrors the offscreen request/response pattern: messages carry target:'map'
+// so only the map page handles them. See mapClient.ts and src/map/main.ts.
+
+/** A command sent to the persistent map page. */
+export interface MapCommandMessage {
+  target: 'map';
+  type: 'map_command';
+  command: string; // 'set_view' | 'fly_to' | 'add_marker' | … (map_<x> tool, prefix stripped)
+  args: Record<string, unknown>;
+}
+
+/** Current state of the one map instance, returned with every command. */
+export interface MapState {
+  center: [number, number];
+  zoom: number;
+  basemap: string;
+  markers: Array<{ id: string; lat: number; lng: number; label?: string }>;
+  shapes: number;
+}
+
+export interface MapResponse {
+  ok: boolean;
+  result?: unknown;
+  state?: MapState;
+  error?: string;
+}
+
 export interface TestConnectionResponse {
   ok: boolean;
   detail: string;

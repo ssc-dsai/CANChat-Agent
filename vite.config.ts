@@ -29,6 +29,7 @@ export default defineConfig({
         sidebar: 'sidebar.html',
         offscreen: 'offscreen.html',
         microphone: 'microphone.html',
+        map: 'map.html',
         serviceWorker: 'src/background/serviceWorker.ts',
       },
       output: {

@@ -100,4 +100,42 @@ test.describe('agent loop (mock LLM)', () => {
     await expect(sidebar.locator('.msg-notice', { hasText: 'Reopened' })).toBeVisible();
     await expect.poll(() => opened().length).toBeGreaterThan(0);
   });
+
+  test('map workspace: one persistent map the agent drives', async ({ context, sidebar, mockLlm }) => {
+    const mapPages = () => context.pages().filter((p) => p.url().includes('/map.html'));
+
+    const start = mockLlm.requests.length;
+    // The agent sets the view (Ottawa, zoom 8), then drops a marker (Toronto) on
+    // the SAME map, then answers.
+    await sendChat(sidebar, 'MAP_DEMO show Ottawa then mark Toronto.');
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+
+    // Exactly one map tab exists — both commands reused it (singleton).
+    await expect.poll(() => mapPages().length).toBe(1);
+
+    // Read the map responses the agent received (the deterministic, in-band proof
+    // the commands hit the one persistent map). The final state shows the Ottawa
+    // zoom plus exactly one Toronto marker.
+    const states = mockLlm.requests
+      .slice(start)
+      .flatMap((r) => r.messages.filter((m) => m.role === 'tool'))
+      .map((m) => {
+        try {
+          return JSON.parse(typeof m.content === 'string' ? m.content : '') as {
+            ok?: boolean;
+            state?: { zoom: number; markers: Array<{ lat: number; lng: number }> };
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter((r): r is { ok?: boolean; state: { zoom: number; markers: Array<{ lat: number; lng: number }> } } => !!r?.state);
+
+    expect(states.length).toBeGreaterThanOrEqual(2);
+    expect(states.every((s) => s.ok)).toBe(true);
+    const last = states[states.length - 1].state;
+    expect(last.zoom).toBe(8);
+    expect(last.markers).toHaveLength(1);
+    expect(last.markers[0].lat).toBeCloseTo(43.65, 1);
+  });
 });

@@ -45,6 +45,7 @@ import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
+import { mapCommand } from './mapClient';
 import { complete, embed, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { parseReflectionVerdict, parseSummaryArray } from './loopHelpers';
 import { generateDocument, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
@@ -137,6 +138,7 @@ const READ_ONLY_TOOLS = new Set([
   'read_office_document',
   'get_video_transcript',
   'read_app_content',
+  'map_get_state',
 ]);
 
 /** Turn inserted @bookmark / #repo mentions into an explicit, act-on-it directive. */
@@ -195,6 +197,7 @@ Working method:
 - The user can reference a repository (typing #) or a bookmarked page (typing @) in their message; when they do, an explicit instruction is attached — act on it directly: search_repo that exact repository, or open and read that exact URL rather than web-searching for it.
 - For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets) with source URLs plus who created and last modified each file and the modified date. Answer from those snippets and cite the URLs. To summarize or analyze a result's full contents (beyond its snippet), pass that result's url to read_office_document (Office files) or read_pdf (PDFs) — do not navigate to it, which would just download it. For "recent files" or "files I edited" requests, pass sortBy:'modified' (newest first) and editedByMe:true (limit to the signed-in user) — query is optional for these. This is the way to do retrieval over the user's document store.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
+- Map workspace: when the user wants to see or work with a map, use the map_* tools. They all act on ONE persistent map that opens automatically in its own tab and is reused across requests — never assume a new map each time; build on the current state (call map_get_state to see what's there). map_set_view/map_fly_to move it, map_set_basemap switches tiles, map_add_marker/map_add_geojson/map_add_shape add elements, map_animate moves a marker along a path, map_fit_bounds frames things, map_clear removes overlays. These act on the extension's own map page, so they don't need approval.
 
 Answer format:
 - Format answers in Markdown (headings, lists, tables, links) — the sidebar renders it.
@@ -1893,6 +1896,17 @@ export class AgentRuntime {
         return this.updatePlan(Number(args.step), args.status as PlanStepStatus);
       case 'record_finding':
         return this.recordFinding(String(args.text));
+      case 'map_set_view':
+      case 'map_fly_to':
+      case 'map_set_basemap':
+      case 'map_add_marker':
+      case 'map_add_geojson':
+      case 'map_add_shape':
+      case 'map_animate':
+      case 'map_fit_bounds':
+      case 'map_clear':
+      case 'map_get_state':
+        return JSON.stringify(await mapCommand(name.slice(4), args));
       case 'save_memory': {
         const entries = await getMemories();
         if (entries.length >= MEMORY_MAX_ENTRIES) {

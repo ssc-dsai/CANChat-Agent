@@ -136,6 +136,27 @@ function decide(req: ChatRequest): ChatMessage {
     return { role: 'assistant', content: FINAL_TEXT };
   }
 
+  // Drives the persistent map: set the view (Ottawa), then drop a marker
+  // (Toronto) on the SAME map, then answer — exercises the map channel + the
+  // singleton-tab guarantee.
+  if (userMentions('MAP_DEMO')) {
+    if (!hasToolResult) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [toolCall('map_set_view', { lat: 45.4215, lng: -75.6972, zoom: 8 })],
+      };
+    }
+    if (!hasToolCall(req.messages, 'map_add_marker')) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [toolCall('map_add_marker', { lat: 43.6532, lng: -79.3832, label: 'Toronto', openPopup: true })],
+      };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
   if (hasToolResult) return { role: 'assistant', content: FINAL_TEXT };
 
   const prompt = latestUserText(req.messages);

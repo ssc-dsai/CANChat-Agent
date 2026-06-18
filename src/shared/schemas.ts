@@ -727,4 +727,166 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },
     },
   },
+  // ----- Map workspace: one persistent Leaflet map the agent manipulates. All
+  // map_* tools act on the SAME map (opened automatically on first use); they are
+  // not approval-gated (it is the extension's own sandbox page, not the user's
+  // session). See mapClient.ts / src/map/main.ts. -----
+  {
+    type: 'function',
+    function: {
+      name: 'map_set_view',
+      description:
+        'Center the persistent map on a coordinate at a zoom level (the map opens automatically the first time). Use map_fly_to instead for an animated transition.',
+      parameters: {
+        type: 'object',
+        properties: {
+          lat: { type: 'number', description: 'Latitude of the center.' },
+          lng: { type: 'number', description: 'Longitude of the center.' },
+          zoom: { type: 'number', description: 'Zoom level 0 (world) – ~19 (street). Optional; keeps current zoom if omitted.' },
+          animate: { type: 'boolean', description: 'Pan/zoom with a short animation.' },
+        },
+        required: ['lat', 'lng'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'map_fly_to',
+      description: 'Animate the map flying to a coordinate and zoom — a smooth curved transition.',
+      parameters: {
+        type: 'object',
+        properties: {
+          lat: { type: 'number', description: 'Destination latitude.' },
+          lng: { type: 'number', description: 'Destination longitude.' },
+          zoom: { type: 'number', description: 'Destination zoom (optional).' },
+          durationSec: { type: 'number', description: 'Animation length in seconds (default 1.5).' },
+        },
+        required: ['lat', 'lng'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'map_set_basemap',
+      description:
+        'Switch the map\'s tile layer (basemap). Named options: osm, carto-light, carto-dark. Or pass a custom raster tile url template.',
+      parameters: {
+        type: 'object',
+        properties: {
+          basemap: { type: 'string', description: 'Named basemap: osm | carto-light | carto-dark.' },
+          url: { type: 'string', description: 'Optional custom tile URL template, e.g. https://…/{z}/{x}/{y}.png' },
+          attribution: { type: 'string', description: 'Attribution text for a custom url.' },
+        },
+        required: ['basemap'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'map_add_marker',
+      description: 'Drop a marker on the map, optionally with a label/popup. Returns its id (pass the same id to replace it).',
+      parameters: {
+        type: 'object',
+        properties: {
+          lat: { type: 'number', description: 'Marker latitude.' },
+          lng: { type: 'number', description: 'Marker longitude.' },
+          label: { type: 'string', description: 'Short label / popup text.' },
+          popup: { type: 'string', description: 'Popup HTML/text (defaults to label).' },
+          openPopup: { type: 'boolean', description: 'Open the popup immediately.' },
+          id: { type: 'string', description: 'Optional stable id to address/replace this marker later.' },
+        },
+        required: ['lat', 'lng'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'map_add_geojson',
+      description: 'Add a GeoJSON object (points/lines/polygons/features) as a layer. Set fit:true to zoom to it. Returns its id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          geojson: { type: 'object', description: 'A GeoJSON object (Feature, FeatureCollection, or geometry).' },
+          fit: { type: 'boolean', description: 'Fit the map to the added geometry.' },
+          id: { type: 'string', description: 'Optional stable id.' },
+        },
+        required: ['geojson'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'map_add_shape',
+      description: 'Draw a circle, polyline, polygon, or rectangle. Returns its id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          shape: { type: 'string', description: 'circle | polyline | polygon | rectangle.' },
+          lat: { type: 'number', description: 'Center latitude (circle).' },
+          lng: { type: 'number', description: 'Center longitude (circle).' },
+          radiusMeters: { type: 'number', description: 'Circle radius in meters.' },
+          coords: { type: 'array', description: 'Array of [lat,lng] for polyline/polygon.', items: { type: 'array' } },
+          bounds: { type: 'array', description: 'Rectangle bounds [[south,west],[north,east]].', items: { type: 'array' } },
+          options: { type: 'object', description: 'Leaflet path style options (color, weight, fill…).' },
+          id: { type: 'string', description: 'Optional stable id.' },
+        },
+        required: ['shape'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'map_animate',
+      description: 'Animate an existing marker along a path of coordinates over a duration.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Id of the marker to move (from map_add_marker).' },
+          path: { type: 'array', description: 'Ordered [lat,lng] waypoints to move through.', items: { type: 'array' } },
+          durationSec: { type: 'number', description: 'Total animation time in seconds (default 2).' },
+        },
+        required: ['id', 'path'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'map_fit_bounds',
+      description: 'Fit the view to bounds [[south,west],[north,east]], or to all markers/shapes when bounds is omitted.',
+      parameters: {
+        type: 'object',
+        properties: {
+          bounds: { type: 'array', description: 'Optional [[south,west],[north,east]].', items: { type: 'array' } },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'map_clear',
+      description: 'Remove map overlays. what: all (default) | markers | shapes.',
+      parameters: {
+        type: 'object',
+        properties: { what: { type: 'string', description: 'all | markers | shapes.' } },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'map_get_state',
+      description: 'Read the map\'s current center, zoom, basemap, and the markers/shapes on it.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
 ];
