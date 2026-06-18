@@ -575,6 +575,34 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'create_powerpoint',
+      description:
+        'Generate a downloadable Microsoft PowerPoint (.pptx) deck from a structured list of slides. Use when the user wants a slide deck or presentation they can save. Each slide has a title, bullet points, and optional speaker notes; a title slide is added from the deck title. The user gets a download card.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Deck title, used for the opening slide and the filename.' },
+          slides: {
+            type: 'array',
+            description: 'Ordered slides.',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string', description: 'Slide heading.' },
+                bullets: { type: 'array', items: { type: 'string' }, description: 'Bullet points for the slide body.' },
+                notes: { type: 'string', description: 'Optional speaker notes.' },
+              },
+            },
+          },
+          filename: { type: 'string', description: 'Optional filename (without extension); defaults to a slug of the title.' },
+        },
+        required: ['title', 'slides'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_plan',
       description:
         'Lay out (or replace) your step-by-step plan for a multi-step task. Call this first whenever a task needs more than a couple of tool calls, and call it again to revise the plan if something changes. The plan is shown to the user.',

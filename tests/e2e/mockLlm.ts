@@ -164,6 +164,26 @@ function decide(req: ChatRequest): ChatMessage {
     return { role: 'assistant', content: FINAL_TEXT };
   }
 
+  // Builds a downloadable .pptx via the create_powerpoint tool, then answers.
+  if (userMentions('CREATE_PPTX')) {
+    if (!hasToolResult) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          toolCall('create_powerpoint', {
+            title: 'Test Deck',
+            slides: [
+              { title: 'Overview', bullets: ['First point', 'Second point'], notes: 'speaker note' },
+              { title: 'Details', bullets: ['Third point'] },
+            ],
+          }),
+        ],
+      };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
   if (hasToolResult) return { role: 'assistant', content: FINAL_TEXT };
 
   const prompt = latestUserText(req.messages);

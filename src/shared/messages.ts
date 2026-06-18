@@ -225,6 +225,21 @@ export interface GenerateDocumentResponse {
   error?: string;
 }
 
+/** One slide for create_powerpoint. */
+export interface SlideSpec {
+  title?: string;
+  bullets?: string[];
+  notes?: string;
+}
+
+/** Ask the offscreen document to generate a .pptx from a structured slide spec. */
+export interface GeneratePresentationRequest {
+  target: 'offscreen';
+  type: 'generate_presentation';
+  title: string;
+  slides: SlideSpec[];
+}
+
 /** Requests to the offscreen document's OPFS RAG store. */
 /** A single repository serialized for backup (vectors base64-encoded). */
 export interface ExportedRepo {

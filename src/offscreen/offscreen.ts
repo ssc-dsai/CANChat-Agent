@@ -21,6 +21,7 @@ import type {
   ExtractPdfResponse,
   GenerateDocumentRequest,
   GenerateDocumentResponse,
+  GeneratePresentationRequest,
   RepoRequest,
   RepoResponse,
 } from '../shared/messages';
@@ -126,6 +127,27 @@ chrome.runtime.onMessage.addListener((message: GenerateDocumentRequest, _sender,
   return true; // async response
 });
 
+// ----- Presentation generation: slide spec → .pptx (create_powerpoint tool). -----
+
+chrome.runtime.onMessage.addListener((message: GeneratePresentationRequest, _sender, sendResponse) => {
+  if (message?.target !== 'offscreen' || message.type !== 'generate_presentation') return undefined;
+  (async () => {
+    try {
+      // Lazy import so pptxgenjs only loads when a deck is requested.
+      const { slidesToPptxBase64 } = await import('./pptGen');
+      const dataBase64 = await slidesToPptxBase64(message.title, message.slides);
+      sendResponse({
+        ok: true,
+        dataBase64,
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      } satisfies GenerateDocumentResponse);
+    } catch (e) {
+      sendResponse({ ok: false, error: String(e) } satisfies GenerateDocumentResponse);
+    }
+  })();
+  return true; // async response
+});
+
 // ----- Office (OOXML) extraction: .docx / .pptx / .xlsx are ZIP-of-XML. -----
 
 type ZipFiles = Record<string, Uint8Array>;
@@ -167,11 +189,9 @@ function extractDocx(files: ZipFiles): string {
 
 function extractPptx(files: ZipFiles): string {
   const slideNum = (n: string) => Number(/slide(\d+)\.xml$/.exec(n)?.[1] ?? '0');
-  const slides = Object.keys(files)
-    .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
-    .sort((a, b) => slideNum(a) - slideNum(b));
-  const out: string[] = [];
-  slides.forEach((name, idx) => {
+  const notesNum = (n: string) => Number(/notesSlide(\d+)\.xml$/.exec(n)?.[1] ?? '0');
+  // Concatenate all a:t runs under a part as readable lines.
+  const textLines = (name: string): string[] => {
     const doc = parseXml(files[name]);
     const paras = doc.getElementsByTagName('a:p');
     const lines: string[] = [];
@@ -181,7 +201,23 @@ function extractPptx(files: ZipFiles): string {
       for (let j = 0; j < ts.length; j++) line += ts[j].textContent ?? '';
       if (line.trim()) lines.push(line);
     }
-    out.push(`--- Slide ${idx + 1} ---\n${lines.join('\n')}`.trim());
+    return lines;
+  };
+  const slides = Object.keys(files)
+    .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+    .sort((a, b) => slideNum(a) - slideNum(b));
+  // Speaker notes live in ppt/notesSlides/notesSlideN.xml (N follows slide order).
+  const notesByNum = new Map<number, string[]>();
+  for (const n of Object.keys(files)) {
+    if (/^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(n)) notesByNum.set(notesNum(n), textLines(n));
+  }
+  const out: string[] = [];
+  slides.forEach((name, idx) => {
+    const lines = textLines(name);
+    const notes = notesByNum.get(idx + 1) ?? [];
+    let block = `--- Slide ${idx + 1} ---\n${lines.join('\n')}`.trim();
+    if (notes.length) block += `\n[Speaker notes] ${notes.join(' ')}`;
+    out.push(block);
   });
   return out.join('\n\n');
 }

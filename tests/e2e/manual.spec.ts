@@ -188,6 +188,17 @@ test.describe('user-manual screenshots', () => {
     await expect(page.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toHaveCount(0);
   });
 
+  test('create_powerpoint produces a downloadable .pptx card', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    await sendChat(sidebar, 'CREATE_PPTX make a short deck.');
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+
+    // The agent generated a .pptx and offered it as a download card.
+    const card = sidebar.locator('.export-card', { hasText: '.pptx' });
+    await expect(card).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Download' })).toBeVisible();
+  });
+
   test('self-check gate sends a weak answer back for one revision', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     // The mock's verifier returns "revise" once for a REFLECT_DEMO task, so the

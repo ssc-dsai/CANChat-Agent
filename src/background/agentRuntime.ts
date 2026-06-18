@@ -48,7 +48,8 @@ import { mcpCallTool, mcpListTools } from './mcpClient';
 import { mapCommand } from './mapClient';
 import { complete, embed, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { parseReflectionVerdict, parseSummaryArray } from './loopHelpers';
-import { generateDocument, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
+import { generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
+import { normalizeSlides } from '../shared/slides';
 import { ingestTab } from './repoIngest';
 import { normalizeUrl } from '../shared/repoChunk';
 import {
@@ -173,6 +174,7 @@ Planning multi-step tasks:
 - Before giving your final answer, verify the goal is actually met (re-read the page or re-check the result) rather than assuming an action worked.
 - When the task is to collect structured information (one row per item, often across several pages), gather it as you go and call export_data with columns and rows — the user gets a downloadable CSV/JSON table.
 - When the user wants a Word document, report, or formatted write-up to keep, call create_word_document with a title and markdown body — they get a downloadable .docx.
+- When the user wants a slide deck or presentation, call create_powerpoint with a title and an ordered slides array (each slide: title, bullets, optional speaker notes) — they get a downloadable .pptx.
 
 Working method:
 - Use search_web for open-web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
@@ -1928,6 +1930,8 @@ export class AgentRuntime {
         return this.exportData(args);
       case 'create_word_document':
         return this.createWordDocument(args);
+      case 'create_powerpoint':
+        return this.createPowerpoint(args);
       case 'set_plan':
         return this.setPlan(Array.isArray(args.steps) ? (args.steps as string[]).map(String) : []);
       case 'update_plan':
@@ -2285,6 +2289,31 @@ export class AgentRuntime {
       fileArtifact,
     });
     return `Created the Word document "${fileArtifact.filename}". The user can download it from the card.`;
+  }
+
+  private async createPowerpoint(args: Record<string, unknown>): Promise<string> {
+    const title = String(args.title ?? '').trim();
+    const slides = normalizeSlides(args.slides);
+    if (!title && slides.length === 0) {
+      return 'Error: create_powerpoint needs a title and a slides array.';
+    }
+    const slug = (String(args.filename ?? '') || title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'presentation';
+    const result = await generatePresentation(title, slides);
+    if (!result.ok || !result.dataBase64) {
+      return `Error: could not generate the presentation. ${result.error ?? ''}`.trim();
+    }
+    const fileArtifact: FileArtifact = {
+      filename: `${slug}.pptx`,
+      mimeType: result.mimeType ?? 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      dataBase64: result.dataBase64,
+    };
+    this.pushChat({
+      role: 'notice',
+      text: `Prepared a PowerPoint deck: "${title || fileArtifact.filename}" (${slides.length} slide${slides.length === 1 ? '' : 's'}). Download it from the card below.`,
+      timestamp: new Date().toISOString(),
+      fileArtifact,
+    });
+    return `Created the PowerPoint "${fileArtifact.filename}" with ${slides.length} slide(s). The user can download it from the card.`;
   }
 
   private recordFinding(text: string): string {

@@ -13,6 +13,8 @@ import type {
   ExtractPdfResponse,
   GenerateDocumentRequest,
   GenerateDocumentResponse,
+  GeneratePresentationRequest,
+  SlideSpec,
   RepoRequest,
   RepoResponse,
 } from '../shared/messages';
@@ -67,6 +69,19 @@ export async function generateDocument(
     return { ok: false, error: `Could not start the document generator: ${String(e)}` };
   }
   const request: GenerateDocumentRequest = { target: 'offscreen', type: 'generate_document', format, title, markdown };
+  return (await chrome.runtime.sendMessage(request)) as GenerateDocumentResponse;
+}
+
+export async function generatePresentation(
+  title: string,
+  slides: SlideSpec[],
+): Promise<GenerateDocumentResponse> {
+  try {
+    await ensureOffscreen();
+  } catch (e) {
+    return { ok: false, error: `Could not start the presentation generator: ${String(e)}` };
+  }
+  const request: GeneratePresentationRequest = { target: 'offscreen', type: 'generate_presentation', title, slides };
   return (await chrome.runtime.sendMessage(request)) as GenerateDocumentResponse;
 }
 
