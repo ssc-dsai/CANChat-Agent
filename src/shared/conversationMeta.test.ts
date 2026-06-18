@@ -1,14 +1,52 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONVERSATION_FILE,
+  deriveSummary,
   deriveTitle,
   derivePreview,
   parseConversationFile,
   parseConversationLabels,
+  parseConversationMeta,
   pruneIndex,
   slugifyTitle,
 } from './conversationMeta';
 import type { ConversationSummary } from './types';
+
+describe('parseConversationMeta', () => {
+  it('parses title and summary', () => {
+    expect(parseConversationMeta('{"title":"Arctic routes","summary":"Discussed shipping lanes."}')).toEqual({
+      title: 'Arctic routes',
+      summary: 'Discussed shipping lanes.',
+    });
+  });
+  it('strips a code fence and trims', () => {
+    expect(parseConversationMeta('```json\n{"title":"  T  ","summary":"  S  "}\n```')).toEqual({
+      title: 'T',
+      summary: 'S',
+    });
+  });
+  it('returns only the present fields, omitting empty ones', () => {
+    expect(parseConversationMeta('{"title":"Only title","summary":""}')).toEqual({ title: 'Only title' });
+    expect(parseConversationMeta('{"summary":"Only summary"}')).toEqual({ summary: 'Only summary' });
+  });
+  it('fails soft to {} on garbage or non-objects', () => {
+    expect(parseConversationMeta('not json')).toEqual({});
+    expect(parseConversationMeta('"a string"')).toEqual({});
+    expect(parseConversationMeta('')).toEqual({});
+  });
+});
+
+describe('deriveSummary', () => {
+  it('collapses whitespace and keeps short text intact', () => {
+    expect(deriveSummary('  A  short\nsummary  ')).toBe('A short summary');
+  });
+  it('clips very long summaries with an ellipsis', () => {
+    const long = 'word '.repeat(100);
+    const out = deriveSummary(long);
+    expect(out.length).toBeLessThanOrEqual(240);
+    expect(out.endsWith('…')).toBe(true);
+  });
+});
 
 describe('deriveTitle', () => {
   it('collapses whitespace to a single line', () => {

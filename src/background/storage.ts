@@ -60,6 +60,8 @@ export interface StoredConversation {
   plan?: { text: string; status: PlanStepStatus }[];
   findings?: string[];
   lastTaskUrl?: string;
+  /** Model-written 1–2 sentence summary, mirrored into the history index row. */
+  summary?: string;
   /** Name of this conversation's tab group, so restore can recreate it by name. */
   groupName?: string;
   /** Pages in the conversation's tab group, reopened on restore so they stay queryable. */

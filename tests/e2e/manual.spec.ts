@@ -19,6 +19,28 @@ test.describe('user-manual screenshots', () => {
     await sidebar.screenshot({ path: `${SHOTS}/01-settings-advanced.png` });
   });
 
+  test('History rows show an LLM conversation summary, not the last-message snippet', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    await sendChat(sidebar, 'Please summarize the current page.');
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
+
+    // The summary is generated fire-and-forget after the turn settles; wait for
+    // it to land in the history index before opening the list.
+    await expect
+      .poll(async () =>
+        sidebar.evaluate(async () => {
+          const r = await chrome.storage.local.get('ba_conv_index');
+          const idx = (r.ba_conv_index as Array<{ summary?: string }>) ?? [];
+          return idx[0]?.summary ?? '';
+        }),
+      )
+      .toContain('concise summary of the test conversation');
+
+    await sidebar.locator('.header-controls .icon-btn').first().click(); // History
+    const row = sidebar.locator('.conv-item').first();
+    await expect(row.locator('.conv-preview')).toContainText('A concise summary of the test conversation.');
+  });
+
   test('settings — repo-search passages (k) persists', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear

@@ -11,6 +11,7 @@ import type { ConversationLabel, ConversationSummary } from './types';
 
 const TITLE_MAX = 60;
 const PREVIEW_MAX = 120;
+const SUMMARY_MAX = 240;
 
 /**
  * A conversation's display title: the first user message, collapsed to a single
@@ -42,6 +43,34 @@ function clip(text: string, max: number): string {
 /** A short one-line preview for the history list (last meaningful snippet). */
 export function derivePreview(text: string): string {
   return clip(text.replace(/\s+/g, ' ').trim(), PREVIEW_MAX);
+}
+
+/** Collapse + clip a model-written conversation summary for the history list. */
+export function deriveSummary(text: string): string {
+  return clip(text.replace(/\s+/g, ' ').trim(), SUMMARY_MAX);
+}
+
+/**
+ * Parse the model's combined title+summary reply (used for the history list).
+ * Expects `{"title":"…","summary":"…"}`, tolerating a ```json fence. Fail-soft:
+ * returns `{}` (or whichever fields are present) so a bad reply never breaks
+ * autosave — the heuristic title and snippet preview stand in.
+ */
+export function parseConversationMeta(raw: string): { title?: string; summary?: string } {
+  if (!raw) return {};
+  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object') return {};
+  const o = parsed as { title?: unknown; summary?: unknown };
+  const out: { title?: string; summary?: string } = {};
+  if (typeof o.title === 'string' && o.title.trim()) out.title = o.title.trim();
+  if (typeof o.summary === 'string' && o.summary.trim()) out.summary = o.summary.trim();
+  return out;
 }
 
 /**

@@ -246,8 +246,10 @@ export interface ConversationSummary {
   createdAt: string;
   updatedAt: string;
   messageCount: number;
-  /** Short snippet of the latest message, for the list row. */
+  /** Short snippet of the latest message, for the list row (fallback). */
   preview: string;
+  /** Model-written 1–2 sentence summary of the conversation, shown in the list row when present. */
+  summary?: string;
   /** Ids of the labels assigned to this conversation (see ConversationLabel). */
   labels?: string[];
 }

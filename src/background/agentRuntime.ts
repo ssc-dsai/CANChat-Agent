@@ -69,7 +69,7 @@ import {
   setConversationLabels as setStoredConversationLabels,
   type StoredConversation,
 } from './storage';
-import { deriveTitle, derivePreview } from '../shared/conversationMeta';
+import { deriveSummary, deriveTitle, derivePreview, parseConversationMeta } from '../shared/conversationMeta';
 import * as tabContext from './tabContextManager';
 
 const SOFT_STEP_BUDGET = 20; // default tool-iteration budget per task
@@ -398,7 +398,12 @@ export class AgentRuntime {
   // each settled turn retries generation (so a failed offline attempt recovers).
   private currentConversationTitle: string | null = null;
   private titleIsAuto = false;
-  private titlingInFlight = false;
+  // Model-written summary for the history list, plus the message count when it
+  // was last generated (so it's refreshed only after the thread grows). Unlike
+  // the title, the summary is regenerated as the conversation evolves.
+  private currentConversationSummary: string | null = null;
+  private summaryAtCount = 0;
+  private metaInFlight = false;
   // Label ids assigned to the active conversation. Kept in memory so a per-turn
   // autosave re-emits them on the record; the UI mutates them via
   // `setConversationLabels`.
@@ -550,6 +555,8 @@ export class AgentRuntime {
       this.conversationCreatedAt = new Date().toISOString();
       this.currentConversationTitle = null;
       this.titleIsAuto = false;
+      this.currentConversationSummary = null;
+      this.summaryAtCount = 0;
       this.currentConversationLabels = [];
     }
 
@@ -622,7 +629,7 @@ export class AgentRuntime {
         // Once the first exchange exists, generate a descriptive topic title.
         // Fire-and-forget so it never delays the user's next message; retries on
         // later turns until it succeeds, then locks (see titleIsAuto).
-        void this.maybeGenerateTitle();
+        void this.maybeGenerateMeta();
       }
     }
   }
@@ -655,6 +662,7 @@ export class AgentRuntime {
       plan: this.plan ?? undefined,
       findings: this.findings.length > 0 ? this.findings : undefined,
       lastTaskUrl: this.lastTaskUrl || undefined,
+      summary: this.currentConversationSummary ?? undefined,
       groupName: groupUrls.length > 0 ? this.groupName ?? undefined : undefined,
       groupUrls: groupUrls.length > 0 ? groupUrls : undefined,
     };
@@ -664,6 +672,7 @@ export class AgentRuntime {
         updatedAt,
         messageCount: this.messages.length,
         preview: derivePreview(last?.text ?? ''),
+        summary: this.currentConversationSummary ?? undefined,
       });
     } catch {
       // A failed autosave must never break the chat; the next turn retries.
@@ -682,51 +691,71 @@ export class AgentRuntime {
   }
 
   /**
-   * Generate a short, descriptive topic title for the current conversation with
-   * one cheap model call, then re-persist it. Runs at most once successfully per
-   * conversation; until it succeeds the heuristic title stands. Best-effort — any
-   * failure (no model, offline, odd response) is swallowed so the chat is
-   * unaffected and the next settled turn retries.
+   * Generate the conversation's history-list metadata — a short topic title and a
+   * 1–2 sentence summary — in one cheap model call, then re-persist. The title is
+   * generated once and locked (`titleIsAuto`); the summary is (re)generated when
+   * the thread has grown materially since the last one, so it stays current on
+   * long conversations. Best-effort — any failure is swallowed so the chat is
+   * unaffected and the heuristic title + snippet preview stand in.
    */
-  private async maybeGenerateTitle(): Promise<void> {
-    if (this.titleIsAuto || this.titlingInFlight) return;
+  private async maybeGenerateMeta(): Promise<void> {
+    if (this.metaInFlight) return;
     const id = this.currentConversationId;
     if (!id) return;
     const firstUser = this.messages.find((m) => m.role === 'user');
     const firstAssistant = this.messages.find((m) => m.role === 'assistant');
-    // Need a real exchange to title against.
+    // Need a real exchange to work against.
     if (!firstUser?.text || !firstAssistant?.text) return;
 
-    this.titlingInFlight = true;
+    const needTitle = !this.titleIsAuto;
+    const needSummary = !this.currentConversationSummary || this.messages.length - this.summaryAtCount >= 4;
+    if (!needTitle && !needSummary) return;
+
+    this.metaInFlight = true;
     try {
       const settings = await getSettings();
       if (!settings) return;
+      // Compact digest (opening ask + latest exchange + findings), not the whole
+      // transcript, so the summary is cheap regardless of conversation length.
+      const lastUser = [...this.messages].reverse().find((m) => m.role === 'user');
+      const lastAssistant = [...this.messages].reverse().find((m) => m.role === 'assistant');
+      const digest =
+        `Opening request:\n${firstUser.text.slice(0, 500)}\n\n` +
+        (lastUser && lastUser !== firstUser ? `Latest request:\n${lastUser.text.slice(0, 300)}\n\n` : '') +
+        `Latest answer:\n${(lastAssistant?.text ?? firstAssistant.text).slice(0, 800)}` +
+        (this.findings.length > 0 ? `\n\nKey findings:\n${this.findings.slice(-10).join('\n').slice(0, 600)}` : '');
       const prompt: LlmMessage[] = [
         {
           role: 'system',
           content:
-            'You write concise titles. Given the start of a conversation, reply with ONLY a 3–6 word title naming its topic. No quotes, no punctuation at the end, no preamble.',
+            'You label a conversation for a history list. Reply with ONLY JSON: {"title":"<3–6 word topic, no trailing punctuation>","summary":"<1–2 plain sentences on what was asked and what was resolved>"}. No preamble, no code fence.',
         },
-        {
-          role: 'user',
-          content: `User asked:\n${firstUser.text.slice(0, 500)}\n\nAssistant replied:\n${firstAssistant.text.slice(0, 800)}`,
-        },
+        { role: 'user', content: digest },
       ];
-      const reply = await complete({ ...settings, maxTokens: 20, temperature: 0 }, prompt);
-      const raw = typeof reply.content === 'string' ? reply.content : '';
-      // Strip surrounding quotes/whitespace, then clip with the shared helper.
-      const title = deriveTitle(raw.replace(/^["'\s]+|["'\s]+$/g, ''));
+      const reply = await complete({ ...settings, maxTokens: 150, temperature: 0 }, prompt);
+      const meta = parseConversationMeta(typeof reply.content === 'string' ? reply.content : '');
       // Re-check the id: the user may have cleared or loaded another thread while
       // we were awaiting the model.
-      if (title && this.currentConversationId === id) {
-        this.currentConversationTitle = title;
-        this.titleIsAuto = true;
-        await this.persistCurrentConversation();
+      if (this.currentConversationId !== id) return;
+      let changed = false;
+      if (needTitle && meta.title) {
+        const title = deriveTitle(meta.title.replace(/^["'\s]+|["'\s]+$/g, ''));
+        if (title) {
+          this.currentConversationTitle = title;
+          this.titleIsAuto = true;
+          changed = true;
+        }
       }
+      if (needSummary && meta.summary) {
+        this.currentConversationSummary = deriveSummary(meta.summary);
+        this.summaryAtCount = this.messages.length;
+        changed = true;
+      }
+      if (changed) await this.persistCurrentConversation();
     } catch {
-      // Titling is optional; leave the heuristic title and retry next turn.
+      // Metadata is optional; leave the heuristics and retry on a later turn.
     } finally {
-      this.titlingInFlight = false;
+      this.metaInFlight = false;
     }
   }
 
@@ -756,6 +785,9 @@ export class AgentRuntime {
     // Keep the saved title; only re-title if it was never auto-generated.
     this.currentConversationTitle = record.title || null;
     this.titleIsAuto = record.autoTitled ?? false;
+    // Keep the saved summary; only refresh it once the resumed thread grows.
+    this.currentConversationSummary = record.summary ?? null;
+    this.summaryAtCount = this.messages.length;
     // Fresh tab group for the resumed thread; old tabs are left as-is.
     this.groupName = null;
     this.groupId = null;
@@ -830,6 +862,8 @@ export class AgentRuntime {
       this.conversationCreatedAt = '';
       this.currentConversationTitle = null;
       this.titleIsAuto = false;
+      this.currentConversationSummary = null;
+      this.summaryAtCount = 0;
       this.currentConversationLabels = [];
     }
   }
@@ -889,6 +923,7 @@ export class AgentRuntime {
       plan: body.plan,
       findings: body.findings,
       lastTaskUrl: body.lastTaskUrl,
+      summary: body.summary,
       groupName: body.groupName,
       groupUrls: body.groupUrls,
     };
@@ -897,6 +932,7 @@ export class AgentRuntime {
       updatedAt: now,
       messageCount: messages.length,
       preview: derivePreview(last?.text ?? ''),
+      summary: stored.summary,
     });
     // Reuse the resume path to load it into memory and repaint the panel.
     await this.loadConversation(id);
@@ -1001,6 +1037,8 @@ export class AgentRuntime {
     this.conversationCreatedAt = '';
     this.currentConversationTitle = null;
     this.titleIsAuto = false;
+    this.currentConversationSummary = null;
+    this.summaryAtCount = 0;
     this.currentConversationLabels = [];
     // New conversation ⇒ fresh tab group (old group/tabs are left open).
     this.groupName = null;

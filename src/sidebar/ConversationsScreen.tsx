@@ -115,7 +115,7 @@ export function ConversationsScreen({ send, onClose }: Props) {
     const q = query.trim().toLowerCase();
     const filtered = items.filter((c) => {
       if (filter.length > 0 && !(c.labels ?? []).some((id) => want.has(id))) return false;
-      if (q && !`${c.title} ${c.preview}`.toLowerCase().includes(q)) return false;
+      if (q && !`${c.title} ${c.summary ?? ''} ${c.preview}`.toLowerCase().includes(q)) return false;
       return true;
     });
     return sort === 'oldest' ? [...filtered].reverse() : filtered;
@@ -321,7 +321,9 @@ export function ConversationsScreen({ send, onClose }: Props) {
                     {new Date(item.updatedAt).toLocaleString()} ·{' '}
                     {t('conversations.messageCount', { n: String(item.messageCount) })}
                   </span>
-                  {item.preview && <span class="conv-preview">{item.preview}</span>}
+                  {(item.summary || item.preview) && (
+                    <span class="conv-preview">{item.summary || item.preview}</span>
+                  )}
                 </button>
 
                 <div class="conv-labels-row">

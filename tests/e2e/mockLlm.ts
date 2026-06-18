@@ -83,6 +83,13 @@ function decide(req: ChatRequest): ChatMessage {
     const n = (latestUserText(req.messages).match(/--- Tool output \d+ ---/g) ?? []).length || 1;
     return { role: 'assistant', content: JSON.stringify(new Array(n).fill('digest of an earlier result')) };
   }
+  // History-list metadata: title + summary as JSON.
+  if (system.includes('label a conversation')) {
+    return {
+      role: 'assistant',
+      content: '{"title":"Test topic","summary":"A concise summary of the test conversation."}',
+    };
+  }
 
   const hasToolResult = req.messages.some((m) => m.role === 'tool');
   const userMentions = (needle: string) =>
@@ -200,7 +207,11 @@ export async function startMockLlm(): Promise<MockLlm> {
       // failure / slow / rate-limit paths, which key off the original request
       // text that these prompts embed.
       const systemText = systemTextOf(parsed.messages);
-      if (systemText.includes('strict reviewer') || systemText.includes('compress a browser agent')) {
+      if (
+        systemText.includes('strict reviewer') ||
+        systemText.includes('compress a browser agent') ||
+        systemText.includes('label a conversation')
+      ) {
         const message = decide(parsed);
         res.end(JSON.stringify({ id: 'chatcmpl-mock', choices: [{ index: 0, message, finish_reason: 'stop' }] }));
         return;
