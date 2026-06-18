@@ -19,6 +19,23 @@ test.describe('user-manual screenshots', () => {
     await sidebar.screenshot({ path: `${SHOTS}/01-settings-advanced.png` });
   });
 
+  test('settings — repo-search passages (k) persists', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear
+    await sidebar.getByRole('tab', { name: 'Advanced' }).click();
+
+    const field = sidebar.locator('label.field', { hasText: 'Passages per repository search' }).locator('input');
+    await field.fill('10');
+    await sidebar.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(sidebar.locator('.banner-ok')).toBeVisible();
+
+    const saved = await sidebar.evaluate(async () => {
+      const r = await chrome.storage.local.get('ba_settings');
+      return (r.ba_settings as { repoSearchK?: number }).repoSearchK;
+    });
+    expect(saved).toBe(10);
+  });
+
   test('settings — Skills tab with the two seeded skills', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sidebar.locator('.header-controls .icon-btn').last().click();

@@ -133,6 +133,9 @@ const EN: Dict = {
   'settings.maxTokens': 'Max tokens (optional)',
   'settings.embeddingModel':
     'Embedding model (optional) — for local repositories; defaults to the model above if blank',
+  'settings.repoSearchK': 'Passages per repository search',
+  'settings.repoSearchKNote':
+    'How many passages each repository search returns. Default 6 — higher finds more but uses more context.',
   'settings.embeddingUrl': 'Embedding endpoint base URL (optional) — blank uses the main endpoint above',
   'settings.embeddingKey': 'Embedding API key (optional) — blank uses the main key',
   'settings.transcriptionModel':
@@ -297,6 +300,9 @@ const FR: Dict = {
   'settings.maxTokens': 'Jetons maximum (facultatif)',
   'settings.embeddingModel':
     'Modèle d’intégration (facultatif) — pour les dépôts locaux; utilise le modèle ci-dessus si vide',
+  'settings.repoSearchK': 'Passages par recherche de dépôt',
+  'settings.repoSearchKNote':
+    'Nombre de passages renvoyés par chaque recherche de dépôt. Par défaut 6 — plus élevé trouve davantage mais consomme plus de contexte.',
   'settings.embeddingUrl':
     'URL de base du point de terminaison d’intégration (facultatif) — vide = point de terminaison principal ci-dessus',
   'settings.embeddingKey': 'Clé d’API d’intégration (facultatif) — vide = clé principale',

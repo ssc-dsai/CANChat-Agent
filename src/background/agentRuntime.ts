@@ -1808,7 +1808,7 @@ export class AgentRuntime {
         } catch (e) {
           return `Error embedding the query: ${e instanceof Error ? e.message : String(e)}`;
         }
-        const res = await repoSearch(String(args.repo), queryVec[0], Number(args.k) || 6);
+        const res = await repoSearch(String(args.repo), queryVec[0], Number(args.k) || settings.repoSearchK || 6);
         if (!res.ok) return `Error: ${res.error}`;
         return JSON.stringify(res.result);
       }

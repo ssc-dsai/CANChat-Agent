@@ -247,15 +247,31 @@ export function SettingsScreen({ onClose }: Props) {
           </label>
         </div>
 
-        <label class="field">
-          <span>{t('settings.embeddingModel')}</span>
-          <input
-            type="text"
-            placeholder="text-embedding-3-small"
-            value={settings.embeddingModel ?? ''}
-            onInput={(e) => update({ embeddingModel: (e.target as HTMLInputElement).value })}
-          />
-        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>{t('settings.embeddingModel')}</span>
+            <input
+              type="text"
+              placeholder="text-embedding-3-small"
+              value={settings.embeddingModel ?? ''}
+              onInput={(e) => update({ embeddingModel: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+          <label class="field">
+            <span>{t('settings.repoSearchK')}</span>
+            <input
+              type="number"
+              min="1"
+              placeholder="6"
+              value={settings.repoSearchK ?? ''}
+              onInput={(e) => {
+                const v = (e.target as HTMLInputElement).value;
+                update({ repoSearchK: v === '' ? undefined : Number(v) });
+              }}
+            />
+          </label>
+        </div>
+        <p class="settings-note">{t('settings.repoSearchKNote')}</p>
 
         <div class="field-row">
           <label class="field">

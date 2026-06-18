@@ -147,6 +147,8 @@ export interface Settings {
   apiVersion?: string;
   temperature?: number;
   maxTokens?: number;
+  /** Default number of passages a repository search returns (search_repo k). Absent = 6. */
+  repoSearchK?: number;
   /** Optional user instructions appended to the built-in system prompt. */
   systemPrompt?: string;
   /** Optional SharePoint base URL for the cookie-auth search tool. */
