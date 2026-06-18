@@ -1376,6 +1376,13 @@ body {
 .repo-upload-card {
   margin-bottom: 8px;
 }
+.upload-banner {
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.attach-btn {
+  padding-inline: 9px;
+}
 
 .settings-actions {
   display: flex;

@@ -59,9 +59,26 @@ test.describe('user-manual screenshots', () => {
     await expect(sidebar.locator('.repo-file', { hasText: 'note.txt' })).toBeVisible();
     await sidebar.getByRole('button', { name: 'Add files', exact: true }).click();
 
-    // The file shows an "added" status and the new repo appears in the list.
-    await expect(sidebar.locator('.repo-file', { hasText: 'note.txt' })).toContainText('added');
+    // On success the uploader closes and a banner confirms it; the repo appears.
+    await expect(sidebar.locator('.upload-banner')).toContainText('Added 1 file');
+    await expect(sidebar.locator('.repo-upload')).toHaveCount(0); // box cleared
     await expect(sidebar.locator('.repo-block', { hasText: 'uploads' })).toBeVisible();
+  });
+
+  test('attach files to a knowledge base from the composer', async ({ sidebar }) => {
+    await sidebar.setViewportSize(PANEL);
+    // The 📎 attach control feeds the inline uploader (no drag needed).
+    await sidebar.getByTestId('attach-input').setInputFiles({
+      name: 'memo.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('A short memo for the composer upload test.'),
+    });
+    await sidebar.locator('.repo-upload input[type="text"]').fill('composer-uploads');
+    await sidebar.getByRole('button', { name: 'Add files', exact: true }).click();
+
+    // Success banner appears and the inline card clears itself.
+    await expect(sidebar.locator('.upload-banner')).toContainText('Added 1 file');
+    await expect(sidebar.locator('.repo-upload-card')).toHaveCount(0);
   });
 
   test('settings — repo-search passages (k) persists', async ({ sidebar }) => {

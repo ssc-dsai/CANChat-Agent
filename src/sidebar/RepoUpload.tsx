@@ -14,13 +14,20 @@ import { uploadFilesToRepo } from './repoUploadClient';
  * - `onDone` fires after a successful add (so the section can refresh counts).
  * - `onClose` (composer) dismisses the inline card.
  */
+export interface UploadSummary {
+  repo: string;
+  added: number;
+  chunks: number;
+}
+
 export function RepoUpload({
   initialFiles,
   onDone,
   onClose,
 }: {
   initialFiles?: File[];
-  onDone?: () => void;
+  /** Called after a fully-successful add (the card then closes itself). */
+  onDone?: (summary: UploadSummary) => void;
   onClose?: () => void;
 }) {
   const t = useT();
@@ -64,10 +71,18 @@ export function RepoUpload({
     setError(null);
     try {
       const res = await uploadFilesToRepo(repo, queue);
-      setResults(res);
       setQueue([]);
       setNewName('');
-      onDone?.();
+      const added = res.filter((r) => r.ok);
+      const chunks = added.reduce((n, r) => n + (r.chunks ?? 0), 0);
+      if (added.length === res.length) {
+        // Full success: acknowledge via the parent's banner and close the card.
+        onDone?.({ repo, added: added.length, chunks });
+        close();
+      } else {
+        // Some files were skipped — keep the card open so the failures are visible.
+        setResults(res);
+      }
     } catch (e) {
       setError(String(e));
     } finally {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { RepoDoc, RepoInfo } from '../shared/messages';
 import { RepoUpload } from './RepoUpload';
+import { UploadBanner } from './UploadBanner';
 import { useT } from './i18n';
 
 function hostOf(url: string): string {
@@ -18,6 +19,7 @@ export function RepositoriesSection() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [docs, setDocs] = useState<RepoDoc[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
+  const [banner, setBanner] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -77,7 +79,13 @@ export function RepositoriesSection() {
         <span class="sites-count">{repos.length}</span>
       </summary>
       <p class="settings-note">{t('repos.note')}</p>
-      <RepoUpload onDone={() => void load()} />
+      <RepoUpload
+        onDone={(s) => {
+          setBanner(t('repos.upload.done', { n: String(s.added), repo: s.repo }));
+          void load();
+        }}
+      />
+      {banner && <UploadBanner text={banner} onDismiss={() => setBanner(null)} />}
       {loading ? (
         <p class="settings-note">{t('repos.loading')}</p>
       ) : repos.length === 0 ? (

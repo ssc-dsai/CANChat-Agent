@@ -11,9 +11,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SidebarCommand } from '../shared/messages';
 import type { AgentStatus, ChatMessageView, DataExport, FileArtifact, Skill } from '../shared/types';
-import { classifyUpload } from '../shared/uploadFile';
+import { classifyUpload, UPLOAD_ACCEPT } from '../shared/uploadFile';
 import { DOCS_URL } from './links';
 import { RepoUpload } from './RepoUpload';
+import { UploadBanner } from './UploadBanner';
 import { saveFile } from './download';
 import { useT } from './i18n';
 import { Markdown } from './Markdown';
@@ -177,8 +178,10 @@ export function ChatPanel({
   const [hasTranscription, setHasTranscription] = useState(false);
   const [micState, setMicState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
   const [micError, setMicError] = useState<string | null>(null);
-  // Files dropped on the chat → the shared uploader opens, pre-loaded with them.
+  // Files dropped on / attached to the chat → the shared uploader opens with them.
   const [dropFiles, setDropFiles] = useState<File[] | null>(null);
+  const [uploadBanner, setUploadBanner] = useState<string | null>(null);
+  const attachInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -624,9 +627,14 @@ export function ChatPanel({
       </div>
 
       <div class="chat-input-row">
+        {uploadBanner && <UploadBanner text={uploadBanner} onDismiss={() => setUploadBanner(null)} />}
         {dropFiles && (
           <div class="repo-upload-card">
-            <RepoUpload initialFiles={dropFiles} onClose={() => setDropFiles(null)} onDone={() => {}} />
+            <RepoUpload
+              initialFiles={dropFiles}
+              onClose={() => setDropFiles(null)}
+              onDone={(s) => setUploadBanner(tr('repos.upload.done', { n: String(s.added), repo: s.repo }))}
+            />
           </div>
         )}
         {canDistill && (
@@ -757,6 +765,30 @@ export function ChatPanel({
           <button class="btn btn-primary" data-testid="send" onClick={submit} disabled={disabled || busy || !text.trim()}>
             Send
           </button>
+          <button
+            class="btn attach-btn"
+            data-testid="attach"
+            title={tr('repos.upload.attach')}
+            aria-label={tr('repos.upload.attach')}
+            onClick={() => attachInputRef.current?.click()}
+            disabled={disabled}
+          >
+            📎
+          </button>
+          <input
+            ref={attachInputRef}
+            type="file"
+            multiple
+            accept={UPLOAD_ACCEPT}
+            data-testid="attach-input"
+            style="display:none"
+            onChange={(e) => {
+              const fl = (e.target as HTMLInputElement).files;
+              const supported = Array.from(fl ?? []).filter((f) => classifyUpload(f.name, f.type));
+              if (supported.length) setDropFiles(supported);
+              (e.target as HTMLInputElement).value = '';
+            }}
+          />
           {hasTranscription && (
             <button
               class={`btn mic-btn${micState === 'recording' ? ' mic-recording' : ''}`}
