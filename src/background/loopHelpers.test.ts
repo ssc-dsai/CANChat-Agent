@@ -1,6 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
+import { deriveStepBudget, parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
 import type { LlmMessage } from './llmProvider';
+
+describe('deriveStepBudget', () => {
+  it('reproduces the historical 20/10/40 defaults when unset', () => {
+    expect(deriveStepBudget(undefined)).toEqual({ soft: 20, extension: 10, ceiling: 40 });
+    expect(deriveStepBudget(20)).toEqual({ soft: 20, extension: 10, ceiling: 40 });
+  });
+
+  it('scales extension (round soft/2) and ceiling (soft*2)', () => {
+    expect(deriveStepBudget(60)).toEqual({ soft: 60, extension: 30, ceiling: 120 });
+    expect(deriveStepBudget(15)).toEqual({ soft: 15, extension: 8, ceiling: 30 });
+  });
+
+  it('clamps to [1, 1000] and floors fractional input', () => {
+    expect(deriveStepBudget(0).soft).toBe(1);
+    expect(deriveStepBudget(-5).soft).toBe(1);
+    expect(deriveStepBudget(99999).soft).toBe(1000);
+    expect(deriveStepBudget(12.9).soft).toBe(12);
+  });
+
+  it('falls back to the default for non-finite input', () => {
+    expect(deriveStepBudget(NaN)).toEqual({ soft: 20, extension: 10, ceiling: 40 });
+  });
+});
 
 describe('parseSummaryArray', () => {
   it('parses a plain JSON array of the expected length', () => {

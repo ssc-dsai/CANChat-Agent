@@ -323,7 +323,10 @@ A turn-based loop over the OpenAI chat API with tool calling.
    - Append each tool result as a `tool` message; loop.
 3. **Dynamic step budget:** a soft cap scaled to task size; the working-state block
    shows remaining steps so the model paces itself and produces an answer before
-   exhaustion.
+   exhaustion. The soft cap defaults to 20 but is **user-configurable** via
+   `settings.maxSteps` (Advanced settings); the plan extension and hard ceiling scale
+   from it (`extension = round(maxSteps/2)`, `ceiling = maxSteps × 2`), so 20 reproduces
+   the historical 20/10/40 behavior. Derived by the pure `deriveStepBudget` helper.
 4. **Context compaction:** when the conversation grows past the char budget, the
    oldest bulky tool outputs are **summarized into a short digest** (one cheap model
    call, preserving URLs/names/numbers) when `summarizeObservations` is on, else
@@ -811,6 +814,7 @@ interface Settings {
   temperature?: number;
   maxTokens?: number;
   repoSearchK?: number;  // default passages per search_repo; absent = 6
+  maxSteps?: number;     // soft step budget per task; absent = 20 (extension = round/2, ceiling = ×2)
   systemPrompt?: string; // custom instructions, appended to the built-in prompt
   sharepointBaseUrl?: string; // optional, for sharepoint_search
   embeddingModel?: string;    // optional, for /embeddings (local RAG); defaults to `model`

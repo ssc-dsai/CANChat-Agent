@@ -270,8 +270,23 @@ export function SettingsScreen({ onClose }: Props) {
               }}
             />
           </label>
+          <label class="field">
+            <span>{t('settings.maxSteps')}</span>
+            <input
+              type="number"
+              min="1"
+              max="1000"
+              placeholder="20"
+              value={settings.maxSteps ?? ''}
+              onInput={(e) => {
+                const v = (e.target as HTMLInputElement).value;
+                update({ maxSteps: v === '' ? undefined : Number(v) });
+              }}
+            />
+          </label>
         </div>
         <p class="settings-note">{t('settings.repoSearchKNote')}</p>
+        <p class="settings-note">{t('settings.maxStepsNote')}</p>
 
         <div class="field-row">
           <label class="field">

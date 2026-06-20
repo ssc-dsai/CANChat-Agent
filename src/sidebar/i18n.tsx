@@ -157,6 +157,9 @@ const EN: Dict = {
   'settings.repoSearchK': 'Passages per repository search',
   'settings.repoSearchKNote':
     'How many passages each repository search returns. Default 6 — higher finds more but uses more context.',
+  'settings.maxSteps': 'Maximum steps per task',
+  'settings.maxStepsNote':
+    'Tool-iteration budget per task. Default 20 — raise it for long jobs like deep pagination; it can extend to twice this when a plan is unfinished. Higher allows more work but costs more.',
   'settings.embeddingUrl': 'Embedding endpoint base URL (optional) — blank uses the main endpoint above',
   'settings.embeddingKey': 'Embedding API key (optional) — blank uses the main key',
   'settings.transcriptionModel':
@@ -345,6 +348,9 @@ const FR: Dict = {
   'settings.repoSearchK': 'Passages par recherche de dépôt',
   'settings.repoSearchKNote':
     'Nombre de passages renvoyés par chaque recherche de dépôt. Par défaut 6 — plus élevé trouve davantage mais consomme plus de contexte.',
+  'settings.maxSteps': 'Nombre maximal d’étapes par tâche',
+  'settings.maxStepsNote':
+    'Budget d’itérations d’outils par tâche. Par défaut 20 — augmentez-le pour les tâches longues comme la pagination approfondie; il peut atteindre le double lorsqu’un plan est inachevé. Plus élevé permet plus de travail mais coûte davantage.',
   'settings.embeddingUrl':
     'URL de base du point de terminaison d’intégration (facultatif) — vide = point de terminaison principal ci-dessus',
   'settings.embeddingKey': 'Clé d’API d’intégration (facultatif) — vide = clé principale',

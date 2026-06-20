@@ -149,6 +149,12 @@ export interface Settings {
   maxTokens?: number;
   /** Default number of passages a repository search returns (search_repo k). Absent = 6. */
   repoSearchK?: number;
+  /**
+   * Max tool-iteration steps per task (the soft budget). Absent = 20. The plan
+   * extension and hard ceiling scale from it: extension = round(maxSteps/2),
+   * ceiling = maxSteps * 2 — so 20 preserves the 20/10/40 defaults.
+   */
+  maxSteps?: number;
   /** Optional user instructions appended to the built-in system prompt. */
   systemPrompt?: string;
   /** Optional SharePoint base URL for the cookie-auth search tool. */

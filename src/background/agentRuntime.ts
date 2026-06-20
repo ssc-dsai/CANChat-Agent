@@ -50,7 +50,7 @@ import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
 import { mapCommand } from './mapClient';
 import { complete, embed, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
-import { parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
+import { deriveStepBudget, parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
 import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
 import { ingestTab } from './repoIngest';
@@ -414,6 +414,10 @@ export class AgentRuntime {
   private findings: string[] = [];
   private stepsUsed = 0;
   private stepBudget = SOFT_STEP_BUDGET;
+  // Derived per task from settings.maxSteps (see deriveStepBudget); defaults reproduce
+  // the historical 20/10/40 constants.
+  private stepExtension = STEP_BUDGET_EXTENSION;
+  private stepCeiling = HARD_STEP_CEILING;
   private toolCallCount = 0;
   // How many times the answer-verification gate has sent the task back for a fix
   // this turn. Capped at 1 so a self-check can't loop indefinitely.
@@ -641,7 +645,10 @@ export class AgentRuntime {
     this.findings = [];
     this.pendingToolImages = [];
     this.stepsUsed = 0;
-    this.stepBudget = SOFT_STEP_BUDGET;
+    const budget = deriveStepBudget(settings.maxSteps);
+    this.stepBudget = budget.soft;
+    this.stepExtension = budget.extension;
+    this.stepCeiling = budget.ceiling;
     this.toolCallCount = 0;
     this.reflectionsDone = 0;
     this.planNudgesDone = 0;
@@ -1322,8 +1329,8 @@ export class AgentRuntime {
 
       // Budget: extend if the plan still has open steps, else wrap up gracefully.
       if (this.stepsUsed >= this.stepBudget) {
-        if (this.planHasOpenSteps() && this.stepBudget < HARD_STEP_CEILING) {
-          this.stepBudget = Math.min(HARD_STEP_CEILING, this.stepBudget + STEP_BUDGET_EXTENSION);
+        if (this.planHasOpenSteps() && this.stepBudget < this.stepCeiling) {
+          this.stepBudget = Math.min(this.stepCeiling, this.stepBudget + this.stepExtension);
           this.notice(`Extending the step budget to ${this.stepBudget} to finish the plan.`);
         } else {
           await this.wrapUp(settings);

@@ -5,6 +5,21 @@
 
 import type { LlmMessage } from './llmProvider';
 
+/** Default soft step budget when the user hasn't set settings.maxSteps. */
+export const DEFAULT_MAX_STEPS = 20;
+
+/**
+ * Derive the three step-budget values from a single configurable soft cap.
+ * extension = round(soft/2), ceiling = soft*2 — so the default 20 reproduces the
+ * historical 20/10/40 behavior. A missing/invalid value falls back to the default;
+ * the soft cap is clamped to a sane [1, 1000] to bound cost.
+ */
+export function deriveStepBudget(maxSteps?: number): { soft: number; extension: number; ceiling: number } {
+  const raw = Number.isFinite(maxSteps) ? Math.floor(maxSteps as number) : DEFAULT_MAX_STEPS;
+  const soft = Math.min(1000, Math.max(1, raw));
+  return { soft, extension: Math.max(1, Math.round(soft / 2)), ceiling: soft * 2 };
+}
+
 /** Strip a leading/trailing markdown code fence (```json … ```), if present. */
 function stripCodeFence(raw: string): string {
   return raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
