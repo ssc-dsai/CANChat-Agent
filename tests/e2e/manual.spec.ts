@@ -98,12 +98,12 @@ test.describe('user-manual screenshots', () => {
     expect(saved).toBe(10);
   });
 
-  test('settings — Skills tab with the two seeded skills', async ({ sidebar }) => {
+  test('settings — Skills tab with the seeded skills', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sidebar.locator('.header-controls .icon-btn').last().click();
     await sidebar.getByRole('tab', { name: 'Skills' }).click();
-    await expect(sidebar.getByText('/summarize-tabs')).toBeVisible();
     await expect(sidebar.getByText('/research')).toBeVisible();
+    await expect(sidebar.getByText('/search-sharepoint')).toBeVisible();
     await sidebar.screenshot({ path: `${SHOTS}/02-settings-skills.png` });
 
     // The skill editor form.

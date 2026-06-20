@@ -950,13 +950,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'import_data',
-      description: 'Import structured data into the in-memory DuckDB engine so it can be queried with query_data. Accepts CSV or JSON content. Creates or replaces a table with the given name.',
+      description: 'Import structured data into the in-memory DuckDB engine so it can be queried with query_data. Accepts CSV or JSON content. Creates or replaces a table with the given name. For JSON, data must be an ARRAY OF ROW OBJECTS (one object per row, sharing the same keys) — e.g. [{"price":500000,"mls":"A1"},{"price":600000,"mls":"A2"}] — not an object wrapping the array. Each key becomes a column.',
       parameters: {
         type: 'object',
         properties: {
           tableName: { type: 'string', description: 'Name for the table to create/replace.' },
-          format: { type: 'string', enum: ['csv', 'json'], description: 'Data format: csv or json.' },
-          data: { type: 'string', description: 'The CSV or JSON content to import.' },
+          format: { type: 'string', enum: ['csv', 'json'], description: 'Data format: csv or json. Use json for an array of records.' },
+          data: { type: 'string', description: 'The data to import. For csv: the full CSV text (header row + data rows). For json: an array of row objects (may be supplied as a JSON string or a JSON array).' },
         },
         required: ['tableName', 'format', 'data'],
       },

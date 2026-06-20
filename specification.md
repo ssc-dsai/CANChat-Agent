@@ -986,11 +986,20 @@ site, offer *"approved enterprise capabilities available"* with **Load once / Al
 load / Ignore** (the `remote-registry` source is defined but not fetched). *Benefit:*
 governance, centralized updates, less local config.
 
-**⬜ 15.7 / 15.8 Explicit skills + slash-command framework.** Skills exist today
-(`use_skill`), but the user-facing **slash-command** dispatch — `/search-sharepoint
-Budget 2026`, `/search-email CANChat`, `/travel-claim …` parsing `command` + `arguments`
-into a tool chain — is not yet built. Principle to preserve: **tools are capabilities
-(agent-selected); skills are workflows (user-invoked).**
+**🟡 15.7 / 15.8 Explicit skills + slash-command framework.** Skills exist today
+(`use_skill`) **and** a user-facing slash dispatch is wired: typing `/<name> [args]`
+forces the matching skill (built-in `/learn` plus any seeded/user skill), passing the
+trailing text as the task (`agentRuntime` slash parser; composer autocomplete in
+`ChatPanel`). Two intent→query skills ship in the basic set: **`/search-sharepoint`**
+translates a request into precise **KQL** (filename / filetype / `path:` site scope /
+author / date) and runs `sharepoint_search`; **`/search-mail`** translates into mail KQL
+keywords (`from` / `to` / `subject` / `received` / `hasattachments`) and runs the search
+in the signed-in **Outlook web app**. Both use the same query syntax Microsoft Graph
+Search uses, executed over the signed-in browser session (no Graph bearer token). What's
+still ⬜ is a richer **command→tool-chain**
+framework (a dedicated `command` + `arguments` parser expanding one slash command into a
+fixed multi-tool workflow, e.g. `/travel-claim …`). Principle to preserve: **tools are
+capabilities (agent-selected); skills are workflows (user-invoked).**
 
 **⬜ 15.11 Models as registry resources.** The registry already defines a `model` kind,
 but models are still configured via Settings rather than being selectable registry

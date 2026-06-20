@@ -34,13 +34,12 @@ function extractMetadata(): Record<string, string> {
   // Auth-detection hints consumed by the background authDetector.
   const passwordInputs = document.querySelectorAll('input[type="password"]');
   metadata['ba:hasPasswordInput'] = String(passwordInputs.length > 0);
-  const loginForm = Array.from(document.querySelectorAll('form')).some((f) => {
-    const t = (f.textContent ?? '').toLowerCase();
-    return (
-      f.querySelector('input[type="password"]') !== null ||
-      /sign in|log in|login|authenticate/.test(t)
-    );
-  });
+  // A real login form has a password field. The old heuristic also matched any form
+  // whose text said "sign in/log in" — which fires on the "Sign in" link or search
+  // box in a logged-in site's header — so it is dropped to avoid false auth walls.
+  const loginForm = Array.from(document.querySelectorAll('form')).some(
+    (f) => f.querySelector('input[type="password"]') !== null,
+  );
   metadata['ba:hasLoginForm'] = String(loginForm);
   return metadata;
 }

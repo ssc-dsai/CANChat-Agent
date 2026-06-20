@@ -323,8 +323,9 @@ Skills**.
 
 ![Skills settings tab](user-guide/screenshots/02-settings-skills.png)
 
-*What you're seeing:* the two **seeded skills** — **`/summarize-tabs`** and
-**`/research`** — each editable (✎) or removable (✕), and the toolbar: **Add
+*What you're seeing:* the **seeded skills** — **`/research`**,
+**`/search-sharepoint`**, **`/search-mail`**, and **`/map`** — each editable (✎) or
+removable (✕), and the toolbar: **Add
 skill**, **Import from URL**, **Import JSON**, **Export JSON**, and **App playbook
 library**.
 
@@ -499,7 +500,7 @@ Each is a request you type into the composer; the agent handles the steps.
 |---|---|---|
 | **Summarize a webpage** | "Summarize this page." | Reads the active tab, returns a structured summary. |
 | **Research a topic** | "/research the impact of X" or "Research X and cite sources." | Searches, reads 2–3 sources, cross-checks, cites. |
-| **Analyze multiple tabs** | "/summarize-tabs" or "Compare what's across my open tabs." | Reads all tabs (with your approval), groups common vs. unique findings. |
+| **Analyze multiple tabs** | "Compare what's across my open tabs." | Reads all tabs (with your approval), groups common vs. unique findings. |
 | **Search an authenticated site** | "Find my open Jira tickets." / "Search SharePoint for the Q3 plan." | Uses your existing logged-in session; pauses for login if needed. |
 | **Collect data into a spreadsheet** | "List every product on these pages with name and price as a table." | Gathers rows, emits a Download CSV/JSON card. |
 | **Write a document** | "Draft a one-page summary as a Word document." | Produces a downloadable `.docx`. |
@@ -726,7 +727,7 @@ Edge) version 116+.
 | Open the assistant | Toolbar icon → side panel |
 | First-time setup | Welcome card → endpoint, key, model → Test → Save & start |
 | Ask about the current page | Type a question → **Enter** |
-| Research / multi-tab | `/research …` or `/summarize-tabs` |
+| Research / multi-tab | `/research …` or "compare my open tabs" |
 | Insert a bookmark / knowledge base / skill | `@` / `#` / `/` in the composer |
 | Save a page to ask later | Toolbar → name → **Add tab** / **Add group** |
 | Start fresh (keep history) | Header **compose** (New chat) icon |

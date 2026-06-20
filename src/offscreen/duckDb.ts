@@ -212,6 +212,16 @@ async function persistTable(tableName: string): Promise<void> {
   await persistData(dir, dump.rows);
 }
 
+/** Row count of a just-created table, for confirming an import landed. Best-effort. */
+async function countRows(c: typeof conn, tableName: string): Promise<number> {
+  try {
+    const r = await c.query(`SELECT count(*)::INTEGER AS n FROM "${tableName}"`);
+    return Number((r.toArray()[0] as { n?: number } | undefined)?.n ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 export async function importCsv(tableName: string, csv: string, persist?: boolean): Promise<DuckDbResponse> {
   try {
     await ensureDb();
@@ -222,7 +232,7 @@ export async function importCsv(tableName: string, csv: string, persist?: boolea
     await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_csv_auto('${tmpFile}')`);
     await db.dropFile(tmpFile);
     if (persist !== false) await persistTable(tableName);
-    return { ok: true, rowCount: 0 };
+    return { ok: true, rowCount: await countRows(c, tableName) };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
@@ -238,7 +248,7 @@ export async function importJson(tableName: string, json: string, persist?: bool
     await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_json_auto('${tmpFile}')`);
     await db.dropFile(tmpFile);
     if (persist !== false) await persistTable(tableName);
-    return { ok: true, rowCount: 0 };
+    return { ok: true, rowCount: await countRows(c, tableName) };
   } catch (e) {
     return { ok: false, error: String(e) };
   }

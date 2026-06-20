@@ -1,6 +1,10 @@
 import type { AuthState, PageContent } from '../shared/types';
 
-const LOGIN_URL_PATTERN = /(login|log-in|signin|sign-in|sign_in|auth|sso|oauth|saml|session|account\/login)/i;
+// Deliberately specific: the bare tokens `auth` and `session` were removed because
+// they match ordinary URLs (e.g. /author/, ?session=…, "authority") and produced
+// false login-wall positives mid-crawl. Real SSO hosts still match via `login`,
+// `sso`/`saml`/`oauth`, or the PROVIDER_PATTERNS host list below.
+const LOGIN_URL_PATTERN = /(login|log-in|signin|sign-in|sign_in|logon|sso|oauth|saml|account\/login)/i;
 
 const LOGIN_TEXT_PATTERN =
   /(sign in to continue|log in to continue|please sign in|please log in|session (has )?expired|authentication required|you must (sign|log) in)/i;
@@ -40,16 +44,17 @@ export function analyzeAuthState(content: PageContent): AuthState {
     }
   }
 
-  const signals = [
-    hasPasswordInput,
-    hasLoginForm,
-    urlLooksLikeLogin,
-    titleLooksLikeLogin,
-    textLooksLikeLogin,
-    detectedProvider !== undefined,
-  ].filter(Boolean).length;
+  // A login wall needs a STRONG structural signal — an actual password field, a real
+  // login <form> (now password-gated in domExtractor), or a redirect to a known
+  // identity provider — OR an explicit interstitial: page text that asks you to sign
+  // in ("session expired", "authentication required") corroborated by a login-looking
+  // URL or title. URL+title alone is NOT enough: that combination matches ordinary
+  // listing/pagination pages and a "Sign in" link in the site header, which is exactly
+  // what caused crawls to false-pause and stall.
+  const strongSignal = hasPasswordInput || hasLoginForm || detectedProvider !== undefined;
+  const interstitial = textLooksLikeLogin && (urlLooksLikeLogin || titleLooksLikeLogin);
 
-  if (hasPasswordInput || detectedProvider || signals >= 2) {
+  if (strongSignal || interstitial) {
     const reasons: string[] = [];
     if (hasPasswordInput) reasons.push('password input present');
     if (hasLoginForm) reasons.push('login form present');

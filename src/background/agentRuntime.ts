@@ -421,6 +421,11 @@ export class AgentRuntime {
   // How many times the plan-execution guard has pushed the task back for trying
   // to finish over an unstarted plan. Capped at 1.
   private planNudgesDone = 0;
+  // Origins we already paused on for sign-in and then resumed. If the same origin
+  // still trips the auth detector after the user resumed, it is almost certainly a
+  // false positive (site chrome with a "Sign in" link), so we proceed instead of
+  // re-pausing — otherwise pagination loops pause/re-fetch forever, burning budget.
+  private authResumedOrigins = new Set<string>();
   private canDistill = false;
   private lastUserText = '';
   private activeHost = '';
@@ -640,6 +645,7 @@ export class AgentRuntime {
     this.toolCallCount = 0;
     this.reflectionsDone = 0;
     this.planNudgesDone = 0;
+    this.authResumedOrigins.clear();
     this.setDistill(false);
     this.emit({ type: 'plan_update', plan: null });
 
@@ -2077,12 +2083,18 @@ export class AgentRuntime {
       case 'import_data': {
         const tableName = String(args.tableName ?? '').trim();
         const format = String(args.format ?? 'csv');
-        const data = String(args.data ?? '');
+        // Models often emit `data` as a real JSON array/object rather than a string,
+        // even though the schema says string. String() would turn that into
+        // "[object Object],…" which read_json_auto rejects — so stringify non-strings.
+        const raw = args.data;
+        const data =
+          raw == null ? '' : typeof raw === 'string' ? raw : JSON.stringify(raw);
         if (!tableName || !data) return 'Error: import_data needs tableName and data.';
         const ires = format === 'json' ? await duckDbImportJson(tableName, data) : await duckDbImportCsv(tableName, data);
         if (!ires.ok) return `Error: ${ires.error}`;
         this.trackDatasets([tableName]);
-        return `Imported data into table "${tableName}". You can now query it with query_data.`;
+        const n = ires.rowCount ?? 0;
+        return `Imported ${n} row(s) into table "${tableName}". You can now query it with query_data.`;
       }
       case 'open_data_url': {
         const url = String(args.url ?? '').trim();
@@ -2295,6 +2307,16 @@ export class AgentRuntime {
     } catch {
       origin = 'this site';
     }
+    // If we already paused for this origin and the user resumed, yet it still looks
+    // like a login wall, treat the signal as a false positive (e.g. a "Sign in" link
+    // in the site chrome) and proceed — re-pausing would loop forever and exhaust the
+    // step budget without making progress (the original pagination-stops-after-2-pages bug).
+    if (this.authResumedOrigins.has(origin)) {
+      this.notice(
+        `Already signed in for ${origin} this session — treating the repeated login-wall signal as a false positive and continuing.`,
+      );
+      return;
+    }
     const message = `Authentication required for ${origin}. Complete login in the browser, then click Resume.`;
     this.setStatus('auth_required', message);
     this.emit({ type: 'auth_required', origin, message });
@@ -2303,6 +2325,7 @@ export class AgentRuntime {
       this.authWait = { origin, message, resolve };
     });
     if (!this.stopRequested) {
+      this.authResumedOrigins.add(origin);
       this.notice('Resumed. Re-checking the page…');
       this.setStatus('acting');
     }
