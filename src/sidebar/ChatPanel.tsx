@@ -12,6 +12,8 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { SidebarCommand } from '../shared/messages';
 import type { AgentStatus, ChatMessageView, DataExport, FileArtifact, Skill } from '../shared/types';
 import { classifyUpload, UPLOAD_ACCEPT } from '../shared/uploadFile';
+import { classifyDataFile, DATA_ACCEPT } from '../shared/dataFile';
+import { openDataFiles } from './dataOpenClient';
 import { DOCS_URL } from './links';
 import { RepoUpload } from './RepoUpload';
 import { UploadBanner } from './UploadBanner';
@@ -126,7 +128,7 @@ function splitSources(text: string): { body: string; sources: string | null } {
 interface Props {
   messages: ChatMessageView[];
   status: AgentStatus;
-  approval: { requestId: string; description: string; detail: string } | null;
+  approval: { requestId: string; description: string; detail: string; approvalContext?: { toolName: string; capabilityKind?: string; capabilityName?: string; trustLevel?: string; authMethod?: string; authConfigured: boolean } } | null;
   authNotice: { origin: string; message: string } | null;
   permissionNotice: { origin: string; message: string } | null;
   pendingSnapshots: string[];
@@ -180,7 +182,10 @@ export function ChatPanel({
   const [micError, setMicError] = useState<string | null>(null);
   // Files dropped on / attached to the chat → the shared uploader opens with them.
   const [dropFiles, setDropFiles] = useState<File[] | null>(null);
+  // After the destination chooser: 'repo' commits the files to the RAG uploader.
+  const [dataChoice, setDataChoice] = useState<'repo' | null>(null);
   const [uploadBanner, setUploadBanner] = useState<string | null>(null);
+  const [rememberSession, setRememberSession] = useState(false);
   const attachInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -513,12 +518,36 @@ export function ChatPanel({
     setMicState('recording');
   };
 
-  // Files dropped on the chat → open the shared uploader pre-loaded with them.
-  const onDrop = (e: DragEvent) => {
-    const supported = Array.from(e.dataTransfer?.files ?? []).filter((f) => classifyUpload(f.name, f.type));
+  // Queue picked/dropped files for the destination chooser (data vs knowledge base).
+  const queueFiles = (files: File[]) => {
+    const supported = files.filter((f) => classifyUpload(f.name, f.type) || classifyDataFile(f.name, f.type));
     if (supported.length === 0) return;
-    e.preventDefault();
+    setDataChoice(null);
     setDropFiles(supported);
+  };
+
+  // Files dropped on the chat → open the destination chooser pre-loaded with them.
+  const onDrop = (e: DragEvent) => {
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (!files.some((f) => classifyUpload(f.name, f.type) || classifyDataFile(f.name, f.type))) return;
+    e.preventDefault();
+    queueFiles(files);
+  };
+
+  // Open the queued data-eligible files into the DuckDB engine.
+  const openAsData = async () => {
+    const files = (dropFiles ?? []).filter((f) => classifyDataFile(f.name, f.type));
+    setDropFiles(null);
+    setDataChoice(null);
+    const { results, tables } = await openDataFiles(files);
+    const ok = results.filter((r) => r.ok).length;
+    if (tables.length > 0) {
+      setUploadBanner(tr('data.open.done', { tables: tables.join(', ') }));
+    } else {
+      const err = results.find((r) => r.error)?.error ?? 'failed';
+      setUploadBanner(tr('data.open.failed', { error: err }));
+    }
+    void ok;
   };
 
   return (
@@ -602,25 +631,43 @@ export function ChatPanel({
           <div class="prompt-card" data-testid="approval">
             <div>
               <strong>Approve action?</strong>
+              {approval.approvalContext && (
+                <div class="approval-context">
+                  {approval.approvalContext.capabilityKind && <span class="approval-tag approval-cap">{approval.approvalContext.capabilityKind}</span>}
+                  {approval.approvalContext.trustLevel && <span class={`approval-tag approval-trust approval-trust-${approval.approvalContext.trustLevel}`}>{approval.approvalContext.trustLevel}</span>}
+                  {approval.approvalContext.authMethod && (
+                    <span class={`approval-tag approval-auth ${approval.approvalContext.authConfigured ? 'approval-auth-ok' : 'approval-auth-missing'}`}>
+                      {approval.approvalContext.authConfigured ? approval.approvalContext.authMethod : `${approval.approvalContext.authMethod} (not configured)`}
+                    </span>
+                  )}
+                  {approval.approvalContext.capabilityName && <span class="approval-cap-name">{approval.approvalContext.capabilityName}</span>}
+                </div>
+              )}
               <div class="prompt-reason">{approval.description}</div>
               <details class="prompt-tech">
                 <summary>Technical detail</summary>
                 <div class="prompt-detail">{approval.detail}</div>
               </details>
             </div>
-            <div class="prompt-actions">
-              <button
-                class="btn btn-primary"
-                onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: true })}
-              >
-                Approve
-              </button>
-              <button
-                class="btn"
-                onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: false })}
-              >
-                Deny
-              </button>
+            <div class="prompt-actions-col">
+              <label class="approval-remember">
+                <input type="checkbox" checked={rememberSession} onChange={() => setRememberSession(!rememberSession)} />
+                <span>Allow for this session</span>
+              </label>
+              <div class="prompt-btn-row">
+                <button
+                  class="btn btn-primary"
+                  onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: true, rememberForSession: rememberSession })}
+                >
+                  Approve
+                </button>
+                <button
+                  class="btn"
+                  onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: false })}
+                >
+                  Deny
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -628,11 +675,21 @@ export function ChatPanel({
 
       <div class="chat-input-row">
         {uploadBanner && <UploadBanner text={uploadBanner} onDismiss={() => setUploadBanner(null)} />}
-        {dropFiles && (
+        {dropFiles && dataChoice !== 'repo' && dropFiles.some((f) => classifyDataFile(f.name, f.type)) && (
+          <div class="dest-chooser">
+            <div class="dest-chooser-files">{dropFiles.map((f) => f.name).join(', ')}</div>
+            <div class="dest-chooser-actions">
+              <button class="btn btn-primary" onClick={openAsData}>{tr('data.open.asData')}</button>
+              <button class="btn" onClick={() => setDataChoice('repo')}>{tr('data.open.asKnowledge')}</button>
+              <button class="icon-btn" title={tr('repos.upload.cancel')} onClick={() => setDropFiles(null)}>✕</button>
+            </div>
+          </div>
+        )}
+        {dropFiles && (dataChoice === 'repo' || !dropFiles.some((f) => classifyDataFile(f.name, f.type))) && (
           <div class="repo-upload-card">
             <RepoUpload
               initialFiles={dropFiles}
-              onClose={() => setDropFiles(null)}
+              onClose={() => { setDropFiles(null); setDataChoice(null); }}
               onDone={(s) => setUploadBanner(tr('repos.upload.done', { n: String(s.added), repo: s.repo }))}
             />
           </div>
@@ -779,13 +836,12 @@ export function ChatPanel({
             ref={attachInputRef}
             type="file"
             multiple
-            accept={UPLOAD_ACCEPT}
+            accept={`${UPLOAD_ACCEPT},${DATA_ACCEPT}`}
             data-testid="attach-input"
             style="display:none"
             onChange={(e) => {
               const fl = (e.target as HTMLInputElement).files;
-              const supported = Array.from(fl ?? []).filter((f) => classifyUpload(f.name, f.type));
-              if (supported.length) setDropFiles(supported);
+              queueFiles(Array.from(fl ?? []));
               (e.target as HTMLInputElement).value = '';
             }}
           />

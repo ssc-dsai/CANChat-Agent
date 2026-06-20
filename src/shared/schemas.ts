@@ -917,4 +917,113 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'query_data',
+      description: 'Run an SQL query on the in-memory DuckDB dataset. Use after importing data or when you need to filter, aggregate, join, or sort structured data. Returns rows as a JSON array. Supports full DuckDB SQL syntax (SELECT, WHERE, GROUP BY, ORDER BY, LIMIT, JOIN, UNION, window functions, etc).',
+      parameters: {
+        type: 'object',
+        properties: {
+          sql: { type: 'string', description: 'SQL query to execute (e.g. SELECT * FROM data WHERE x > 10).' },
+        },
+        required: ['sql'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'open_data_url',
+      description: 'Open a data file (CSV, TSV, JSON, NDJSON, Parquet, geospatial GeoJSON/KML/GPX/FGB, or a ZIP archive of those) from an http(s) URL or the URL of the current tab into the DuckDB engine. Each file becomes a table (a ZIP yields one table per supported data member; geospatial geometry becomes a GeoJSON-text column). Reach for this when a URL or ZIP likely holds structured/tabular/geospatial data, or when the user asks to open/query a data file or archive. XML and SQLite/database files are NOT supported. Returns the created table names, row counts, and columns; then use describe_dataset / query_data. Use this instead of get_tab_content/read_pdf for structured data files.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'http(s) URL of the data file (e.g. the current tab URL, or a link to a .csv/.parquet/.zip).' },
+          tableName: { type: 'string', description: 'Optional base name for the created table (defaults to the filename).' },
+        },
+        required: ['url'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'import_data',
+      description: 'Import structured data into the in-memory DuckDB engine so it can be queried with query_data. Accepts CSV or JSON content. Creates or replaces a table with the given name.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tableName: { type: 'string', description: 'Name for the table to create/replace.' },
+          format: { type: 'string', enum: ['csv', 'json'], description: 'Data format: csv or json.' },
+          data: { type: 'string', description: 'The CSV or JSON content to import.' },
+        },
+        required: ['tableName', 'format', 'data'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_datasets',
+      description: 'List all tables currently loaded in the DuckDB engine. Returns table names.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'describe_dataset',
+      description: 'Show the schema (column names and types) and row count of a loaded dataset.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tableName: { type: 'string', description: 'Name of the table to describe.' },
+        },
+        required: ['tableName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'persist_dataset',
+      description: 'Persist an in-memory DuckDB table to on-device storage (OPFS) so it survives service-worker restarts. Called automatically on import_data; use this explicitly to preserve tables created or modified by SQL queries.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tableName: { type: 'string', description: 'Name of the table to persist.' },
+        },
+        required: ['tableName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'load_dataset',
+      description: 'Load a previously persisted dataset from on-device storage back into the DuckDB engine. Datasets are auto-restored on startup; use this to manually reload one that was dropped.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tableName: { type: 'string', description: 'Name of the persisted dataset to load.' },
+        },
+        required: ['tableName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'drop_dataset',
+      description: 'Remove a dataset from the DuckDB engine and delete its persisted on-device storage. Data cannot be recovered after this.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tableName: { type: 'string', description: 'Name of the dataset to drop.' },
+        },
+        required: ['tableName'],
+      },
+    },
+  },
 ];

@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
 import { BackupRestoreSection } from './BackupRestoreSection';
+import { CapabilitiesSection } from './CapabilitiesSection';
 import { DOCS_URL } from './links';
 import { LANGUAGE_STORAGE_KEY, useT, type LangPref } from './i18n';
-import { KnownSitesSection } from './KnownSitesSection';
 import { MemorySection } from './MemorySection';
 import { RepositoriesSection } from './RepositoriesSection';
 import { SkillsSection } from './SkillsSection';
@@ -370,7 +370,7 @@ export function SettingsScreen({ onClose }: Props) {
 
         {tab === 'data' && (
         <>
-        <KnownSitesSection />
+        <CapabilitiesSection />
         <MemorySection />
         <RepositoriesSection />
         <BackupRestoreSection />

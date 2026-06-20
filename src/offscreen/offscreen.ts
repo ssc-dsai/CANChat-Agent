@@ -15,6 +15,8 @@ import * as pdfjs from 'pdfjs-dist';
 // Vite emits the worker as an asset and gives us its URL.
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type {
+  DuckDbRequest,
+  DuckDbResponse,
   ExtractOfficeRequest,
   ExtractOfficeResponse,
   ExtractPdfRequest,
@@ -380,4 +382,55 @@ chrome.runtime.onMessage.addListener((message: RepoRequest, _sender, sendRespons
   if (message?.target !== 'offscreen-repo') return undefined;
   handleRepo(message).then(sendResponse);
   return true; // async response
+});
+
+// ----- DuckDB data engine (in-memory SQL via DuckDB-WASM). -----
+
+chrome.runtime.onMessage.addListener((message: DuckDbRequest, _sender, sendResponse) => {
+  if (message?.target !== 'offscreen-duckdb') return undefined;
+  (async () => {
+    try {
+      const duck = await import('./duckDb');
+      let result: DuckDbResponse;
+      switch (message.op) {
+        case 'query':
+          result = await duck.query(message.sql ?? '');
+          break;
+        case 'import_csv':
+          result = await duck.importCsv(message.tableName ?? 'table', message.data ?? '', message.persist);
+          break;
+        case 'import_json':
+          result = await duck.importJson(message.tableName ?? 'table', message.data ?? '', message.persist);
+          break;
+        case 'list_tables':
+          result = await duck.listTables();
+          break;
+        case 'describe_table':
+          result = await duck.describeTable(message.tableName ?? '');
+          break;
+        case 'persist_table':
+          result = await duck.persistTableByName(message.tableName ?? '');
+          break;
+        case 'load_table':
+          result = await duck.loadTable(message.tableName ?? '');
+          break;
+        case 'drop_table':
+          result = await duck.dropTable(message.tableName ?? '');
+          break;
+        case 'open_file': {
+          const bytes = Uint8Array.from(atob(message.bytesB64 ?? ''), (ch) => ch.charCodeAt(0));
+          const tables = await duck.openBuffer(message.name ?? 'data', bytes);
+          result = { ok: true, tables };
+          break;
+        }
+        case 'reset_all':
+          result = await duck.resetAll();
+          break;
+      }
+      sendResponse(result);
+    } catch (e) {
+      sendResponse({ ok: false, error: String(e) } satisfies DuckDbResponse);
+    }
+  })();
+  return true;
 });

@@ -6,6 +6,9 @@
 // =============================================================================
 
 import type {
+  DuckDbRequest,
+  DuckDbResponse,
+  DuckDbOp,
   ExportedRepo,
   ExtractOfficeRequest,
   ExtractOfficeResponse,
@@ -139,4 +142,76 @@ export function repoExport(): Promise<RepoResponse> {
 
 export function repoImport(repos: ExportedRepo[]): Promise<RepoResponse> {
   return repoRequest({ target: 'offscreen-repo', op: 'import', repos });
+}
+
+// ----- DuckDB data engine -----
+
+/**
+ * Send a DuckDB request to the offscreen document, retrying briefly if the
+ * document's listener isn't attached yet ("Receiving end does not exist") —
+ * a race when concurrent ops hit a cold engine.
+ */
+async function sendDuckDb(request: DuckDbRequest): Promise<DuckDbResponse> {
+  try {
+    await ensureOffscreen();
+  } catch (e) {
+    return { ok: false, error: `Could not start the data engine: ${String(e)}` };
+  }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return (await chrome.runtime.sendMessage(request)) as DuckDbResponse;
+    } catch (e) {
+      if (attempt < 10 && /Receiving end does not exist|establish connection/i.test(String(e))) {
+        await new Promise((r) => setTimeout(r, 100));
+        continue;
+      }
+      return { ok: false, error: String(e) };
+    }
+  }
+}
+
+function duckDbRequest(op: DuckDbOp, sql?: string, tableName?: string, data?: string): Promise<DuckDbResponse> {
+  return sendDuckDb({ target: 'offscreen-duckdb', op, sql, tableName, data });
+}
+
+export function duckDbQuery(sql: string): Promise<DuckDbResponse> {
+  return duckDbRequest('query', sql);
+}
+
+export function duckDbImportCsv(tableName: string, data: string): Promise<DuckDbResponse> {
+  return duckDbRequest('import_csv', undefined, tableName, data);
+}
+
+export function duckDbImportJson(tableName: string, data: string): Promise<DuckDbResponse> {
+  return duckDbRequest('import_json', undefined, tableName, data);
+}
+
+export function duckDbListTables(): Promise<DuckDbResponse> {
+  return duckDbRequest('list_tables');
+}
+
+export function duckDbDescribeTable(tableName: string): Promise<DuckDbResponse> {
+  return duckDbRequest('describe_table', undefined, tableName);
+}
+
+export function duckDbPersistTable(tableName: string): Promise<DuckDbResponse> {
+  return duckDbRequest('persist_table', undefined, tableName);
+}
+
+export function duckDbLoadTable(tableName: string): Promise<DuckDbResponse> {
+  return duckDbRequest('load_table', undefined, tableName);
+}
+
+export function duckDbDropTable(tableName: string): Promise<DuckDbResponse> {
+  return duckDbRequest('drop_table', undefined, tableName);
+}
+
+/** Open a data file (CSV/JSON/Parquet/ZIP) from base64 bytes into one or more tables. */
+export function duckDbOpenFile(name: string, bytesB64: string): Promise<DuckDbResponse> {
+  return sendDuckDb({ target: 'offscreen-duckdb', op: 'open_file', name, bytesB64 });
+}
+
+/** Drop every table and clear all persisted datasets — a fresh engine for a new conversation. */
+export function duckDbResetAll(): Promise<DuckDbResponse> {
+  return sendDuckDb({ target: 'offscreen-duckdb', op: 'reset_all' });
 }

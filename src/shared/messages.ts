@@ -40,7 +40,7 @@ export type SidebarCommand =
   | { type: 'dismiss_distill' }
   | { type: 'pause_agent' }
   | { type: 'resume_agent' }
-  | { type: 'approval_response'; requestId: string; approved: boolean }
+  | { type: 'approval_response'; requestId: string; approved: boolean; rememberForSession?: boolean }
   | { type: 'include_active_tab' }
   | { type: 'include_all_tabs' }
   | { type: 'refresh_context' }
@@ -51,12 +51,28 @@ export type SidebarCommand =
   | { type: 'get_state' }
   | { type: 'ping' };
 
+/** Context about a capability's trust level and auth status for approval UX. */
+export interface ApprovalContext {
+  /** Tool name being approved (e.g. "call_mcp_tool"). */
+  toolName: string;
+  /** Capability kind when the tool is sourced from a registered capability. */
+  capabilityKind?: string;
+  /** Capability name when the tool is sourced from a registered capability. */
+  capabilityName?: string;
+  /** Trust level of the sourcing capability, if applicable. */
+  trustLevel?: string;
+  /** Auth method of the sourcing capability, if applicable. */
+  authMethod?: string;
+  /** Whether auth credentials are configured for this capability. */
+  authConfigured: boolean;
+}
+
 /** Events pushed from the background to every connected sidebar. */
 export type BackgroundEvent =
   | { type: 'chat_message'; message: ChatMessageView }
   | { type: 'status'; status: AgentStatus; detail?: string }
   | { type: 'tool_activity'; activity: ToolActivity }
-  | { type: 'approval_request'; requestId: string; description: string; detail: string }
+  | { type: 'approval_request'; requestId: string; description: string; detail: string; approvalContext?: ApprovalContext }
   | { type: 'auth_required'; origin: string; message: string }
   | { type: 'permission_required'; origin: string; message: string }
   | { type: 'context_update'; summary: TabContextSummary | null }
@@ -72,7 +88,7 @@ export type BackgroundEvent =
       messages: ChatMessageView[];
       activities: ToolActivity[];
       context: TabContextSummary | null;
-      pendingApproval: { requestId: string; description: string; detail: string } | null;
+      pendingApproval: { requestId: string; description: string; detail: string; approvalContext?: ApprovalContext } | null;
       authNotice: { origin: string; message: string } | null;
       permissionNotice: { origin: string; message: string } | null;
       pendingSnapshots: string[];
@@ -91,7 +107,11 @@ export type RuntimeRequest =
   | { type: 'repo_export' }
   | { type: 'repo_import'; repos: ExportedRepo[] }
   | { type: 'add_files_to_repo'; repo: string; files: UploadFile[] }
-  | { type: 'transcribe_audio'; audioDataUrl: string };
+  | { type: 'open_data_files'; files: DataFileUpload[] }
+  | { type: 'transcribe_audio'; audioDataUrl: string }
+  // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
+  // service worker owns the offscreen document, so it routes the op for them.
+  | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };
 
 /** One picked file on its way into a repository (see shared/uploadFile.ts). */
 export interface UploadFile {
@@ -101,6 +121,19 @@ export interface UploadFile {
   text?: string;
   /** Set for `kind:'pdf'|'office'` — a base64 data URL the offscreen extractor fetches. */
   dataUrl?: string;
+}
+
+/** One picked data file on its way into the DuckDB engine (base64 bytes). */
+export interface DataFileUpload {
+  name: string;
+  bytesB64: string;
+}
+
+/** Result of opening data files into the engine (one entry per created table). */
+export interface OpenDataResponse {
+  ok: boolean;
+  tables: DuckDbTableInfo[];
+  error?: string;
 }
 
 /** Per-file outcome of an upload, for the uploader's file list. */
@@ -263,6 +296,41 @@ export interface RepoResponse {
   ok: boolean;
   error?: string;
   result?: unknown;
+}
+
+// ----- DuckDB data engine (offscreen document) -----
+
+export type DuckDbOp = 'query' | 'import_csv' | 'import_json' | 'list_tables' | 'describe_table' | 'persist_table' | 'load_table' | 'drop_table' | 'open_file' | 'reset_all';
+
+export interface DuckDbRequest {
+  target: 'offscreen-duckdb';
+  op: DuckDbOp;
+  sql?: string;
+  tableName?: string;
+  data?: string;
+  /** Base64 file bytes for the `open_file` op (binary: parquet/zip/csv/json). */
+  bytesB64?: string;
+  /** Original filename for `open_file` — drives format detection + table naming. */
+  name?: string;
+  persist?: boolean;
+}
+
+export interface DuckDbTableInfo {
+  name: string;
+  columns: string[];
+  columnTypes: string[];
+  rowCount: number;
+  persisted?: boolean;
+}
+
+export interface DuckDbResponse {
+  ok: boolean;
+  error?: string;
+  columns?: string[];
+  columnTypes?: string[];
+  rows?: string[][];
+  rowCount?: number;
+  tables?: DuckDbTableInfo[];
 }
 
 /** Requests handled by the injected content script. */

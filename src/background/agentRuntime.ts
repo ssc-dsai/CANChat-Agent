@@ -21,6 +21,10 @@
 // testable in principle and decoupled from the panel.
 // =============================================================================
 
+import type { ApprovalContext, DuckDbTableInfo } from '../shared/messages';
+import type { CapabilityRegistryEntry } from '../shared/capabilities';
+import { isTrustedForAutoApproval, resolveAuth } from '../shared/capabilities';
+import { MAX_DATA_BYTES } from '../shared/dataFile';
 import type { BackgroundEvent } from '../shared/messages';
 import { MEMORY_TOOL_DEFINITIONS, TOOL_DEFINITIONS } from '../shared/schemas';
 import type {
@@ -38,7 +42,6 @@ import type {
   FileArtifact,
   MemoryEntry,
   Settings,
-  SiteEntry,
   Skill,
 } from '../shared/types';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
@@ -47,20 +50,22 @@ import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
 import { mapCommand } from './mapClient';
 import { complete, embed, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
-import { parseReflectionVerdict, parseSummaryArray } from './loopHelpers';
-import { generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
+import { parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
+import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
 import { ingestTab } from './repoIngest';
 import { normalizeUrl } from '../shared/repoChunk';
 import {
+  addSessionApproval,
   clearAllConversations,
   deleteConversation as deleteStoredConversation,
+  getCapabilities,
   getConversation,
   getConversationLabels,
   getMemories,
   getMemoryEnabled,
+  getSessionApprovals,
   getSettings,
-  getSites,
   getSkills,
   MEMORY_MAX_ENTRIES,
   saveConversation,
@@ -140,9 +145,27 @@ const READ_ONLY_TOOLS = new Set([
   'get_video_transcript',
   'read_app_content',
   'map_get_state',
+  'query_data',
+  'open_data_url',
+  'import_data',
+  'list_datasets',
+  'describe_dataset',
+  'persist_dataset',
+  'load_dataset',
+  'drop_dataset',
 ]);
 
 /** Turn inserted @bookmark / #repo mentions into an explicit, act-on-it directive. */
+/** Base64-encode bytes in chunks (avoids a huge spread that overflows the stack). */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
 function buildMentionDirective(
   mentions?: Array<{ kind: 'bookmark' | 'repo'; value: string }>,
 ): string {
@@ -175,6 +198,21 @@ Planning multi-step tasks:
 - When the task is to collect structured information (one row per item, often across several pages), gather it as you go and call export_data with columns and rows — the user gets a downloadable CSV/JSON table.
 - When the user wants a Word document, report, or formatted write-up to keep, call create_word_document with a title and markdown body — they get a downloadable .docx.
 - When the user wants a slide deck or presentation, call create_powerpoint with a title and an ordered slides array (each slide: title, bullets, optional speaker notes) — they get a downloadable .pptx.
+- When the task involves analysing, filtering, sorting, aggregating, joining, or comparing structured data, use the data analysis tools: (1) import_data to load CSV/JSON into the DuckDB engine, (2) query_data to run SQL queries (SELECT, WHERE, GROUP BY, ORDER BY, LIMIT, JOIN, window functions) and get results as JSON, (3) list_datasets to see what tables are loaded, (4) describe_dataset to see the schema. Import data first, then run multiple queries to explore and answer the question. For natural-language questions, translate them into SQL queries against the loaded data.
+- **NL→SQL examples:**
+  - "What's the average salary by department?" → \`SELECT department, AVG(CAST(salary AS DOUBLE)) AS avg_salary FROM data GROUP BY department ORDER BY avg_salary DESC\`
+  - "Find the top 5 most expensive products" → \`SELECT product, price FROM data ORDER BY CAST(price AS DOUBLE) DESC LIMIT 5\`
+  - "How many orders per customer?" → \`SELECT customer, COUNT(*) AS order_count FROM data GROUP BY customer ORDER BY order_count DESC\`
+  - "Show me all items where stock is below 20" → \`SELECT * FROM data WHERE CAST(stock AS BIGINT) < 20 ORDER BY stock\`
+  - "Compare revenue by region and quarter" → \`SELECT region, quarter, SUM(CAST(revenue AS DOUBLE)) AS total FROM data GROUP BY region, quarter ORDER BY region, quarter\`
+  - "What's the month-over-month growth?" → \`SELECT month, SUM(CAST(revenue AS DOUBLE)) AS rev, LAG(SUM(CAST(revenue AS DOUBLE))) OVER (ORDER BY month) AS prev, (SUM(CAST(revenue AS DOUBLE)) - LAG(SUM(CAST(revenue AS DOUBLE))) OVER (ORDER BY month)) / LAG(SUM(CAST(revenue AS DOUBLE))) OVER (ORDER BY month) * 100 AS growth_pct FROM data GROUP BY month ORDER BY month\`
+  - "Find duplicate entries by email" → \`SELECT email, COUNT(*) AS cnt FROM data GROUP BY email HAVING COUNT(*) > 1\`
+  - "What are the most common values in the status column?" → \`SELECT status, COUNT(*) AS cnt FROM data GROUP BY status ORDER BY cnt DESC\`
+  Call describe_dataset first to see column names and types before writing queries. DuckDB columns are VARCHAR; use CAST(col AS DOUBLE) for numeric operations and CAST(col AS BIGINT) for integer operations.
+- Datasets are automatically persisted to on-device storage when imported and auto-restored on restart. Use persist_dataset to explicitly persist tables created or modified with SQL. Use load_dataset to reload a persisted dataset, and drop_dataset to permanently delete a dataset from both memory and storage.
+- To analyse a data file the user references by URL or that is open in the current tab (CSV, TSV, JSON, NDJSON, Parquet, or geospatial GeoJSON/KML/GPX/FGB — or a ZIP of those), call open_data_url with that URL — it loads the file into the engine as one table per file — then query it with query_data. Do not try to read large data files with get_tab_content or read_pdf. If the "Datasets loaded" list in the working state already names a table, just query it; never ask the user to paste data, and answer with query results, not whole-table dumps.
+- Reach for open_data_url on a ZIP archive whenever you suspect it holds structured data files (e.g. the user mentions data/records/a database/JSON/maps, or the archive's name or context suggests tabular or geospatial contents) OR the user explicitly asks to open/query the archive's data with DuckDB. open_data_url unzips it and loads every supported member as its own table; query them with query_data. Geospatial members load via the spatial extension with their geometry as a GeoJSON-text "geometry" column.
+- XML and SQLite/database (.xml/.db/.sqlite) files CANNOT be opened by the data engine — if an archive or URL contains only those, say so plainly rather than pretending it loaded; do not silently ignore the request.
 
 Working method:
 - Use search_web for open-web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
@@ -209,21 +247,21 @@ Source tabs:
 [2] [Example News Site - Article title](https://news.example.com/article)
 - For multi-tab summaries, distinguish findings common across tabs, findings unique to single tabs, and tabs that were inaccessible or blocked by authentication.`;
 
-function formatSite(s: SiteEntry): string {
+function formatCapability(c: CapabilityRegistryEntry): string {
   return (
-    `- ${s.name} — ${s.url}\n  ${s.description}` +
-    (s.searchUrlTemplate ? `\n  Search template: ${s.searchUrlTemplate}` : '')
+    `- ${c.name} — ${c.url ?? c.mcpUrl ?? ''}\n  ${c.description}` +
+    (c.searchUrlTemplate ? `\n  Search template: ${c.searchUrlTemplate}` : '')
   );
 }
 
-function sitesPromptBlock(sites: SiteEntry[]): string {
-  if (sites.length === 0) return '';
-  if (sites.length > SITES_PROMPT_LIMIT) {
-    return `\n\nKnown sites: the user maintains a directory of ${sites.length} known sites. When a task needs data, call search_known_sites first; prefer a matching known site over a generic web search.`;
+function capabilitiesPromptBlock(capabilities: CapabilityRegistryEntry[]): string {
+  if (capabilities.length === 0) return '';
+  if (capabilities.length > SITES_PROMPT_LIMIT) {
+    return `\n\nKnown sites: the user maintains a directory of ${capabilities.length} known sites. When a task needs data, call search_known_sites first; prefer a matching known site over a generic web search.`;
   }
   return (
     `\n\nKnown sites — a user-curated directory of WHERE THE USER'S DATA LIVES. This is high-priority: before you call search_web, you MUST scan this list, and if any entry's description matches the data the task needs, START THERE rather than web-searching. Go to the site by navigating to its URL, or — if it has a search template — substitute {query} (URL-encoded) into the template and navigate straight to the results. Only fall back to search_web when no entry plausibly fits:\n` +
-    sites.map(formatSite).join('\n')
+    capabilities.filter(c => c.kind === 'bookmark' || c.kind === 'mcp').map(formatCapability).join('\n')
   );
 }
 
@@ -282,8 +320,8 @@ function buildLearnTask(focus: string, existing?: Skill): string {
   );
 }
 
-function mcpPromptBlock(sites: SiteEntry[]): string {
-  const servers = sites.filter((s) => s.mcpUrl);
+function mcpPromptBlock(capabilities: CapabilityRegistryEntry[]): string {
+  const servers = capabilities.filter((c) => c.kind === 'mcp' && c.mcpUrl);
   if (servers.length === 0) return '';
   return (
     `\n\nMCP servers — tool providers the user has registered (hints with an MCP endpoint). When a task matches one, call list_mcp_tools with its name to discover its methods, then call_mcp_tool to invoke the right method (its arguments must match the method's inputSchema). Prefer these for the capabilities they describe:\n` +
@@ -292,42 +330,43 @@ function mcpPromptBlock(sites: SiteEntry[]): string {
 }
 
 /** Resolve an MCP server reference (hint name or raw URL) to its endpoint + token. */
-function resolveMcpServer(sites: SiteEntry[], server: string): { endpoint: string; token?: string } | null {
+function resolveMcpServer(capabilities: CapabilityRegistryEntry[], server: string): { endpoint: string; token?: string } | null {
   const ref = server.trim();
   if (!ref) return null;
-  const byName = sites.find((s) => s.mcpUrl && s.name.toLowerCase() === ref.toLowerCase());
+  const byName = capabilities.find((c) => c.kind === 'mcp' && c.mcpUrl && c.name.toLowerCase() === ref.toLowerCase());
   if (byName) return { endpoint: byName.mcpUrl!, token: byName.mcpToken };
   if (/^https?:\/\//i.test(ref)) {
-    const byUrl = sites.find((s) => s.mcpUrl === ref);
+    const byUrl = capabilities.find((c) => c.kind === 'mcp' && c.mcpUrl === ref);
     return { endpoint: ref, token: byUrl?.mcpToken };
   }
   return null;
 }
 
-function searchKnownSites(sites: SiteEntry[], query: string): string {
-  if (sites.length === 0) {
+function searchKnownSites(capabilities: CapabilityRegistryEntry[], query: string): string {
+  if (capabilities.length === 0) {
     return 'The known-sites directory is empty. Fall back to search_web or ask the user.';
   }
   const terms = query.toLowerCase().split(/\s+/).filter((t) => t.length > 1);
-  const scored = sites
-    .map((s) => {
-      const haystack = `${s.name} ${s.description} ${s.url}`.toLowerCase();
+  const scored = capabilities
+    .map((c) => {
+      const haystack = `${c.name} ${c.description} ${c.url ?? ''}`.toLowerCase();
       const score = terms.filter((t) => haystack.includes(t)).length;
-      return { s, score };
+      return { c, score };
     })
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
   if (scored.length === 0) {
-    return `No matches among ${sites.length} known sites. Fall back to search_web or ask the user.`;
+    return `No matches among ${capabilities.length} known sites. Fall back to search_web or ask the user.`;
   }
-  return JSON.stringify(scored.map(({ s }) => s));
+  return JSON.stringify(scored.map(({ c }) => c));
 }
 
 interface PendingApproval {
   requestId: string;
   description: string;
   detail: string;
+  approvalContext?: ApprovalContext;
   resolve: (approved: boolean) => void;
 }
 
@@ -350,6 +389,10 @@ export class AgentRuntime {
   private status: AgentStatus = 'idle';
   private running = false;
   private stopRequested = false;
+  // DuckDB tables the user/agent has opened this session — surfaced in the
+  // working-state block so the model knows it can answer via query_data without
+  // re-loading or dumping the file. Best-effort (engine state, not conversation).
+  private loadedDatasets: string[] = [];
   // Monotonic token identifying the active task. stop()/clearConversation bump
   // it to "orphan" a loop that's stuck in a non-cancellable tool call: when that
   // tool finally resolves, the loop sees a stale epoch and bails instead of
@@ -438,6 +481,7 @@ export class AgentRuntime {
             requestId: this.pendingApproval.requestId,
             description: this.pendingApproval.description,
             detail: this.pendingApproval.detail,
+            approvalContext: this.pendingApproval.approvalContext,
           }
         : null,
       authNotice: this.authWait ? { origin: this.authWait.origin, message: this.authWait.message } : null,
@@ -793,6 +837,10 @@ export class AgentRuntime {
     // Fresh tab group for the resumed thread; old tabs are left as-is.
     this.groupName = null;
     this.groupId = null;
+    // Datasets are conversation-scoped and not restored per-thread, so clear the
+    // engine when switching threads to avoid leaking a prior conversation's tables.
+    this.loadedDatasets = [];
+    void duckDbResetAll();
     this.activities = [];
     this.pendingSnapshots = [];
     this.pendingToolImages = [];
@@ -1045,6 +1093,10 @@ export class AgentRuntime {
     // New conversation ⇒ fresh tab group (old group/tabs are left open).
     this.groupName = null;
     this.groupId = null;
+    // New conversation ⇒ fresh DuckDB engine: datasets are scoped to a
+    // conversation, so drop every table and clear persisted datasets from OPFS.
+    this.loadedDatasets = [];
+    void duckDbResetAll();
     this.setStatus('idle');
     this.emit({ type: 'plan_update', plan: null });
     this.emit(this.fullState());
@@ -1135,10 +1187,13 @@ export class AgentRuntime {
     }
   }
 
-  approvalResponse(requestId: string, approved: boolean): void {
+  approvalResponse(requestId: string, approved: boolean, rememberForSession?: boolean): void {
     if (this.pendingApproval?.requestId === requestId) {
       const pending = this.pendingApproval;
       this.pendingApproval = null;
+      if (approved && rememberForSession && pending.approvalContext?.toolName) {
+        void addSessionApproval(pending.approvalContext.toolName);
+      }
       pending.resolve(approved);
     }
   }
@@ -1215,12 +1270,12 @@ export class AgentRuntime {
     }
     // The base system prompt is fixed for the task; the live state block is
     // appended as a trailing message each turn (see withWorkingState).
-    const sites = await getSites();
-    this.knownSiteNames = sites.map((s) => s.name);
+    const capabilities = await getCapabilities();
+    this.knownSiteNames = capabilities.map((c) => c.name);
     this.systemBase =
       SYSTEM_PROMPT +
-      sitesPromptBlock(sites) +
-      mcpPromptBlock(sites) +
+      capabilitiesPromptBlock(capabilities) +
+      mcpPromptBlock(capabilities) +
       skillsPromptBlock(await getSkills(), this.activeHost) +
       (memoryEnabled ? memoryPromptBlock(await getMemories()) : '') +
       customInstructions;
@@ -1752,12 +1807,54 @@ export class AgentRuntime {
 
     const activity = this.startActivity(name, args);
 
-    if (APPROVAL_REQUIRED.has(name)) {
+    // Resolve capability context for tools sourced from registered capabilities.
+    let approvalContext: ApprovalContext | undefined;
+    const capabilities = await getCapabilities();
+    if (name === 'call_mcp_tool' || name === 'list_mcp_tools') {
+      const serverName = String(args.server ?? '');
+      const capability = capabilities.find((c) =>
+        c.name.toLowerCase() === serverName.toLowerCase() || c.mcpUrl === serverName,
+      );
+      if (capability) {
+        approvalContext = {
+          toolName: name,
+          capabilityKind: capability.kind,
+          capabilityName: capability.name,
+          trustLevel: capability.trustLevel,
+          authMethod: capability.authMethod,
+          authConfigured: !!resolveAuth(capability),
+        };
+      }
+    } else if (name === 'call_webmcp_tool' || name === 'list_webmcp_tools') {
+      approvalContext = {
+        toolName: name,
+        capabilityKind: 'webmcp',
+        capabilityName: undefined,
+        trustLevel: 'public',
+        authMethod: 'browser-session',
+        authConfigured: true,
+      };
+    }
+
+    // Trust gating: low-trust capabilities' tools always require approval,
+    // even if the tool is normally read-only.
+    const needsApproval = APPROVAL_REQUIRED.has(name) ||
+      (approvalContext && !isTrustedForAutoApproval(approvalContext.capabilityKind as any, approvalContext.trustLevel as any));
+
+    // Session-level approval persistence: skip approval for tools the user
+    // already approved for this session.
+    let skipApproval = false;
+    if (needsApproval) {
+      const sessionApproved = await getSessionApprovals();
+      if (sessionApproved.has(name)) skipApproval = true;
+    }
+
+    if (needsApproval && !skipApproval) {
       const reason =
         typeof args.reason === 'string' && args.reason.trim()
           ? args.reason.trim()
           : 'The agent wants to perform this action.';
-      const approved = await this.requestApproval(reason, this.describeAction(name, args));
+      const approved = await this.requestApproval(reason, this.describeAction(name, args), approvalContext);
       if (!approved) {
         this.finishActivity(activity, 'denied', 'User denied this action');
         return 'The user denied this action. Do not retry it; ask the user how to proceed or finish with what you have.';
@@ -1860,14 +1957,19 @@ export class AgentRuntime {
         return res.ok ? JSON.stringify(res.result) : `Error: ${res.error}`;
       }
       case 'search_known_sites':
-        return searchKnownSites(await getSites(), String(args.query));
+        return searchKnownSites(await getCapabilities(), String(args.query));
       case 'list_mcp_tools': {
-        const resolved = resolveMcpServer(await getSites(), String(args.server));
+        const caps = await getCapabilities();
+        const resolved = resolveMcpServer(caps, String(args.server));
         if (!resolved) {
           return `Error: no MCP server hint named "${String(args.server)}". Add one in Settings → Hints (set an MCP endpoint URL), or pass the full MCP URL.`;
         }
+        // Use auth config from capability when available.
+        const mcpCap = caps.find((c) => c.mcpUrl === resolved.endpoint || c.name.toLowerCase() === String(args.server).toLowerCase());
+        const mcpAuth = mcpCap ? resolveAuth(mcpCap) : null;
+        const token = mcpAuth?.method === 'token' ? mcpAuth.token : resolved.token;
         try {
-          let tools = await mcpListTools(resolved.endpoint, resolved.token);
+          let tools = await mcpListTools(resolved.endpoint, token);
           const q = String(args.query ?? '').trim().toLowerCase();
           if (q) {
             const terms = q.split(/\s+/).filter((t) => t.length > 1);
@@ -1887,11 +1989,15 @@ export class AgentRuntime {
         }
       }
       case 'call_mcp_tool': {
-        const resolved = resolveMcpServer(await getSites(), String(args.server));
+        const caps = await getCapabilities();
+        const resolved = resolveMcpServer(caps, String(args.server));
         if (!resolved) return `Error: no MCP server "${String(args.server)}".`;
+        const mcpCap = caps.find((c) => c.mcpUrl === resolved.endpoint || c.name.toLowerCase() === String(args.server).toLowerCase());
+        const mcpAuth = mcpCap ? resolveAuth(mcpCap) : null;
+        const token = mcpAuth?.method === 'token' ? mcpAuth.token : resolved.token;
         const toolArgs = (args.arguments ?? {}) as Record<string, unknown>;
         try {
-          return await mcpCallTool(resolved.endpoint, resolved.token, String(args.name), toolArgs);
+          return await mcpCallTool(resolved.endpoint, token, String(args.name), toolArgs);
         } catch (err) {
           return `Error calling MCP method "${String(args.name)}": ${err instanceof Error ? err.message : String(err)}`;
         }
@@ -1949,6 +2055,93 @@ export class AgentRuntime {
       case 'map_clear':
       case 'map_get_state':
         return JSON.stringify(await mapCommand(name.slice(4), args));
+      case 'query_data': {
+        const sql = String(args.sql ?? '');
+        if (!sql.trim()) return 'Error: query_data needs an sql argument.';
+        const qres = await duckDbQuery(sql);
+        if (!qres.ok) return `Error: ${qres.error}`;
+        const qColumns = qres.columns ?? [];
+        const qRows = qres.rows ?? [];
+        if (qColumns.length > 0 && qRows.length > 0) {
+          const qTitle = `Query: ${sql.slice(0, 80).replace(/\s+/g, ' ')}${sql.length > 80 ? '…' : ''}`;
+          const qFilename = `query-${Date.now()}.csv`;
+          this.pushChat({
+            role: 'notice',
+            text: `Query returned ${qRows.length} rows × ${qColumns.length} columns.`,
+            timestamp: new Date().toISOString(),
+            dataExport: { title: qTitle, filename: qFilename, columns: qColumns, rows: qRows },
+          });
+        }
+        return JSON.stringify({ columns: qColumns, rows: qRows, rowCount: qres.rowCount ?? qRows.length });
+      }
+      case 'import_data': {
+        const tableName = String(args.tableName ?? '').trim();
+        const format = String(args.format ?? 'csv');
+        const data = String(args.data ?? '');
+        if (!tableName || !data) return 'Error: import_data needs tableName and data.';
+        const ires = format === 'json' ? await duckDbImportJson(tableName, data) : await duckDbImportCsv(tableName, data);
+        if (!ires.ok) return `Error: ${ires.error}`;
+        this.trackDatasets([tableName]);
+        return `Imported data into table "${tableName}". You can now query it with query_data.`;
+      }
+      case 'open_data_url': {
+        const url = String(args.url ?? '').trim();
+        if (!url) return 'Error: open_data_url needs a url.';
+        let bytesB64: string;
+        let fileName: string;
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) return `Error: fetching ${url} returned HTTP ${resp.status}.`;
+          const buf = new Uint8Array(await resp.arrayBuffer());
+          if (buf.byteLength > MAX_DATA_BYTES) return `Error: file is too large (> ${Math.round(MAX_DATA_BYTES / 1024 / 1024)} MB).`;
+          bytesB64 = bytesToBase64(buf);
+          const override = String(args.tableName ?? '').trim();
+          fileName = override ? `${override}.${(url.split('?')[0].split('.').pop() ?? 'csv')}` : (url.split('?')[0].split('/').pop() || 'data.csv');
+        } catch (e) {
+          return `Error: could not fetch ${url}: ${String(e)}`;
+        }
+        const ores = await duckDbOpenFile(fileName, bytesB64);
+        if (!ores.ok) return `Error: ${ores.error}`;
+        const opened = ores.tables ?? [];
+        this.trackDatasets(opened.map((t) => t.name));
+        const summary = opened.map((t) => `${t.name} (${t.rowCount} rows, ${t.columns.length} cols)`).join('; ');
+        return `Opened ${opened.length} table(s) from ${url}: ${summary}. Query them with query_data.`;
+      }
+      case 'list_datasets': {
+        const lres = await duckDbListTables();
+        if (!lres.ok) return `Error: ${lres.error}`;
+        const names = (lres.tables ?? []).map((t) => t.name);
+        return names.length === 0 ? 'No tables loaded. Use import_data to load data first.' : JSON.stringify(names);
+      }
+      case 'describe_dataset': {
+        const tableName = String(args.tableName ?? '').trim();
+        if (!tableName) return 'Error: describe_dataset needs a tableName.';
+        const dres = await duckDbDescribeTable(tableName);
+        if (!dres.ok) return `Error: ${dres.error}`;
+        return JSON.stringify({ name: tableName, columns: dres.columns, columnTypes: dres.columnTypes, rowCount: dres.rowCount });
+      }
+      case 'persist_dataset': {
+        const tableName = String(args.tableName ?? '').trim();
+        if (!tableName) return 'Error: persist_dataset needs a tableName.';
+        const pres = await duckDbPersistTable(tableName);
+        if (!pres.ok) return `Error: ${pres.error}`;
+        return `Persisted dataset "${tableName}" (${pres.rowCount ?? 0} rows) to on-device storage. It will auto-restart on next load.`;
+      }
+      case 'load_dataset': {
+        const tableName = String(args.tableName ?? '').trim();
+        if (!tableName) return 'Error: load_dataset needs a tableName.';
+        const lres = await duckDbLoadTable(tableName);
+        if (!lres.ok) return `Error: ${lres.error}`;
+        return `Loaded dataset "${tableName}" (${lres.rowCount ?? 0} rows) from on-device storage. You can now query it with query_data.`;
+      }
+      case 'drop_dataset': {
+        const tableName = String(args.tableName ?? '').trim();
+        if (!tableName) return 'Error: drop_dataset needs a tableName.';
+        const drres = await duckDbDropTable(tableName);
+        if (!drres.ok) return `Error: ${drres.error}`;
+        this.loadedDatasets = this.loadedDatasets.filter((n) => n !== tableName);
+        return `Dropped dataset "${tableName}" from memory and on-device storage.`;
+      }
       case 'save_memory': {
         const entries = await getMemories();
         if (entries.length >= MEMORY_MAX_ENTRIES) {
@@ -2138,12 +2331,12 @@ export class AgentRuntime {
    * (routed to `approvalResponse`, which resolves it). The `description` is the
    * model's plain-language `reason`; `detail` is the concrete action summary.
    */
-  private requestApproval(description: string, detail: string): Promise<boolean> {
+  private requestApproval(description: string, detail: string, approvalContext?: ApprovalContext): Promise<boolean> {
     this.setStatus('awaiting_approval', description);
     const requestId = `appr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    this.emit({ type: 'approval_request', requestId, description, detail });
+    this.emit({ type: 'approval_request', requestId, description, detail, approvalContext });
     return new Promise<boolean>((resolve) => {
-      this.pendingApproval = { requestId, description, detail, resolve };
+      this.pendingApproval = { requestId, description, detail, approvalContext, resolve };
     });
   }
 
@@ -2163,7 +2356,7 @@ export class AgentRuntime {
   // state never lands in history/compaction/persistence and never invalidates the
   // cacheable system+tools prefix.
   private withWorkingState(): LlmMessage[] {
-    return [...this.conversation, { role: 'system', content: this.buildStateBlock() }];
+    return [...repairToolPairing(this.conversation), { role: 'system', content: this.buildStateBlock() }];
   }
 
   private buildStateBlock(): string {
@@ -2182,6 +2375,11 @@ export class AgentRuntime {
     if (this.groupName) {
       lines.push(
         `Tab group for this conversation: "${this.groupName}" — tabs you open are collected here; the user may refer to it by name (e.g. "the ${this.groupName} group").`,
+      );
+    }
+    if (this.loadedDatasets.length > 0) {
+      lines.push(
+        `Datasets loaded in the DuckDB engine: ${this.loadedDatasets.join(', ')}. Answer questions about them with query_data (SQL) / describe_dataset — do not ask the user to paste the data, and return query results rather than dumping whole tables.`,
       );
     }
     if (this.plan) {
@@ -2435,6 +2633,24 @@ export class AgentRuntime {
 
   private notice(text: string): void {
     this.pushChat({ role: 'notice', text, timestamp: new Date().toISOString() });
+  }
+
+  /** Remember table names so the working-state block can advertise them (deduped). */
+  private trackDatasets(names: string[]): void {
+    for (const n of names) {
+      if (n && !this.loadedDatasets.includes(n)) this.loadedDatasets.push(n);
+    }
+  }
+
+  /**
+   * Called after a user opens data files in the UI: tracks the new tables and
+   * posts a user-facing notice (names + row counts), without dumping contents.
+   */
+  notifyDatasetsLoaded(tables: DuckDbTableInfo[], source: string): void {
+    if (tables.length === 0) return;
+    this.trackDatasets(tables.map((t) => t.name));
+    const summary = tables.map((t) => `${t.name} (${t.rowCount.toLocaleString()} rows)`).join(', ');
+    this.notice(`Loaded ${tables.length} table${tables.length === 1 ? '' : 's'} from ${source}: ${summary}. Ask a question to query them.`);
   }
 
   private setStatus(status: AgentStatus, detail?: string): void {

@@ -4,6 +4,7 @@
 // memory, and repositories — including each repo's int8 vectors — without any
 // chrome.* dependency. No DOM either, so it's unit-testable in Node.
 
+import type { CapabilityRegistryEntry } from './capabilities';
 import type { ExportedRepo } from './messages';
 import type { MemoryEntry, Settings, SiteEntry, Skill } from './types';
 
@@ -26,6 +27,7 @@ export interface ParsedBackup {
   settings: Settings | null;
   skills: Skill[];
   sites: SiteEntry[];
+  capabilities: CapabilityRegistryEntry[];
   memory: MemoryEntry[];
   repos: ParsedRepo[];
 }
@@ -65,6 +67,7 @@ export function parseBackup(input: unknown): ParsedBackup {
     settings: (storage.ba_settings as Settings | undefined) ?? null,
     skills: Array.isArray(storage.ba_skills) ? (storage.ba_skills as Skill[]) : [],
     sites: Array.isArray(storage.ba_sites) ? (storage.ba_sites as SiteEntry[]) : [],
+    capabilities: Array.isArray(storage.ba_capabilities) ? (storage.ba_capabilities as CapabilityRegistryEntry[]) : [],
     memory: Array.isArray(storage.ba_memory) ? (storage.ba_memory as MemoryEntry[]) : [],
     repos: Array.isArray(b.repos) ? b.repos.map(parseRepo) : [],
   };

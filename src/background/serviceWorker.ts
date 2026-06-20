@@ -21,15 +21,32 @@
 import type { BackgroundEvent, RuntimeRequest, SidebarCommand, TestConnectionResponse } from '../shared/messages';
 import { AgentRuntime } from './agentRuntime';
 import { LlmError, testConnection, transcribe } from './llmProvider';
-import { repoDelete, repoDeleteDoc, repoDocs, repoExport, repoImport, repoList } from './offscreenClient';
+import {
+  duckDbDescribeTable,
+  duckDbDropTable,
+  duckDbImportCsv,
+  duckDbImportJson,
+  duckDbListTables,
+  duckDbLoadTable,
+  duckDbOpenFile,
+  duckDbPersistTable,
+  duckDbQuery,
+  repoDelete,
+  repoDeleteDoc,
+  repoDocs,
+  repoExport,
+  repoImport,
+  repoList,
+} from './offscreenClient';
 import { ingestFile } from './repoIngest';
-import { getSettings, seedSkillsIfEmpty } from './storage';
+import { getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
 
 // Clicking the toolbar icon opens the side panel.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
 chrome.runtime.onInstalled.addListener(() => {
   void seedSkillsIfEmpty();
+  void migrateLegacySites();
 });
 
 // Every connected side panel holds a Port here. There is usually one, but the
@@ -185,6 +202,43 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
       }
       return { ok: results.some((r) => r.ok), results };
     })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'duckdb') {
+    const { op, sql, tableName, data } = request;
+    const run = (): Promise<unknown> => {
+      switch (op) {
+        case 'query': return duckDbQuery(sql ?? '');
+        case 'import_csv': return duckDbImportCsv(tableName ?? 'table', data ?? '');
+        case 'import_json': return duckDbImportJson(tableName ?? 'table', data ?? '');
+        case 'list_tables': return duckDbListTables();
+        case 'describe_table': return duckDbDescribeTable(tableName ?? '');
+        case 'persist_table': return duckDbPersistTable(tableName ?? '');
+        case 'load_table': return duckDbLoadTable(tableName ?? '');
+        case 'drop_table': return duckDbDropTable(tableName ?? '');
+        default: return Promise.resolve({ ok: false, error: `Unknown DuckDB op: ${String(op)}` });
+      }
+    };
+    run().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'open_data_files') {
+    (async () => {
+      const results = [];
+      const allTables = [];
+      for (const file of request.files) {
+        const r = await duckDbOpenFile(file.name, file.bytesB64);
+        results.push({ name: file.name, ok: r.ok, error: r.error });
+        if (r.ok && r.tables) allTables.push(...r.tables);
+      }
+      if (allTables.length > 0) {
+        const source = request.files.length === 1 ? request.files[0].name : `${request.files.length} files`;
+        runtime.notifyDatasetsLoaded(allTables, source);
+      }
+      return { ok: results.some((r) => r.ok), results, tables: allTables };
+    })()
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, results: [], tables: [], error: String(err) }));
     return true;
   }
   if (request.type === 'transcribe_audio') {

@@ -6,6 +6,8 @@
 // =============================================================================
 
 import { pruneIndex } from '../shared/conversationMeta';
+import type { CapabilityRegistryEntry } from '../shared/capabilities';
+import { migrateSitesToCapabilities } from '../shared/capabilities';
 import type {
   ChatMessageView,
   ConversationLabel,
@@ -20,6 +22,7 @@ import type { LlmMessage } from './llmProvider';
 
 const SETTINGS_KEY = 'ba_settings';
 const SITES_KEY = 'ba_sites';
+const CAPABILITIES_KEY = 'ba_capabilities';
 const SKILLS_KEY = 'ba_skills';
 const MEMORY_KEY = 'ba_memory';
 const MEMORY_ENABLED_KEY = 'ba_memory_enabled';
@@ -88,6 +91,82 @@ export async function getSites(): Promise<SiteEntry[]> {
 
 export async function saveSites(sites: SiteEntry[]): Promise<void> {
   await chrome.storage.local.set({ [SITES_KEY]: sites });
+}
+
+export async function getCapabilities(): Promise<CapabilityRegistryEntry[]> {
+  const result = await chrome.storage.local.get([CAPABILITIES_KEY, SITES_KEY]);
+  const caps = result[CAPABILITIES_KEY];
+  if (Array.isArray(caps) && caps.length > 0) return caps as CapabilityRegistryEntry[];
+  const sites = result[SITES_KEY];
+  if (Array.isArray(sites) && sites.length > 0) {
+    const migrated = migrateSitesToCapabilities(sites as SiteEntry[]);
+    await chrome.storage.local.set({ [CAPABILITIES_KEY]: migrated });
+    return migrated;
+  }
+  return [];
+}
+
+export async function saveCapabilities(entries: CapabilityRegistryEntry[]): Promise<void> {
+  await chrome.storage.local.set({ [CAPABILITIES_KEY]: entries });
+}
+
+export async function migrateLegacySites(): Promise<void> {
+  const result = await chrome.storage.local.get([CAPABILITIES_KEY, SITES_KEY]);
+  if (result[CAPABILITIES_KEY] !== undefined) return;
+  const sites = result[SITES_KEY];
+  if (!Array.isArray(sites) || sites.length === 0) return;
+  const migrated = migrateSitesToCapabilities(sites as SiteEntry[]);
+  await chrome.storage.local.set({ [CAPABILITIES_KEY]: migrated });
+}
+
+// --- Auth token storage (session-scoped, cleared on SW restart) ---------------
+
+const AUTH_TOKENS_KEY = 'ba_auth_tokens';
+const SESSION_APPROVALS_KEY = 'ba_session_approvals';
+
+export async function getAuthTokens(): Promise<Record<string, string>> {
+  try {
+    const result = await chrome.storage.session.get(AUTH_TOKENS_KEY);
+    return (result[AUTH_TOKENS_KEY] as Record<string, string>) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export async function setAuthToken(capabilityId: string, token: string): Promise<void> {
+  const tokens = await getAuthTokens();
+  tokens[capabilityId] = token;
+  await chrome.storage.session.set({ [AUTH_TOKENS_KEY]: tokens });
+}
+
+export async function clearAuthToken(capabilityId: string): Promise<void> {
+  const tokens = await getAuthTokens();
+  delete tokens[capabilityId];
+  await chrome.storage.session.set({ [AUTH_TOKENS_KEY]: tokens });
+}
+
+// --- Session-level approval tracking (allow for session) ----------------------
+// Stores tool names that the user has approved for the current session.
+// Cleared on service worker restart.
+
+export async function getSessionApprovals(): Promise<Set<string>> {
+  try {
+    const result = await chrome.storage.session.get(SESSION_APPROVALS_KEY);
+    const arr = result[SESSION_APPROVALS_KEY] as string[] | undefined;
+    return new Set(arr ?? []);
+  } catch {
+    return new Set();
+  }
+}
+
+export async function addSessionApproval(toolName: string): Promise<void> {
+  const approvals = await getSessionApprovals();
+  approvals.add(toolName);
+  await chrome.storage.session.set({ [SESSION_APPROVALS_KEY]: [...approvals] });
+}
+
+export async function clearSessionApprovals(): Promise<void> {
+  await chrome.storage.session.set({ [SESSION_APPROVALS_KEY]: [] });
 }
 
 export async function getSkills(): Promise<Skill[]> {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseReflectionVerdict, parseSummaryArray } from './loopHelpers';
+import { parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
+import type { LlmMessage } from './llmProvider';
 
 describe('parseSummaryArray', () => {
   it('parses a plain JSON array of the expected length', () => {
@@ -54,5 +55,52 @@ describe('parseReflectionVerdict', () => {
     expect(parseReflectionVerdict('{"issues":"x"}')).toEqual({ revise: false, issues: 'x' });
     expect(parseReflectionVerdict('')).toEqual({ revise: false, issues: '' });
     expect(parseReflectionVerdict('{"verdict":"maybe"}').revise).toBe(false);
+  });
+});
+
+describe('repairToolPairing', () => {
+  const asst = (id: string): LlmMessage => ({
+    role: 'assistant',
+    content: null,
+    tool_calls: [{ id, type: 'function', function: { name: 'f', arguments: '{}' } }],
+  });
+  const toolMsg = (id: string): LlmMessage => ({ role: 'tool', tool_call_id: id, content: 'ok' });
+
+  it('leaves a well-formed conversation untouched', () => {
+    const msgs: LlmMessage[] = [{ role: 'user', content: 'hi' }, asst('a'), toolMsg('a')];
+    expect(repairToolPairing(msgs)).toEqual(msgs);
+  });
+
+  it('inserts a synthetic result for an orphaned assistant tool call', () => {
+    const msgs: LlmMessage[] = [asst('a'), { role: 'user', content: 'next' }];
+    const out = repairToolPairing(msgs);
+    expect(out).toHaveLength(3);
+    expect(out[1]).toMatchObject({ role: 'tool', tool_call_id: 'a' });
+    expect(out[2]).toMatchObject({ role: 'user' });
+  });
+
+  it('repairs an orphan at the end of the conversation', () => {
+    const out = repairToolPairing([asst('z')]);
+    expect(out).toHaveLength(2);
+    expect(out[1]).toMatchObject({ role: 'tool', tool_call_id: 'z' });
+  });
+
+  it('fills only the missing id when a call is partially answered', () => {
+    const msgs: LlmMessage[] = [
+      { role: 'assistant', content: null, tool_calls: [
+        { id: 'a', type: 'function', function: { name: 'f', arguments: '{}' } },
+        { id: 'b', type: 'function', function: { name: 'g', arguments: '{}' } },
+      ] },
+      toolMsg('a'),
+    ];
+    const out = repairToolPairing(msgs);
+    const toolIds = out.filter((m) => m.role === 'tool').map((m) => m.tool_call_id).sort();
+    expect(toolIds).toEqual(['a', 'b']);
+  });
+
+  it('does not mutate the input array', () => {
+    const msgs: LlmMessage[] = [asst('a')];
+    repairToolPairing(msgs);
+    expect(msgs).toHaveLength(1);
   });
 });

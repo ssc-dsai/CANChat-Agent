@@ -802,6 +802,68 @@ body {
   display: flex;
   gap: 8px;
 }
+.prompt-actions-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.prompt-btn-row {
+  display: flex;
+  gap: 8px;
+}
+.approval-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.approval-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.approval-cap {
+  background: #e0d8e8;
+  color: #56206e;
+}
+.approval-trust {
+  font-weight: 600;
+}
+.approval-trust-local { background: #d8f0df; color: #1f7a3d; }
+.approval-trust-enterprise { background: #d9e6fb; color: #1a5bb5; }
+.approval-trust-verified { background: #e8f5e9; color: #2e7d32; }
+.approval-trust-public { background: #fbe0e0; color: #a32626; }
+.approval-auth-ok { background: #e0f2f1; color: #00695c; }
+.approval-auth-missing { background: #fff3e0; color: #bf6a00; }
+.approval-cap-name {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+.approval-remember {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Trust badge in capability list */
+.trust-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: 600;
+}
+.trust-local { background: #d8f0df; color: #1f7a3d; }
+.trust-enterprise { background: #d9e6fb; color: #1a5bb5; }
+.trust-verified { background: #e8f5e9; color: #2e7d32; }
+.trust-public { background: #fbe0e0; color: #a32626; }
 
 /* Input row */
 .chat-input-row {
@@ -1375,6 +1437,27 @@ body {
 }
 .repo-upload-card {
   margin-bottom: 8px;
+}
+.dest-chooser {
+  margin-bottom: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dest-chooser-files {
+  font-size: 12px;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+.dest-chooser-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 .upload-banner {
   border-radius: 8px;

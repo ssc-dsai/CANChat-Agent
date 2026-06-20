@@ -164,6 +164,18 @@ function decide(req: ChatRequest): ChatMessage {
     return { role: 'assistant', content: FINAL_TEXT };
   }
 
+  // Opens a data file from a URL into DuckDB, runs a SQL query, then answers.
+  if (userMentions('DATA_URL')) {
+    if (!hasToolCall(req.messages, 'open_data_url')) {
+      const url = (latestUserText(req.messages).match(/https?:\/\/\S+/) ?? [''])[0];
+      return { role: 'assistant', content: null, tool_calls: [toolCall('open_data_url', { url })] };
+    }
+    if (!hasToolCall(req.messages, 'query_data')) {
+      return { role: 'assistant', content: null, tool_calls: [toolCall('query_data', { sql: 'SELECT COUNT(*) AS n FROM ships' })] };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
   // Builds a downloadable .pptx via the create_powerpoint tool, then answers.
   if (userMentions('CREATE_PPTX')) {
     if (!hasToolResult) {

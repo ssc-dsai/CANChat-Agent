@@ -63,6 +63,15 @@ const IconSave = () => (
     <path d="M5 21h14" />
   </svg>
 );
+// "Open workspace" — an external-monitor icon for opening the workspace tab.
+const IconWorkspace = () => (
+  <svg {...svgProps}>
+    <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+    <path d="M8 21h8" />
+    <path d="M12 17v4" />
+  </svg>
+);
+
 // "New chat" (compose). Clearing keeps the previous conversation in History
 // (agentRuntime.clearConversation = "new chat", not delete), so a compose icon
 // frames it honestly — far less alarming than the old trash can.
@@ -112,7 +121,7 @@ export function Sidebar() {
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
   const [activities, setActivities] = useState<ToolActivity[]>([]);
   const [context, setContext] = useState<TabContextSummary | null>(null);
-  const [approval, setApproval] = useState<{ requestId: string; description: string; detail: string } | null>(null);
+  const [approval, setApproval] = useState<{ requestId: string; description: string; detail: string; approvalContext?: { toolName: string; capabilityKind?: string; capabilityName?: string; trustLevel?: string; authMethod?: string; authConfigured: boolean } } | null>(null);
   const [authNotice, setAuthNotice] = useState<{ origin: string; message: string } | null>(null);
   const [permissionNotice, setPermissionNotice] = useState<{ origin: string; message: string } | null>(null);
   const [pendingSnapshots, setPendingSnapshots] = useState<string[]>([]);
@@ -164,7 +173,7 @@ export function Sidebar() {
             setMessages(event.messages);
             setActivities(event.activities);
             setContext(event.context);
-            setApproval(event.pendingApproval);
+            setApproval(event.pendingApproval as typeof approval);
             setAuthNotice(event.authNotice);
             setPermissionNotice(event.permissionNotice);
             setPendingSnapshots(event.pendingSnapshots);
@@ -195,7 +204,7 @@ export function Sidebar() {
             });
             break;
           case 'approval_request':
-            setApproval({ requestId: event.requestId, description: event.description, detail: event.detail });
+            setApproval({ requestId: event.requestId, description: event.description, detail: event.detail, approvalContext: event.approvalContext });
             break;
           case 'auth_required':
             setAuthNotice(event.origin ? { origin: event.origin, message: event.message } : null);
@@ -304,6 +313,9 @@ export function Sidebar() {
             disabled={messages.length === 0}
           >
             <IconNew />
+          </button>
+          <button class="icon-btn" aria-label="Open workspace" title="Open workspace" onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html') })}>
+            <IconWorkspace />
           </button>
           <button class="icon-btn" aria-label={t('header.settings')} title={t('header.settings')} onClick={() => setShowSettings(true)}>
             <IconSettings />
