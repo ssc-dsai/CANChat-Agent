@@ -44,8 +44,7 @@ test.describe('user-manual screenshots', () => {
   test('upload a file into a knowledge base from settings', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
     await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear
-    await sidebar.getByRole('tab', { name: 'Data' }).click();
-    await sidebar.getByText('Knowledge bases', { exact: true }).click(); // expand the accordion
+    await sidebar.getByRole('tab', { name: 'Knowledge bases' }).click();
 
     // Reveal the uploader, name a new repo, and choose a small text file.
     await sidebar.locator('.repo-upload-toggle').click();

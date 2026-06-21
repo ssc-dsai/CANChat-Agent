@@ -1,8 +1,28 @@
 import { useEffect, useState } from 'preact/hooks';
 import { CURATED_PLAYBOOKS, type CuratedPlaybook } from '../shared/curatedPlaybooks';
-import { detectIncompatibility, parseSkillFrontmatter, rawGithubUrl } from '../shared/skillImport';
+import {
+  DEFAULT_PLAYBOOK_INDEX_URL,
+  parsePlaybookIndex,
+  type RemotePlaybook,
+} from '../shared/playbookIndex';
+import { detectIncompatibility, parseSkillFrontmatter, rawGithubUrl, slugifySkillName } from '../shared/skillImport';
 import type { Skill } from '../shared/types';
 import { normalizeHost } from '../shared/url';
+
+async function loadIndexUrl(): Promise<string> {
+  const r = await chrome.storage.local.get('ba_settings');
+  const s = r.ba_settings as { playbookIndexUrl?: string } | undefined;
+  return s?.playbookIndexUrl?.trim() || DEFAULT_PLAYBOOK_INDEX_URL;
+}
+
+async function saveIndexUrl(url: string): Promise<void> {
+  const r = await chrome.storage.local.get('ba_settings');
+  const s = (r.ba_settings as Record<string, unknown>) ?? {};
+  const trimmed = url.trim();
+  if (trimmed && trimmed !== DEFAULT_PLAYBOOK_INDEX_URL) s.playbookIndexUrl = trimmed;
+  else delete s.playbookIndexUrl;
+  await chrome.storage.local.set({ ba_settings: s });
+}
 
 const EMPTY_FORM: Omit<Skill, 'id'> = {
   name: '',
@@ -40,10 +60,89 @@ export function SkillsSection() {
   const [importing, setImporting] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [indexUrl, setIndexUrl] = useState(DEFAULT_PLAYBOOK_INDEX_URL);
+  const [remote, setRemote] = useState<RemotePlaybook[]>([]);
+  const [remoteErr, setRemoteErr] = useState<string | null>(null);
+  const [remoteLoading, setRemoteLoading] = useState(false);
 
   useEffect(() => {
     loadSkills().then(setSkills);
+    loadIndexUrl().then(setIndexUrl);
   }, []);
+
+  // Poll the hosted playbook index for installable skills.
+  const fetchIndex = async (url: string) => {
+    const target = rawGithubUrl(url.trim());
+    if (!/^https?:\/\//.test(target)) {
+      setRemoteErr('Enter an http(s) URL to a playbook index (JSON).');
+      setRemote([]);
+      return;
+    }
+    setRemoteErr(null);
+    setRemoteLoading(true);
+    try {
+      const res = await fetch(target);
+      if (!res.ok) {
+        setRemoteErr(`Could not load the index (HTTP ${res.status}).`);
+        setRemote([]);
+        return;
+      }
+      const list = parsePlaybookIndex(await res.text(), target);
+      setRemote(list);
+      if (list.length === 0) setRemoteErr('No playbooks listed at that index URL.');
+    } catch (e) {
+      setRemoteErr(`Index fetch failed: ${String(e)}`);
+      setRemote([]);
+    } finally {
+      setRemoteLoading(false);
+    }
+  };
+
+  // Fetch a listed playbook's SKILL.md and install it (replace by origin for an
+  // app playbook, else by name). Only instructions transfer; script-based skills
+  // are flagged via detectIncompatibility.
+  const installRemote = async (p: RemotePlaybook) => {
+    setFeedback(null);
+    try {
+      const res = await fetch(p.url);
+      if (!res.ok) {
+        setFeedback({ ok: false, text: `Could not fetch ${p.name} (HTTP ${res.status}).` });
+        return;
+      }
+      const text = await res.text();
+      const parsed = parseSkillFrontmatter(text);
+      if (!parsed.body.trim()) {
+        setFeedback({ ok: false, text: `${p.name} has no skill instructions.` });
+        return;
+      }
+      const name = parsed.name || slugifySkillName(p.name);
+      const origin = p.origin ? normalizeHost(p.origin) : undefined;
+      const entry: Skill = {
+        id: newId(),
+        name,
+        description: (parsed.description || p.description || `Imported skill: ${name}`).trim(),
+        body: parsed.body.trim(),
+        origin,
+      };
+      let next: Skill[];
+      const byOrigin = origin ? skills.find((s) => s.origin === origin) : undefined;
+      const byName = skills.find((s) => s.name === name);
+      if (byOrigin) {
+        entry.id = byOrigin.id;
+        next = skills.map((s) => (s.id === byOrigin.id ? entry : s));
+      } else if (byName) {
+        entry.id = byName.id;
+        next = skills.map((s) => (s.id === byName.id ? entry : s));
+      } else {
+        next = [...skills, entry];
+      }
+      await save(next);
+      const warn = detectIncompatibility(text);
+      setFeedback({ ok: true, text: warn ? `Installed /${name}. Note: ${warn}` : `Installed /${name}.` });
+    } catch (e) {
+      setFeedback({ ok: false, text: `Install failed: ${String(e)}` });
+    }
+  };
 
   const save = async (next: Skill[]) => {
     setSkills(next);
@@ -221,6 +320,7 @@ export function SkillsSection() {
         Reusable procedures for the agent. It applies a skill automatically when a task matches
         its description, or you can force one by typing /name in the chat. Skills bound to a site
         (app playbooks) load automatically when you're on that site — teach one by typing /learn.
+        Open the <strong>App playbook library</strong> to install skills from a hosted index.
       </p>
 
       {skills.length > 0 && (
@@ -348,31 +448,99 @@ export function SkillsSection() {
           <button class="btn btn-small" onClick={exportJson} disabled={skills.length === 0}>
             Export JSON
           </button>
-          <button class="btn btn-small" onClick={() => setShowLibrary(!showLibrary)}>
+          <button
+            class="btn btn-small"
+            onClick={() => {
+              const next = !showLibrary;
+              setShowLibrary(next);
+              if (next && remote.length === 0 && !remoteLoading) void fetchIndex(indexUrl);
+            }}
+          >
             App playbook library
           </button>
         </div>
       )}
 
       {showLibrary && (
-        <ul class="sites-list">
-          {CURATED_PLAYBOOKS.map((p) => {
-            const installed = skills.some((s) => s.origin === p.origin);
-            return (
-              <li key={p.origin} class="site-row" title={p.body}>
-                <span class="site-name">{p.origin}</span>
-                <span class="site-desc">{p.description}</span>
-                {installed ? (
-                  <span class="stale-tag">Installed</span>
-                ) : (
-                  <button class="btn btn-small" onClick={() => installCurated(p)}>
-                    Add
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <div class="site-form">
+          <label class="field">
+            <span>Playbook index URL — polled for installable skills</span>
+            <input
+              type="url"
+              class="chat-input"
+              autocomplete="off"
+              spellcheck={false}
+              value={indexUrl}
+              onInput={(e) => setIndexUrl((e.target as HTMLInputElement).value)}
+            />
+          </label>
+          <div class="settings-actions">
+            <button
+              class="btn btn-small"
+              disabled={remoteLoading}
+              onClick={async () => {
+                await saveIndexUrl(indexUrl);
+                await fetchIndex(indexUrl);
+              }}
+            >
+              {remoteLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            {indexUrl.trim() !== DEFAULT_PLAYBOOK_INDEX_URL && (
+              <button
+                class="btn btn-small"
+                disabled={remoteLoading}
+                onClick={async () => {
+                  setIndexUrl(DEFAULT_PLAYBOOK_INDEX_URL);
+                  await saveIndexUrl(DEFAULT_PLAYBOOK_INDEX_URL);
+                  await fetchIndex(DEFAULT_PLAYBOOK_INDEX_URL);
+                }}
+              >
+                Reset to default
+              </button>
+            )}
+          </div>
+          {remoteErr && <div class="banner banner-error">{remoteErr}</div>}
+
+          {remote.length > 0 && (
+            <ul class="sites-list">
+              {remote.map((p) => {
+                const installed = skills.some(
+                  (s) => s.name === p.name || (p.origin && s.origin === normalizeHost(p.origin)),
+                );
+                return (
+                  <li key={p.name} class="site-row" title={p.description}>
+                    <span class="site-name">/{p.name}</span>
+                    {p.origin && <span class="stale-tag">app: {p.origin}</span>}
+                    <span class="site-desc">{p.description}</span>
+                    <button class="btn btn-small" onClick={() => installRemote(p)}>
+                      {installed ? 'Reinstall' : 'Add'}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <p class="settings-note">Built-in app playbooks</p>
+          <ul class="sites-list">
+            {CURATED_PLAYBOOKS.map((p) => {
+              const installed = skills.some((s) => s.origin === p.origin);
+              return (
+                <li key={p.origin} class="site-row" title={p.body}>
+                  <span class="site-name">{p.origin}</span>
+                  <span class="site-desc">{p.description}</span>
+                  {installed ? (
+                    <span class="stale-tag">Installed</span>
+                  ) : (
+                    <button class="btn btn-small" onClick={() => installCurated(p)}>
+                      Add
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
       {showUrl && (

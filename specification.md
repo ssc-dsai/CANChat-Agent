@@ -649,7 +649,7 @@ is reachable via this channel (not `run_javascript`/WebMCP, which Chrome forbids
 **File upload into repositories.** Besides ingesting tabs, the user can upload files
 (`.pdf/.docx/.pptx/.xlsx/.txt/.md/.csv`, capped at `MAX_UPLOAD_BYTES`) straight into a
 repo. The shared `RepoUpload.tsx` (a reveal-on-demand, vertically-stacked card with a
-drop zone + repo picker) appears both in **Settings → Repositories** and in the
+drop zone + repo picker) appears both in **Settings → Knowledge bases** and in the
 **composer** (drag-drop onto the panel or the 📎 attach button). Files cross to the
 worker as a `add_files_to_repo` request; text files send their text, PDF/Office send a
 base64 data URL the offscreen extractor parses; each runs through `ingestFile` →
@@ -698,7 +698,10 @@ the side panel. It adds panels too cramped for the side panel: a tool browser
 (`ToolManager`), a skill editor (`SkillEditor`), a **DuckDB dataset browser**
 (`DatasetBrowser` — list/preview tables, import pasted CSV/JSON, run SQL), a
 data/table viewer (`DataViewer`, over `export_data` results), and a full-size image
-viewer (`ImageViewer`).
+viewer (`ImageViewer`). It shares the side panel's **brand theme**: the palette +
+light/dark variables live in `src/shared/theme.css`, imported by both `styles.css` and
+`workspace.css`, so the workspace renders in the same colours (gradient header, purple
+accents) and follows the OS light/dark setting.
 
 **Trust & auth model.** Capabilities carry a **trust level** and **auth method**, which
 flow into the approval gate: tools sourced from an `enterprise`/`local`-trust capability
@@ -744,19 +747,23 @@ read that exact bookmarked URL (not a web search).
   Snapshot, Snapshot Page, Refresh; a **repo capture** row — a repo-name box that is a
   `<datalist>` dropdown of existing repos *and* accepts a new typed name, plus
   **+ Tab** / **+ Group** buttons.
-- **Settings** (`SettingsScreen.tsx`): a **Language** selector (Auto/EN/FR); endpoint
-  base URL, API key (password), model, optional **Azure `api-version`** (enables Azure
-  mode); temperature / max-tokens; an **Advanced** tab with **repo-search passages**
-  (`repoSearchK`) and toggles for **retry on rate limit**, **summarize observations**,
-  and **verify answers**; **embedding** and **transcription** model/endpoint/key (each
-  service may use its own endpoint+key); SharePoint base URL; custom instructions; a
-  **Test connection** button; then sections
-  for **Capabilities** (the Capability Registry editor, `CapabilitiesSection.tsx`),
-  **Skills**, **Memory**, **Repositories** (expand a repo to delete
-  individual documents, or delete the whole repo), and **Backup & Restore**
-  (`BackupRestoreSection.tsx`) — export all config (the `ba_*` storage keys) plus
-  every repository (`repo_export`, vectors base64-encoded) to one JSON file, and
-  restore it (overwrites storage keys; replaces same-name repos via `repo_import`).
+- **Settings** (`SettingsScreen.tsx`): **five tabs** — **Model**, **Advanced**,
+  **Skills**, **Knowledge bases**, **Data & privacy**. *Model*: a **Language** selector
+  (Auto/EN/FR); endpoint base URL, API key (password), model, optional **Azure
+  `api-version`** (enables Azure mode). *Advanced*: temperature / max-tokens,
+  **repo-search passages** (`repoSearchK`), **max steps per task** (`maxSteps`), toggles
+  for **retry on rate limit**, **summarize observations**, and **verify answers**;
+  **embedding** and **transcription** model/endpoint/key (each service may use its own
+  endpoint+key); SharePoint base URL; custom instructions; a **Test connection** button.
+  *Skills* (`SkillsSection.tsx`) manages skills + the **App playbook library**, which
+  polls a configurable **hosted playbook index** (`playbookIndexUrl`, default bundled) of
+  installable `SKILL.md` files for one-click install. *Knowledge bases*
+  (`RepositoriesSection.tsx`, on its own tab) — expand a repo to delete individual
+  documents, or delete the whole repo. *Data & privacy*: **Capabilities** (the Capability
+  Registry editor, `CapabilitiesSection.tsx`), **Memory**, and **Backup & Restore**
+  (`BackupRestoreSection.tsx`) — export all config (the `ba_*` storage keys) plus every
+  repository (`repo_export`, vectors base64-encoded) to one JSON file, and restore it
+  (overwrites storage keys; replaces same-name repos via `repo_import`).
   An "Include API key" toggle (default on) controls whether the credential is in the file.
 
 **Defaults & behaviors:** assume "the page" means the active tab; render Markdown;
@@ -817,6 +824,7 @@ interface Settings {
   maxSteps?: number;     // soft step budget per task; absent = 20 (extension = round/2, ceiling = ×2)
   systemPrompt?: string; // custom instructions, appended to the built-in prompt
   sharepointBaseUrl?: string; // optional, for sharepoint_search
+  playbookIndexUrl?: string;  // optional, hosted playbook index polled by the App playbook library; absent = bundled default
   embeddingModel?: string;    // optional, for /embeddings (local RAG); defaults to `model`
   embeddingBaseUrl?: string;  // optional, separate embeddings endpoint; blank = baseUrl
   embeddingApiKey?: string;   // optional, separate embeddings key; blank = apiKey
@@ -866,7 +874,7 @@ caveat in `technical-debt.md`.
   full `charCount`.
 - `+ Tab` a long PDF into a repo, then `search_repo` → passages from late pages
   (whole document ingested); re-adding the same page prompts to replace.
-- Settings → Repositories → expand a repo → delete one document → its chunks drop
+- Settings → Knowledge bases → expand a repo → delete one document → its chunks drop
   and it stops appearing in search.
 - `sharepoint_search` while signed into SharePoint → ranked snippets with URLs.
 - "Make a 3-slide deck on X" / "write that up as a Word doc" → a `.pptx` / `.docx`

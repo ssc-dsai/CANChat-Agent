@@ -353,8 +353,8 @@ library**.
 them, with citations. **Add pages** with the toolbar's knowledge-base row
 (**Add tab** / **Add group**) or by asking the agent to "save this page to a
 knowledge base called X." **Ask** by typing `#name` in the chat, or "search my X
-knowledge base for …". **Manage** them under **Settings → Data & privacy →
-Knowledge bases** (see documents, chunk counts, and delete).
+knowledge base for …". **Manage** them under **Settings → Knowledge bases**
+(see documents, chunk counts, and delete).
 
 > Everything is stored **on your device** (in the browser's private file storage,
 > OPFS). To make pages searchable, their text is sent to your configured
@@ -432,7 +432,7 @@ switches the whole interface immediately.
 
 ## 6. Settings reference
 
-Open **Settings** (gear icon). Settings are split into four tabs.
+Open **Settings** (gear icon). Settings are split into five tabs.
 
 ### Model tab
 
@@ -467,11 +467,20 @@ take effect on Save.
 
 ### Skills tab
 
-Manage reusable skills and app playbooks — see [§5.6](#56-skills).
+Manage reusable skills and app playbooks — see [§5.6](#56-skills). The **App
+playbook library** here also polls a configurable **playbook index** (a hosted
+JSON list of installable `SKILL.md` files; defaults to the project's `skills/`
+folder) so listed skills install with one click.
+
+### Knowledge bases tab
+
+Your on-device page collections, with document/chunk counts and delete controls.
+Upload files or capture pages into a named base, then ask questions across them —
+see [§5.7](#57-knowledge-bases-save-pages-and-ask-later).
 
 ### Data & privacy tab
 
-Four collapsible sections (collapsed by default — click to expand):
+Three collapsible sections (collapsed by default — click to expand):
 
 ![Settings — Data & privacy tab (collapsed)](usability/screenshots/09-settings-data-tab.png)
 
@@ -483,8 +492,6 @@ Four collapsible sections (collapsed by default — click to expand):
   When on, the agent saves durable facts about you (work, projects, preferences)
   to tailor answers; **Add memory**, import/export, and **Clear all** are here.
   Capacity is 100 entries; secrets are never saved.
-- **Knowledge bases** — your on-device page collections, with document/chunk
-  counts and delete controls.
 - **Backup & Restore** — export everything to one JSON file and restore it later
   or on another machine. Options: **Include API key** (warned — plain text) and
   **Include conversations** (warned). Restore overwrites current settings, hints,

@@ -73,7 +73,7 @@ export function RepositoriesSection() {
   };
 
   return (
-    <details class="sites-section settings-acc">
+    <details class="sites-section settings-acc" open>
       <summary class="settings-header settings-acc-summary">
         <strong>{t('repos.title')}</strong>
         <span class="sites-count">{repos.length}</span>

@@ -15,11 +15,12 @@ interface Props {
 
 const EMPTY: Settings = { baseUrl: '', apiKey: '', model: '' };
 
-type SettingsTab = 'model' | 'advanced' | 'skills' | 'data';
+type SettingsTab = 'model' | 'advanced' | 'skills' | 'knowledge' | 'data';
 const TABS: ReadonlyArray<[SettingsTab, string]> = [
   ['model', 'settings.tabModel'],
   ['advanced', 'settings.tabAdvanced'],
   ['skills', 'settings.tabSkills'],
+  ['knowledge', 'settings.tabKnowledge'],
   ['data', 'settings.tabData'],
 ];
 
@@ -383,11 +384,12 @@ export function SettingsScreen({ onClose }: Props) {
 
         {tab === 'skills' && <SkillsSection />}
 
+        {tab === 'knowledge' && <RepositoriesSection />}
+
         {tab === 'data' && (
         <>
         <CapabilitiesSection />
         <MemorySection />
-        <RepositoriesSection />
         <BackupRestoreSection />
         </>
         )}

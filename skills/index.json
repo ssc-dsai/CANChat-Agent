@@ -1,0 +1,14 @@
+{
+  "playbooks": [
+    {
+      "name": "search-sharepoint",
+      "description": "Search SharePoint precisely — translate the request into KQL (filename, filetype, site path, author, date) and run sharepoint_search.",
+      "file": "search-sharepoint.md"
+    },
+    {
+      "name": "search-mail",
+      "description": "Search Outlook mail precisely — translate the request into mail KQL keywords (from / to / subject / received / hasattachments) and run the search in the Outlook web app.",
+      "file": "search-mail.md"
+    }
+  ]
+}
