@@ -170,6 +170,8 @@ const EN: Dict = {
   'settings.transcriptionKey': 'Transcription API key (optional) — blank uses the main key',
   'settings.sharepointUrl':
     'SharePoint base URL (optional) — enables search over your SharePoint via the signed-in session; blank = auto-detect from an open SharePoint tab',
+  'settings.outlookUrl':
+    'Outlook web base URL (optional) — for microsoft365_search mail via the signed-in session; blank = https://outlook.office.com',
   'settings.customInstructions':
     "Custom instructions (optional) — appended to the agent's built-in instructions; applies from your next message",
   'settings.customInstructionsPlaceholder':
@@ -363,6 +365,8 @@ const FR: Dict = {
   'settings.transcriptionKey': 'Clé d’API de transcription (facultatif) — vide = clé principale',
   'settings.sharepointUrl':
     'URL de base SharePoint (facultatif) — active la recherche dans votre SharePoint via la session ouverte; vide = détection automatique à partir d’un onglet SharePoint ouvert',
+  'settings.outlookUrl':
+    'URL de base Outlook web (facultatif) — pour la recherche de courriels microsoft365_search via la session ouverte; vide = https://outlook.office.com',
   'settings.customInstructions':
     'Instructions personnalisées (facultatif) — ajoutées aux instructions intégrées de l’agent; s’appliquent dès votre prochain message',
   'settings.customInstructionsPlaceholder':

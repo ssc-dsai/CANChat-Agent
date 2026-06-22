@@ -46,6 +46,7 @@ import type {
 } from '../shared/types';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
 import * as browser from './browserToolAdapter';
+import type { M365SearchFilters } from '../shared/microsoftSearch';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
 import { mapCommand } from './mapClient';
@@ -131,6 +132,7 @@ const READ_ONLY_TOOLS = new Set([
   'list_mcp_tools',
   'list_webmcp_tools',
   'sharepoint_search',
+  'microsoft365_search',
   'read_tab_group',
   'search_repo',
   'list_repos',
@@ -235,7 +237,8 @@ Working method:
 - Some web pages expose their own in-page tools via WebMCP (navigator.modelContext). On the active tab, call list_webmcp_tools to discover them; when one matches the task, prefer call_webmcp_tool over hand-driving the page UI.
 - Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
 - The user can reference a repository (typing #) or a bookmarked page (typing @) in their message; when they do, an explicit instruction is attached — act on it directly: search_repo that exact repository, or open and read that exact URL rather than web-searching for it.
-- For questions about the user's internal SharePoint/Office 365 documents, use sharepoint_search: it queries SharePoint with the signed-in session and returns ranked passages (snippets) with source URLs plus who created and last modified each file and the modified date. Answer from those snippets and cite the URLs. To summarize or analyze a result's full contents (beyond its snippet), pass that result's url to read_office_document (Office files) or read_pdf (PDFs) — do not navigate to it, which would just download it. For "recent files" or "files I edited" requests, pass sortBy:'modified' (newest first) and editedByMe:true (limit to the signed-in user) — query is optional for these. This is the way to do retrieval over the user's document store.
+- For questions about the user's own Microsoft 365 email AND/OR files, prefer microsoft365_search — one call over the signed-in session covering Outlook mail and SharePoint/OneDrive files, with filters: source ('mail'|'files'|'both'), from (sender), fileType, sitePath, editedByMe, since/until (YYYY-MM-DD), orderBy ('relevance'|'date'), top. E.g. "last five emails from Brian Ray" → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; "last Word file I edited on my SharePoint site" → {source:'files', fileType:'docx', editedByMe:true, orderBy:'date', top:1}. Cite each result's url. If the response has a mailError, fall back to the /search-mail skill (which drives the Outlook web UI). To read a file's full contents beyond its snippet, pass its url to read_office_document (Office) or read_pdf (PDFs) — do not navigate to it (that downloads it).
+- For files-only retrieval you can also use sharepoint_search (the simpler SharePoint-only tool): pass sortBy:'modified' + editedByMe:true for "recent files"/"files I edited"; cite the URLs.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 - Map workspace: when the user wants to see or work with a map, use the map_* tools. They all act on ONE persistent map that opens automatically in its own tab and is reused across requests — never assume a new map each time; build on the current state (call map_get_state to see what's there). map_set_view/map_fly_to move it, map_set_basemap switches tiles, map_add_marker/map_add_geojson/map_add_shape add elements, map_animate moves a marker along a path, map_fit_bounds frames things, map_clear removes overlays. These act on the extension's own map page, so they don't need approval.
 
@@ -2044,6 +2047,78 @@ export class AgentRuntime {
           sortBy: args.sortBy === 'modified' ? 'modified' : 'relevance',
           editedByMe: Boolean(args.editedByMe),
         });
+      }
+      case 'microsoft365_search': {
+        const settings = await getSettings();
+        const source =
+          args.source === 'mail' || args.source === 'files' ? args.source : 'both';
+        const filters: M365SearchFilters = {
+          query: args.query ? String(args.query) : undefined,
+          from: args.from ? String(args.from) : undefined,
+          fileType: args.fileType ? String(args.fileType) : undefined,
+          sitePath: args.sitePath ? String(args.sitePath) : undefined,
+          editedByMe: Boolean(args.editedByMe),
+          since: args.since ? String(args.since) : undefined,
+          until: args.until ? String(args.until) : undefined,
+          orderBy: args.orderBy === 'date' ? 'date' : 'relevance',
+          top: Number(args.top) || 10,
+        };
+
+        const resolveSpBase = async (): Promise<string | undefined> => {
+          let base = settings?.sharepointBaseUrl?.trim();
+          if (!base) {
+            try {
+              const u = new URL((await browser.getActiveTab()).url);
+              if (/\.sharepoint\.com$/i.test(u.hostname)) base = u.origin;
+            } catch {
+              // no usable active tab
+            }
+          }
+          return base;
+        };
+        const resolveOutlookBase = async (): Promise<string> => {
+          let base = settings?.outlookBaseUrl?.trim();
+          if (!base) {
+            try {
+              const u = new URL((await browser.getActiveTab()).url);
+              if (/outlook\.office(365)?\.com$/i.test(u.hostname)) base = u.origin;
+            } catch {
+              // no usable active tab
+            }
+          }
+          return base || 'https://outlook.office.com';
+        };
+
+        const wantFiles = source === 'files' || source === 'both';
+        const wantMail = source === 'mail' || source === 'both';
+        const [fileOut, mailOut] = await Promise.all([
+          wantFiles
+            ? (async () => {
+                const base = await resolveSpBase();
+                if (!base) {
+                  return {
+                    error:
+                      'No SharePoint base URL. Set it in Settings (e.g. https://contoso.sharepoint.com) or open a SharePoint tab.',
+                  };
+                }
+                return browser.fileSearch(base, filters);
+              })()
+            : Promise.resolve(null),
+          wantMail
+            ? browser.outlookMailSearch(await resolveOutlookBase(), filters)
+            : Promise.resolve(null),
+        ]);
+
+        const payload: Record<string, unknown> = { source };
+        if (fileOut) {
+          if ('error' in fileOut) payload.filesError = fileOut.error;
+          else payload.files = fileOut.results;
+        }
+        if (mailOut) {
+          if ('error' in mailOut) payload.mailError = mailOut.error;
+          else payload.mail = mailOut.results;
+        }
+        return JSON.stringify(payload);
       }
       case 'export_data':
         return this.exportData(args);

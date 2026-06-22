@@ -109,6 +109,9 @@ export type RuntimeRequest =
   | { type: 'add_files_to_repo'; repo: string; files: UploadFile[] }
   | { type: 'open_data_files'; files: DataFileUpload[] }
   | { type: 'transcribe_audio'; audioDataUrl: string }
+  // Probe the signed-in environment (M365 identity, open work systems, locale) to
+  // populate memory; only honored when the memory feature is enabled.
+  | { type: 'probe_environment' }
   // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
   // service worker owns the offscreen document, so it routes the op for them.
   | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };

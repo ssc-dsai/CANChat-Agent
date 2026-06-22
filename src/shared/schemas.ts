@@ -420,6 +420,38 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'microsoft365_search',
+      description:
+        "Search the user's Microsoft 365 mail AND files in one call, using the signed-in browser session (no setup or token). Files come from SharePoint/Microsoft Search (covers SharePoint sites and OneDrive); mail comes from Outlook on the web. Use this for questions about the user's own email or documents, with filters for time, document type, sender, and source. Returns ranked results — emails as {subject, from, received, url, preview}; files as {title, url, modified, modifiedBy, snippet} — each with a URL to cite. Examples: 'my last five emails from Brian Ray' → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; 'the last Word file I edited on my work SharePoint site' → {source:'files', fileType:'docx', editedByMe:true, orderBy:'date', top:1}. If the mail side errors, fall back to the /search-mail skill.",
+      parameters: {
+        type: 'object',
+        properties: {
+          source: {
+            type: 'string',
+            enum: ['mail', 'files', 'both'],
+            description: "Which data source to search: 'mail', 'files', or 'both' (default).",
+          },
+          query: { type: 'string', description: 'Free-text keywords (optional).' },
+          from: { type: 'string', description: "Mail only: sender name or email (e.g. 'Brian Ray')." },
+          fileType: { type: 'string', description: "Files only: document type, e.g. 'docx', 'xlsx', 'pptx', 'pdf'." },
+          sitePath: { type: 'string', description: 'Files only: a SharePoint site/library URL to scope to.' },
+          editedByMe: { type: 'boolean', description: 'Files only: limit to files the signed-in user last edited.' },
+          since: { type: 'string', description: 'Inclusive start date, ISO YYYY-MM-DD (applies to both sources).' },
+          until: { type: 'string', description: 'Inclusive end date, ISO YYYY-MM-DD (applies to both sources).' },
+          orderBy: {
+            type: 'string',
+            enum: ['relevance', 'date'],
+            description: "Ranking: 'relevance' (default) or 'date' (newest first).",
+          },
+          top: { type: 'number', description: 'Max results per source (default 10, max 25).' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_known_sites',
       description:
         "Search the user's curated directory of known sites (names, URLs, descriptions, optional search-URL templates) for sites likely to contain the data a task needs. Check this before falling back to a generic web search. Some entries are MCP servers (they have an mcpUrl) — for those, use list_mcp_tools/call_mcp_tool instead of opening a URL.",

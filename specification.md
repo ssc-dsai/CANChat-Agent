@@ -80,7 +80,7 @@ Dependencies: `preact`, `marked`, `dompurify`, `pdfjs-dist`, `fflate`, `docx`,
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel", "tabs", "activeTab", "scripting", "storage",
-    "search", "bookmarks", "offscreen", "tabGroups", "unlimitedStorage", "downloads"
+    "search", "bookmarks", "offscreen", "tabGroups", "unlimitedStorage", "downloads", "cookies"
   ],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "serviceWorker.js", "type": "module" },
@@ -107,7 +107,8 @@ Permission roles: `sidePanel` (UI surface) · `tabs`/`activeTab`/`scripting`
 picker) · `storage` (settings/skills/memory) · `offscreen` (pdf.js + RAG engine) ·
 `tabGroups` (per-conversation groups) · `unlimitedStorage` (OPFS vector store not
 evicted) · `downloads` (deliver generated `.docx`/`.pptx`/CSV artifacts) ·
-`<all_urls>` (read any page, credentialed fetch for PDFs/SharePoint).
+`<all_urls>` (read any page, credentialed fetch for PDFs/SharePoint) · `cookies` (read the
+Outlook `X-OWA-CANARY` anti-CSRF token for `microsoft365_search` mail).
 
 ---
 
@@ -352,7 +353,7 @@ A turn-based loop over the OpenAI chat API with tool calling.
 - `READ_ONLY_TOOLS` (safe to run in parallel) = `list_tabs`, `get_active_tab`,
   `get_tab_content`, `get_element_map`, `detect_auth_state`, `wait_for_element`,
   `search_known_sites`, `list_mcp_tools`, `list_webmcp_tools`, `sharepoint_search`,
-  `read_tab_group`, `search_repo`, `list_repos`, `use_skill`, `set_plan`,
+  `microsoft365_search`, `read_tab_group`, `search_repo`, `list_repos`, `use_skill`, `set_plan`,
   `update_plan`, `record_finding`, `export_data`, `create_word_document`, `read_pdf`,
   `read_office_document`, `get_video_transcript`, `read_app_content`, `map_get_state`,
   and the data-engine tools `query_data`, `import_data`, `list_datasets`,
@@ -417,6 +418,20 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
   modifiedBy, modified}`. `sortBy:'modified'` orders by recency; `editedByMe:true`
   resolves the current user (`/_api/web/currentuser`) and filters `Editor:"<name>"`
   — together they answer "the last N files I edited". `query` optional.
+- `microsoft365_search {source?, query?, from?, fileType?, sitePath?, editedByMe?, since?,
+  until?, orderBy?, top?}` — **unified Microsoft 365 mail + file search over the signed-in
+  session** (cookie auth, no setup; *not* the Graph API, which needs OAuth). `source`:
+  `mail | files | both` (default both). **Files** reuse the SharePoint/Microsoft Search REST
+  path (`fileSearch`, covers SharePoint + OneDrive) with a KQL `querytext` built from
+  `query`/`filetype:`/`path:`/`LastModifiedTime` range/`Editor:` (`editedByMe`).
+  **Mail** uses Outlook-on-the-web's own `service.svc?action=FindItem` endpoint
+  (`outlookMailSearch`), authenticated by the session cookie + the `X-OWA-CANARY` anti-CSRF
+  token (read via the new `cookies` permission), with an AQS query from `query`/`from:`/
+  `received:` range. Returns `{files:[…], mail:[…]}` (and `filesError`/`mailError` when a
+  source fails). The KQL/AQS builders are pure + unit-tested (`src/shared/microsoftSearch.ts`).
+  The **mail path is best-effort** (undocumented OWA endpoint); on error the model falls back
+  to the `/search-mail` skill that drives the OWA UI. Pure builders live in
+  `microsoftSearch.ts`; the fetches in `browserToolAdapter.ts`.
 - `search_known_sites {query}` — match against the user's **Capability Registry**
   (bookmark/mcp entries; formerly "Known Sites/Hints"). An entry may carry an `mcpUrl`.
 
@@ -613,7 +628,13 @@ name, so the "me" filter isn't a perfect identity match.
   re-running upserts by origin).
 - **Memory** — optional persistent facts (off by default, toggled in Settings). When
   on, the agent may `save/update/delete_memory`; entries are injected into the
-  prompt.
+  prompt. A **Probe environment** button (Memory settings, shown only when memory is
+  enabled) sends a `probe_environment` `RuntimeRequest`; `background/envProbe.ts`
+  gathers on-device facts about the signed-in user — Microsoft 365 identity (name /
+  work email / AD sign-in username via SharePoint `/_api/web/currentuser` over the
+  session cookie), the enterprise systems currently open (an allowlist of work hosts),
+  and locale/timezone — and the UI appends them as memory entries (dedup, capped 100).
+  The service worker refuses the probe when memory is off. Nothing leaves the device.
 
 **Auth auto-pause.** When page extraction detects a login wall, the task pauses,
 the panel shows a sign-in notice, and resuming re-fetches the page.
@@ -790,7 +811,9 @@ on first run with no settings, prompt the user to configure an endpoint.
   `repo_import`, `add_files_to_repo`, `transcribe_audio`, `duckdb` (the Workspace's
   data browser → `{op, sql?, tableName?, data?}` → `DuckDbResponse`), `open_data_files`
   (UI file-open → `{files: {name, bytesB64}[]}` → `{ok, results, tables}`; the worker
-  loads each into DuckDB and `notifyDatasetsLoaded`s the runtime).
+  loads each into DuckDB and `notifyDatasetsLoaded`s the runtime), and
+  `probe_environment` (→ `{ok, facts?, notes?, error?}`; gathers signed-in M365
+  identity + open work systems + locale for Memory, only when memory is enabled).
 - **Offscreen:** `ExtractPdfRequest {target:'offscreen', type:'extract_pdf', url,
   maxChars?}` → `ExtractPdfResponse {ok, text?, pageCount?, charCount?, truncated?,
   error?}`; `ExtractOfficeRequest {…, type:'extract_office', url, maxChars?}` →
@@ -823,7 +846,8 @@ interface Settings {
   repoSearchK?: number;  // default passages per search_repo; absent = 6
   maxSteps?: number;     // soft step budget per task; absent = 20 (extension = round/2, ceiling = ×2)
   systemPrompt?: string; // custom instructions, appended to the built-in prompt
-  sharepointBaseUrl?: string; // optional, for sharepoint_search
+  sharepointBaseUrl?: string; // optional, for sharepoint_search / microsoft365_search files
+  outlookBaseUrl?: string;    // optional, for microsoft365_search mail; default https://outlook.office.com
   playbookIndexUrl?: string;  // optional, hosted playbook index polled by the App playbook library; absent = bundled default
   embeddingModel?: string;    // optional, for /embeddings (local RAG); defaults to `model`
   embeddingBaseUrl?: string;  // optional, separate embeddings endpoint; blank = baseUrl

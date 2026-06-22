@@ -39,7 +39,8 @@ import {
   repoList,
 } from './offscreenClient';
 import { ingestFile } from './repoIngest';
-import { getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
+import { getMemoryEnabled, getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
+import { probeEnvironment } from './envProbe';
 
 // Clicking the toolbar icon opens the side panel.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -239,6 +240,21 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
     })()
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, results: [], tables: [], error: String(err) }));
+    return true;
+  }
+  if (request.type === 'probe_environment') {
+    (async () => {
+      // Only populate persistence when the memory feature is on.
+      if (!(await getMemoryEnabled())) {
+        return { ok: false, error: 'Memory is off. Enable "Remember things about me" first.' };
+      }
+      try {
+        const { facts, notes } = await probeEnvironment();
+        return { ok: true, facts, notes };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    })().then(sendResponse);
     return true;
   }
   if (request.type === 'transcribe_audio') {

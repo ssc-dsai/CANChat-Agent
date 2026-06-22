@@ -159,6 +159,8 @@ export interface Settings {
   systemPrompt?: string;
   /** Optional SharePoint base URL for the cookie-auth search tool. */
   sharepointBaseUrl?: string;
+  /** Optional Outlook-on-the-web base URL for microsoft365_search mail; default https://outlook.office.com. */
+  outlookBaseUrl?: string;
   /**
    * URL of a hosted playbook index (JSON listing installable SKILL.md files).
    * Absent = the bundled default (DEFAULT_PLAYBOOK_INDEX_URL). The App playbook

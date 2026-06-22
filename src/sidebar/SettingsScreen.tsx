@@ -89,6 +89,7 @@ export function SettingsScreen({ onClose }: Props) {
       apiVersion: settings.apiVersion?.trim() || undefined,
       systemPrompt: settings.systemPrompt?.trim() || undefined,
       sharepointBaseUrl: settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined,
+      outlookBaseUrl: settings.outlookBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       embeddingModel: settings.embeddingModel?.trim() || undefined,
       embeddingBaseUrl: settings.embeddingBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       embeddingApiKey: settings.embeddingApiKey?.trim() || undefined,
@@ -348,6 +349,16 @@ export function SettingsScreen({ onClose }: Props) {
             placeholder="https://contoso.sharepoint.com"
             value={settings.sharepointBaseUrl ?? ''}
             onInput={(e) => update({ sharepointBaseUrl: (e.target as HTMLInputElement).value })}
+          />
+        </label>
+
+        <label class="field">
+          <span>{t('settings.outlookUrl')}</span>
+          <input
+            type="url"
+            placeholder="https://outlook.office.com"
+            value={settings.outlookBaseUrl ?? ''}
+            onInput={(e) => update({ outlookBaseUrl: (e.target as HTMLInputElement).value })}
           />
         </label>
 

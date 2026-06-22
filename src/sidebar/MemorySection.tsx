@@ -26,6 +26,9 @@ export function MemorySection() {
   const [showJson, setShowJson] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [probing, setProbing] = useState(false);
+
+  const MEMORY_MAX = 100;
 
   useEffect(() => {
     loadState().then((s) => {
@@ -115,6 +118,42 @@ export function MemorySection() {
     setShowJson(false);
   };
 
+  // Populate memory from what the extension can detect about the signed-in user
+  // (M365 identity via the session, open work systems, locale). On-device only.
+  const probe = async () => {
+    setFeedback(null);
+    setProbing(true);
+    try {
+      const res = (await chrome.runtime.sendMessage({ type: 'probe_environment' })) as {
+        ok: boolean;
+        facts?: string[];
+        notes?: string[];
+        error?: string;
+      };
+      if (!res?.ok) {
+        setFeedback({ ok: false, text: res?.error || 'Probe failed.' });
+        return;
+      }
+      const now = new Date().toISOString();
+      const known = new Set(entries.map((e) => e.text));
+      const fresh = (res.facts ?? [])
+        .map((t) => t.trim())
+        .filter((t) => t && !known.has(t))
+        .map((t) => ({ id: newId(), text: t, createdAt: now, updatedAt: now }));
+      const next = [...entries, ...fresh].slice(0, MEMORY_MAX);
+      if (fresh.length) await save(next);
+      const noteMsg = res.notes && res.notes.length ? ` ${res.notes.join(' ')}` : '';
+      setFeedback({
+        ok: true,
+        text: fresh.length ? `Added ${fresh.length} fact(s) about you.${noteMsg}` : `No new facts found.${noteMsg}`,
+      });
+    } catch (e) {
+      setFeedback({ ok: false, text: `Probe failed: ${String(e)}` });
+    } finally {
+      setProbing(false);
+    }
+  };
+
   return (
     <details class="sites-section settings-acc">
       <summary class="settings-header settings-acc-summary">
@@ -183,6 +222,16 @@ export function MemorySection() {
           <button class="btn btn-small" onClick={() => setShowForm(true)}>
             Add memory
           </button>
+          {enabled && (
+            <button
+              class="btn btn-small"
+              onClick={probe}
+              disabled={probing}
+              title="Fill memory with what the extension can detect: your Microsoft 365 name/username from the signed-in session, the work systems you have open, and your locale. Nothing leaves this device."
+            >
+              {probing ? 'Probing…' : 'Probe environment'}
+            </button>
+          )}
           <button class="btn btn-small" onClick={() => setShowJson(!showJson)}>
             Import JSON
           </button>

@@ -3,7 +3,9 @@ name: search-mail
 description: Search Outlook mail precisely — translate the request into mail KQL keywords (from / to / subject / received / hasattachments) and run the search in the signed-in Outlook web app.
 ---
 
-Goal: turn a plain-language email request into a precise keyword query, then run it in Outlook on the web.
+Goal: turn a plain-language email request into a precise keyword query, then run it.
+
+**First choice:** call the **`microsoft365_search`** tool with `{source:'mail', from, query, since/until, orderBy:'date', top}` — it searches your mailbox over the signed-in session and returns messages directly. Only fall back to driving the Outlook web UI (the steps below) if that tool returns a `mailError`.
 
 The keyword syntax below is exactly what Microsoft Graph mail search (`/me/messages?$search='…'`) uses as KQL, and it is also what the Outlook web search box accepts — so the same translated query works in both. (This skill executes over the signed-in Outlook web UI; there is no Graph bearer-token call.)
 

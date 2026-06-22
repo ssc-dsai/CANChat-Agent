@@ -3,7 +3,9 @@ name: search-sharepoint
 description: Search SharePoint precisely — translate the request into KQL (filename, filetype, site path, author, date) and run sharepoint_search for accurate results.
 ---
 
-Goal: turn a plain-language SharePoint request into a precise query so results are accurate, then run `sharepoint_search`.
+Goal: turn a plain-language SharePoint request into a precise query so results are accurate.
+
+**First choice:** call the **`microsoft365_search`** tool with `{source:'files', fileType, sitePath, editedByMe, since/until, query, orderBy}` — it searches your files over the signed-in session (SharePoint **and** OneDrive). The KQL mapping below applies equally to the simpler `sharepoint_search` tool if you use that instead.
 
 The `sharepoint_search` tool uses the SharePoint Search REST API, whose query language is KQL — the **same** query language and managed properties Microsoft Graph Search (`/search/query`) uses, so this translation transfers directly to Graph. Pass your KQL as the tool's `query`.
 

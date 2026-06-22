@@ -28,6 +28,7 @@ import type {
   TabSummary,
 } from '../shared/types';
 import { normalizeUrl } from '../shared/repoChunk';
+import { buildFileKql, buildMailQuery, clampTop, type M365SearchFilters } from '../shared/microsoftSearch';
 import { analyzeAuthState } from './authDetector';
 import { extractOffice, extractPdf } from './offscreenClient';
 import { hasAllUrlsAccess } from './permissions';
@@ -800,6 +801,26 @@ interface SharepointSearchOptions {
   editedByMe?: boolean;
 }
 
+export interface FileResult {
+  source: 'file';
+  title: string;
+  url?: string;
+  snippet: string;
+  fileType?: string;
+  createdBy?: string;
+  modifiedBy?: string;
+  modified?: string;
+}
+
+export interface MailResult {
+  source: 'mail';
+  subject: string;
+  from?: string;
+  received?: string;
+  url?: string;
+  preview?: string;
+}
+
 async function currentSharepointUser(
   base: string,
 ): Promise<{ title?: string; email?: string } | { error: string }> {
@@ -819,26 +840,25 @@ async function currentSharepointUser(
   }
 }
 
-export async function sharepointSearch(base: string, opts: SharepointSearchOptions): Promise<string> {
-  const rowlimit = Math.min(25, Math.max(1, opts.top || 10));
-  const terms = (opts.query ?? '').replace(/'/g, ' ').trim();
-
-  // Build the KQL querytext. With no terms, scope to documents so a pure
-  // "recent files" listing has something to sort.
-  const clauses: string[] = [];
-  if (terms) clauses.push(terms);
-
-  if (opts.editedByMe) {
+/**
+ * Core file search over SharePoint/Microsoft Search (cookie session). Indexes both
+ * SharePoint sites and the user's OneDrive. Returns structured results so callers can
+ * merge them with mail; the legacy `sharepoint_search` tool wraps this.
+ */
+export async function fileSearch(
+  base: string,
+  f: M365SearchFilters,
+): Promise<{ results: FileResult[] } | { error: string }> {
+  const rowlimit = clampTop(f.top);
+  let editorName: string | undefined;
+  if (f.editedByMe) {
     const me = await currentSharepointUser(base);
     if ('error' in me) {
-      return JSON.stringify({
-        error: `${me.error} Open a tab on ${base} and make sure you are signed in, then retry.`,
-      });
+      return { error: `${me.error} Open a tab on ${base} and make sure you are signed in, then retry.` };
     }
-    if (me.title) clauses.push(`Editor:"${me.title.replace(/"/g, '')}"`);
+    editorName = me.title;
   }
-  if (clauses.length === 0) clauses.push('IsDocument:1');
-  const queryText = clauses.join(' ');
+  const queryText = buildFileKql(f, editorName);
 
   const props =
     'Title,Path,HitHighlightedSummary,FileType,FileExtension,LastModifiedTime,Author,Editor,EditorOWSUSER';
@@ -848,7 +868,7 @@ export async function sharepointSearch(base: string, opts: SharepointSearchOptio
     `&rowlimit=${rowlimit}` +
     `&selectproperties='${encodeURIComponent(props)}'` +
     `&clienttype='ContentSearchRegular'`;
-  if (opts.sortBy === 'modified') {
+  if (f.orderBy === 'date') {
     url += `&sortlist='${encodeURIComponent('LastModifiedTime:descending')}'`;
   }
 
@@ -859,27 +879,28 @@ export async function sharepointSearch(base: string, opts: SharepointSearchOptio
       headers: { Accept: 'application/json;odata=nometadata' },
     });
   } catch (err) {
-    return JSON.stringify({ error: `Could not reach SharePoint at ${base}: ${String(err)}` });
+    return { error: `Could not reach SharePoint at ${base}: ${String(err)}` };
   }
   if (!res.ok) {
-    return JSON.stringify({
+    return {
       error: `SharePoint search failed (HTTP ${res.status}). Make sure you are signed into ${base} in this browser, and that the base URL is correct.`,
-    });
+    };
   }
   let data: unknown;
   try {
     data = await res.json();
   } catch {
-    return JSON.stringify({ error: 'SharePoint returned a non-JSON response (are you signed in?).' });
+    return { error: 'SharePoint returned a non-JSON response (are you signed in?).' };
   }
   const rows =
     (data as { PrimaryQueryResult?: { RelevantResults?: { Table?: { Rows?: Array<{ Cells?: Array<{ Key: string; Value: string }> }> } } } })
       ?.PrimaryQueryResult?.RelevantResults?.Table?.Rows ?? [];
-  const results = rows
-    .map((row) => {
+  const results: FileResult[] = rows
+    .map((row): FileResult => {
       const c: Record<string, string> = {};
       for (const cell of row.Cells ?? []) c[cell.Key] = cell.Value;
       return {
+        source: 'file',
         title: c.Title || c.Path || '(untitled)',
         url: c.Path,
         snippet: cleanSummary(c.HitHighlightedSummary),
@@ -890,14 +911,140 @@ export async function sharepointSearch(base: string, opts: SharepointSearchOptio
       };
     })
     .filter((r) => r.url);
+  return { results };
+}
+
+/** Legacy `sharepoint_search` tool — thin wrapper over `fileSearch`. */
+export async function sharepointSearch(base: string, opts: SharepointSearchOptions): Promise<string> {
+  const out = await fileSearch(base, {
+    query: opts.query,
+    top: opts.top,
+    editedByMe: opts.editedByMe,
+    orderBy: opts.sortBy === 'modified' ? 'date' : 'relevance',
+  });
+  if ('error' in out) return JSON.stringify({ error: out.error });
   return JSON.stringify({
     base,
-    query: queryText,
     sortBy: opts.sortBy ?? 'relevance',
     editedByMe: Boolean(opts.editedByMe),
-    count: results.length,
-    results,
+    count: out.results.length,
+    results: out.results,
   });
+}
+
+/**
+ * Mail search over Outlook-on-the-web's own FindItem endpoint, authenticated by the
+ * session cookie + the `X-OWA-CANARY` anti-CSRF token (read via the `cookies`
+ * permission). Undocumented and best-effort — on any failure it returns a clear error
+ * telling the caller to fall back to the `/search-mail` skill (which drives the UI).
+ */
+export async function outlookMailSearch(
+  outlookBase: string,
+  f: M365SearchFilters,
+): Promise<{ results: MailResult[] } | { error: string }> {
+  const base = outlookBase.replace(/\/+$/, '');
+  let canary: string | undefined;
+  try {
+    const cookie = await chrome.cookies.get({ url: base, name: 'X-OWA-CANARY' });
+    canary = cookie?.value ?? undefined;
+  } catch {
+    // cookies permission missing or cookie unreadable
+  }
+  if (!canary) {
+    return {
+      error: `Could not read your Outlook session (no X-OWA-CANARY cookie at ${base}). Open Outlook on the web and sign in, then retry — or use the /search-mail skill.`,
+    };
+  }
+
+  const max = clampTop(f.top);
+  const queryString = buildMailQuery(f);
+  const body = {
+    __type: 'FindItemJsonRequest:#Exchange',
+    Header: { __type: 'JsonRequestHeaders:#Exchange', RequestServerVersion: 'Exchange2013' },
+    Body: {
+      __type: 'FindItemRequest:#Exchange',
+      ItemShape: {
+        __type: 'ItemResponseShape:#Exchange',
+        BaseShape: 'IdOnly',
+        AdditionalProperties: [
+          { __type: 'PropertyUri:#Exchange', FieldURI: 'Subject' },
+          { __type: 'PropertyUri:#Exchange', FieldURI: 'DateTimeReceived' },
+          { __type: 'PropertyUri:#Exchange', FieldURI: 'From' },
+          { __type: 'PropertyUri:#Exchange', FieldURI: 'Preview' },
+        ],
+      },
+      ParentFolderIds: [{ __type: 'DistinguishedFolderId:#Exchange', Id: 'inbox' }],
+      Traversal: 'Shallow',
+      Paging: {
+        __type: 'IndexedPageView:#Exchange',
+        BasePoint: 'Beginning',
+        Offset: 0,
+        MaxEntriesReturned: max,
+      },
+      SortOrder: [
+        {
+          __type: 'SortResults:#Exchange',
+          Order: 'Descending',
+          Path: { __type: 'PropertyUri:#Exchange', FieldURI: 'DateTimeReceived' },
+        },
+      ],
+      ...(queryString ? { QueryString: queryString } : {}),
+    },
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(`${base}/owa/service.svc?action=FindItem&app=Mail`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        Accept: 'application/json',
+        Action: 'FindItem',
+        'X-OWA-CANARY': canary,
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    return { error: `Could not reach Outlook at ${base}: ${String(err)}. Use the /search-mail skill instead.` };
+  }
+  if (!res.ok) {
+    return {
+      error: `Outlook mail search failed (HTTP ${res.status}). The Outlook web endpoint may have changed — use the /search-mail skill instead.`,
+    };
+  }
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    return { error: 'Outlook returned a non-JSON response. Use the /search-mail skill instead.' };
+  }
+
+  // Defensive: the OWA response shape is undocumented and may vary.
+  const items =
+    (data as { Body?: { ResponseMessages?: { Items?: Array<{ RootFolder?: { Items?: unknown[] } }> } } })
+      ?.Body?.ResponseMessages?.Items?.[0]?.RootFolder?.Items ?? [];
+  const results: MailResult[] = (Array.isArray(items) ? items : []).map((raw): MailResult => {
+    const it = raw as {
+      Subject?: string;
+      DateTimeReceived?: string;
+      Preview?: string;
+      From?: { Mailbox?: { Name?: string; EmailAddress?: string } };
+      ItemId?: { Id?: string };
+    };
+    return {
+      source: 'mail',
+      subject: it.Subject || '(no subject)',
+      from: it.From?.Mailbox?.Name || it.From?.Mailbox?.EmailAddress || undefined,
+      received: it.DateTimeReceived || undefined,
+      preview: typeof it.Preview === 'string' ? it.Preview.trim() : undefined,
+      url: it.ItemId?.Id
+        ? `${base}/?ItemID=${encodeURIComponent(it.ItemId.Id)}&exvsurl=1&viewmodel=ReadMessageItem`
+        : `${base}/mail/`,
+    };
+  });
+  return { results };
 }
 
 export async function detectAuthState(tabId: number): Promise<AuthState> {

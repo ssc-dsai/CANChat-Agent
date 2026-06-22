@@ -459,7 +459,8 @@ Open **Settings** (gear icon). Settings are split into five tabs.
 | **Embedding endpoint URL / API key** | *(use main)* | Optional separate host/key for embeddings. | Use to split RAG onto a different service. |
 | **Transcription model** | *(unset)* | Speech-to-text model for **voice prompts** (`/audio/transcriptions`). | Set (e.g. a Whisper-style model) to enable the mic. |
 | **Transcription endpoint URL / API key** | *(use main)* | Optional separate host/key for transcription. | Use to split voice onto a different service. |
-| **SharePoint base URL** | *(empty)* | Your SharePoint root (e.g. `https://contoso.sharepoint.com`) for the built-in SharePoint search. | Set if you want the agent to search your SharePoint using your signed-in session. |
+| **SharePoint base URL** | *(empty)* | Your SharePoint root (e.g. `https://contoso.sharepoint.com`) for searching SharePoint/OneDrive files. | Set if you want the agent to search your files using your signed-in session. |
+| **Outlook web base URL** | *(empty → `https://outlook.office.com`)* | Outlook-on-the-web root for searching your **mail** in `microsoft365_search`. | Set only if your Outlook web address differs (e.g. `outlook.office365.com`). |
 | **Custom instructions** | *(empty)* | Extra guidance appended to the agent's built-in instructions (tone, defaults, house style). | Optional. Keep it short and general. |
 
 **Test connection** and **Save** appear on the Model and Advanced tabs. Settings
@@ -491,7 +492,11 @@ Three collapsible sections (collapsed by default — click to expand):
 - **Memory** — toggle **"Remember things about me (stored only on this device)."**
   When on, the agent saves durable facts about you (work, projects, preferences)
   to tailor answers; **Add memory**, import/export, and **Clear all** are here.
-  Capacity is 100 entries; secrets are never saved.
+  Capacity is 100 entries; secrets are never saved. **Probe environment** (shown
+  only when memory is on) fills memory with what the extension can detect about you
+  — your Microsoft 365 name / work email / sign-in (AD) username from the signed-in
+  session, the work systems you currently have open, and your locale/timezone. It
+  runs entirely on-device and adds only new facts.
 - **Backup & Restore** — export everything to one JSON file and restore it later
   or on another machine. Options: **Include API key** (warned — plain text) and
   **Include conversations** (warned). Restore overwrites current settings, hints,
@@ -526,6 +531,12 @@ Each is a request you type into the composer; the agent handles the steps.
 >   source links, and author/modified details. *Why manual:* requires a real
 >   signed-in SharePoint/Microsoft 365 session. *Suggested file:*
 >   `docs/user-guide/screenshots/08-sharepoint-results.png`.
+> - **Microsoft 365 unified search.** With a signed-in M365 session, "my last five
+>   emails from Brian Ray" or "the last Word file I edited on my SharePoint site"
+>   are answered by the `microsoft365_search` tool (mail via Outlook on the web,
+>   files via SharePoint/OneDrive) — no setup or token. *Why manual:* needs a live
+>   session; the mail side uses Outlook's web endpoint and is best-effort, falling
+>   back to the `/search-mail` skill.
 > - **A live MCP tool call.** After registering an MCP server under Known sites and
 >   asking the agent to use it, you'll see the tool-discovery step, an **Approve
 >   action?** card for `call_mcp_tool`, and the result. *Why manual:* needs a real
