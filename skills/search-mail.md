@@ -1,31 +1,19 @@
 ---
 name: search-mail
-description: Search Outlook mail precisely — translate the request into mail KQL keywords (from / to / subject / received / hasattachments) and run the search in the signed-in Outlook web app.
+description: Search your Outlook mail via the microsoft365_search tool (REST over the signed-in session) — filter by sender, time, and keywords; falls back to the Outlook web UI if the endpoint errors.
 ---
 
-Goal: turn a plain-language email request into a precise keyword query, then run it.
+Goal: answer an email question using the **`microsoft365_search`** tool, which calls Outlook-on-the-web's REST endpoint over your signed-in session and returns messages directly (no setup or token).
 
-**First choice:** call the **`microsoft365_search`** tool with `{source:'mail', from, query, since/until, orderBy:'date', top}` — it searches your mailbox over the signed-in session and returns messages directly. Only fall back to driving the Outlook web UI (the steps below) if that tool returns a `mailError`.
+**Step 1 — Call `microsoft365_search` with `source:'mail'`** and map the request to its parameters:
 
-The keyword syntax below is exactly what Microsoft Graph mail search (`/me/messages?$search='…'`) uses as KQL, and it is also what the Outlook web search box accepts — so the same translated query works in both. (This skill executes over the signed-in Outlook web UI; there is no Graph bearer-token call.)
+- sender → `from` (name or email, e.g. `"Brian Ray"`)
+- topic words → `query` (matches subject + body)
+- a date window → `since` / `until` (`YYYY-MM-DD`)
+- "latest" / "most recent" / "last N" → `orderBy:'date'` and `top:N` (e.g. `top:5` for "last five")
 
-**Step 1 — Extract the intent and map each part to a keyword:**
+**Step 2 — Read the response:** messages are under `mail` (or `mailError` if it failed). Each is `{subject, from, received, url, preview}`.
 
-- Sender → `from:"Jane Doe"` or `from:jane@contoso.com`.
-- Recipient → `to:jane@contoso.com` (or `cc:`, `participants:` for anyone on the thread).
-- Words in the subject → `subject:"quarterly budget"`.
-- Words anywhere in the body → `body:"renewal"` (or just bare terms for subject+body).
-- Date / recency → `received:today`, `received:"this week"`, or `received>=2024-01-01` (and/or `received<2024-02-01`).
-- Attachments → `hasattachments:yes` (Graph `$filter` equivalent: `hasAttachments eq true`).
-- Unread / flagged / importance → `isread:no`, `isflagged:yes`, `importance:high`.
-- An exact phrase → wrap in quotes. Combine clauses with `AND` / `OR` / `NOT` and parentheses.
+**Step 3 — Present each match** as: **Subject** — sender, date; one-line preview, linked to its `url`. End with a "Source tabs:" list of the message URLs. Never invent messages. If results are thin, loosen the query once (drop the tightest filter) and retry.
 
-Example: `from:finance subject:"Q3 budget" hasattachments:yes received>=2024-01-01`.
-
-**Step 2 — Make sure Outlook is open and signed in:** if no `outlook.office.com` (work) or `outlook.live.com` (personal) tab is open, open one (e.g. `https://outlook.office.com/mail/`). If a login wall appears, the task pauses for the user to sign in, then resumes. If an `outlook-owa` / `outlook-live` playbook is active, follow it for the app mechanics.
-
-**Step 3 — Run the search in the OWA search box:** focus it (`press_keys "/"` often focuses it, else `fill_input` the search field), enter the translated query, then `press_keys "Enter"`. These actions are approval-gated — give a clear reason like "search your mailbox for X".
-
-**Step 4 — Read the result list** with `get_tab_content` (or `read_app_content` for the virtualized list). If a hit needs detail, open it (ArrowDown/Enter) and read the reading pane.
-
-**Step 5 — Present each match** as: **Subject** — sender, date, unread/attachment flags; one-line snippet. Link to the message when a URL is available. Never invent messages that were not in the results. If results are thin, loosen the query once (drop the tightest clause or widen a quoted phrase) and retry.
+**Fallback — ONLY if the response has a `mailError`** (the Outlook web endpoint is undocumented and can change): drive the Outlook web UI instead. Open `https://outlook.office.com/mail/` (the task pauses for sign-in if a login wall appears; if an `outlook-owa` / `outlook-live` playbook is active, follow it). Focus the search box (`press_keys "/"`, else `fill_input` it), type a keyword query (e.g. `from:"Brian Ray" received>=2024-01-01`), `press_keys "Enter"`, then read the list with `get_tab_content`. These page actions are approval-gated — give a clear reason like "search your mailbox for X".
