@@ -3,6 +3,7 @@
 // so it uses the async OPFS API (no sync access handles, which are Worker-only).
 
 import type { ExportedRepo } from '../shared/messages';
+import { hybridSearch } from '../shared/hybridSearch';
 import { normalizeVector, quantizeVector, searchVectors, type SearchHit } from '../shared/vectorSearch';
 
 interface DocMeta {
@@ -12,6 +13,19 @@ interface DocMeta {
   capturedAt: string;
   chunkStart: number;
   chunkCount: number;
+  /** Folder repos: the file's path relative to the indexed root (incremental-sync key). */
+  path?: string;
+  /** Folder repos: source file last-modified epoch ms — paired with `size` to detect changes. */
+  mtime?: number;
+  /** Folder repos: source file size in bytes. */
+  size?: number;
+}
+
+/** Extra per-document metadata threaded through from folder ingestion. */
+export interface DocExtra {
+  path?: string;
+  mtime?: number;
+  size?: number;
 }
 
 interface RepoMeta {
@@ -21,6 +35,10 @@ interface RepoMeta {
   perDimScale: number[]; // calibration, fixed from the first batch
   docs: DocMeta[];
   chunkCount: number;
+  /** `'page'` (tabs/uploads, default) or `'folder'` (a recursively-indexed local directory). */
+  kind?: 'page' | 'folder' | 'mail';
+  /** Embedder identity (e.g. `local:Xenova/all-MiniLM-L6-v2`) the vectors were built with. */
+  embedModel?: string;
 }
 
 interface ChunkRec {
@@ -86,6 +104,7 @@ export async function repoAdd(
   doc: { name: string; url: string },
   chunks: string[],
   vectors: number[][],
+  opts: { embedModel?: string; kind?: 'page' | 'folder' | 'mail'; docExtra?: DocExtra } = {},
 ): Promise<{ docId: string; chunkCount: number }> {
   if (chunks.length === 0 || vectors.length !== chunks.length) {
     throw new Error('repoAdd: chunk/vector count mismatch.');
@@ -99,6 +118,17 @@ export async function repoAdd(
     docs: [],
     chunkCount: 0,
   });
+  // Model lock: vectors from different embedders aren't comparable. Stamp the
+  // model on first write; refuse a later add from a different one (re-index).
+  if (opts.embedModel) {
+    if (!meta.embedModel || meta.chunkCount === 0) meta.embedModel = opts.embedModel;
+    else if (meta.embedModel !== opts.embedModel) {
+      throw new Error(
+        `Repo "${repo}" was built with embedder "${meta.embedModel}" but this add uses "${opts.embedModel}". Re-index the repo to switch embedders.`,
+      );
+    }
+  }
+  if (opts.kind && (!meta.kind || meta.chunkCount === 0)) meta.kind = opts.kind;
   const normed = vectors.map(normalizeVector);
   if (meta.dim === 0) {
     meta.dim = normed[0].length;
@@ -126,6 +156,9 @@ export async function repoAdd(
     capturedAt: new Date().toISOString(),
     chunkStart: meta.chunkCount,
     chunkCount: chunks.length,
+    ...(opts.docExtra?.path !== undefined ? { path: opts.docExtra.path } : {}),
+    ...(opts.docExtra?.mtime !== undefined ? { mtime: opts.docExtra.mtime } : {}),
+    ...(opts.docExtra?.size !== undefined ? { size: opts.docExtra.size } : {}),
   });
   meta.chunkCount += chunks.length;
   await writeJson(dir, 'meta.json', meta);
@@ -136,33 +169,53 @@ export async function repoSearch(
   repo: string,
   queryVector: number[],
   k: number,
+  embedModel?: string,
+  opts: { query?: string; hybrid?: boolean } = {},
 ): Promise<{ results: SearchHit[] }> {
   const dir = await repoDir(repo);
   const meta = await readJson<RepoMeta | null>(dir, 'meta.json', null);
   if (!meta || meta.chunkCount === 0) return { results: [] };
+  // Model lock: a query embedded by a different model can't be compared to the
+  // stored vectors. Fail loudly so the caller re-indexes rather than returning junk.
+  if (embedModel && meta.embedModel && meta.embedModel !== embedModel) {
+    throw new Error(
+      `Repo "${repo}" was built with embedder "${meta.embedModel}" but the query used "${embedModel}". Re-index the repo (or switch the embedder back) to search it.`,
+    );
+  }
   const vectors = await readVectors(dir);
   const chunks = await readJson<ChunkRec[]>(dir, 'chunks.json', []);
-  return {
-    results: searchVectors({
-      dim: meta.dim,
-      perDimScale: meta.perDimScale,
-      chunkCount: meta.chunkCount,
-      vectors,
-      chunks,
-      queryVector,
-      k,
-    }),
+  const base = {
+    dim: meta.dim,
+    perDimScale: meta.perDimScale,
+    chunkCount: meta.chunkCount,
+    vectors,
+    chunks,
+    queryVector,
+    k,
   };
+  // Hybrid (semantic + BM25, RRF-fused) when enabled and the raw query is known;
+  // otherwise pure semantic. The query text is only present on the hybrid path.
+  const results =
+    opts.hybrid && opts.query ? hybridSearch({ ...base, query: opts.query }) : searchVectors(base);
+  return { results };
 }
 
-export async function repoList(): Promise<Array<{ name: string; docs: number; chunks: number }>> {
-  const out: Array<{ name: string; docs: number; chunks: number }> = [];
+export async function repoList(): Promise<
+  Array<{ name: string; docs: number; chunks: number; kind?: 'page' | 'folder' | 'mail'; embedModel?: string }>
+> {
+  const out: Array<{ name: string; docs: number; chunks: number; kind?: 'page' | 'folder' | 'mail'; embedModel?: string }> = [];
   const dir = await reposDir();
   // @ts-expect-error - entries() exists on FileSystemDirectoryHandle in Chrome
   for await (const [name, handle] of dir.entries()) {
     if (handle.kind !== 'directory') continue;
     const meta = await readJson<RepoMeta | null>(handle as FileSystemDirectoryHandle, 'meta.json', null);
-    out.push({ name, docs: meta?.docs.length ?? 0, chunks: meta?.chunkCount ?? 0 });
+    out.push({
+      name,
+      docs: meta?.docs.length ?? 0,
+      chunks: meta?.chunkCount ?? 0,
+      kind: meta?.kind,
+      embedModel: meta?.embedModel,
+    });
   }
   return out;
 }
@@ -268,10 +321,12 @@ export async function repoDeleteDoc(repo: string, docId: string): Promise<{ remo
     cursor += d.chunkCount;
   }
   meta.chunkCount = cursor;
-  // Emptied repo: reset calibration so a later add can recalibrate (e.g. new model).
+  // Emptied repo: reset calibration + model lock so a later add can recalibrate
+  // (e.g. re-indexing with a different embedder).
   if (meta.chunkCount === 0) {
     meta.dim = 0;
     meta.perDimScale = [];
+    meta.embedModel = undefined;
   }
   await writeJson(dir, 'meta.json', meta);
   return { removed: doc.chunkCount, chunkCount: meta.chunkCount };

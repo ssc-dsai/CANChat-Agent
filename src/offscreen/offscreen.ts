@@ -17,6 +17,8 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type {
   DuckDbRequest,
   DuckDbResponse,
+  EmbedLocalRequest,
+  EmbedLocalResponse,
   ExtractOfficeRequest,
   ExtractOfficeResponse,
   ExtractPdfRequest,
@@ -356,9 +358,22 @@ async function handleRepo(req: RepoRequest): Promise<RepoResponse> {
   try {
     switch (req.op) {
       case 'add':
-        return { ok: true, result: await repoAdd(req.repo, req.doc, req.chunks, req.vectors) };
+        return {
+          ok: true,
+          result: await repoAdd(req.repo, req.doc, req.chunks, req.vectors, {
+            embedModel: req.embedModel,
+            kind: req.kind,
+            docExtra: req.docExtra,
+          }),
+        };
       case 'search':
-        return { ok: true, result: await repoSearch(req.repo, req.queryVector, req.k) };
+        return {
+          ok: true,
+          result: await repoSearch(req.repo, req.queryVector, req.k, req.embedModel, {
+            query: req.query,
+            hybrid: req.hybrid,
+          }),
+        };
       case 'list':
         return { ok: true, result: await repoList() };
       case 'delete':
@@ -381,6 +396,22 @@ async function handleRepo(req: RepoRequest): Promise<RepoResponse> {
 chrome.runtime.onMessage.addListener((message: RepoRequest, _sender, sendResponse) => {
   if (message?.target !== 'offscreen-repo') return undefined;
   handleRepo(message).then(sendResponse);
+  return true; // async response
+});
+
+// On-device embeddings (transformers.js). Dynamic import keeps the model runtime
+// out of the offscreen bundle's startup path — it only loads when first used.
+chrome.runtime.onMessage.addListener((message: EmbedLocalRequest, _sender, sendResponse) => {
+  if (message?.target !== 'offscreen' || message.type !== 'embed_local') return undefined;
+  (async () => {
+    try {
+      const { embedTextsLocal, DEFAULT_LOCAL_MODEL } = await import('./localEmbed');
+      const { vectors, model } = await embedTextsLocal(message.texts, message.model || DEFAULT_LOCAL_MODEL);
+      sendResponse({ ok: true, vectors, model } satisfies EmbedLocalResponse);
+    } catch (e) {
+      sendResponse({ ok: false, error: String(e) } satisfies EmbedLocalResponse);
+    }
+  })();
   return true; // async response
 });
 

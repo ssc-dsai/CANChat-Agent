@@ -12,7 +12,7 @@ import { chunkText } from '../shared/repoChunk';
 import type { Settings } from '../shared/types';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
-import { complete, embed, type ContentPart } from './llmProvider';
+import { complete, embedChunks, embedderId, type ContentPart } from './llmProvider';
 import { extractOffice, extractPdf, repoAdd } from './offscreenClient';
 
 /** Heuristic: does this URL point at a PDF the pdf.js path can extract? */
@@ -112,16 +112,21 @@ export async function storeText(
   name: string,
   url: string,
   text: string,
+  opts: { kind?: 'page' | 'folder' | 'mail'; docExtra?: { path?: string; mtime?: number; size?: number } } = {},
 ): Promise<IngestResult> {
   const chunks = chunkText(text);
   if (chunks.length === 0) return { ok: false, error: 'No chunks produced.' };
   let vectors: number[][];
   try {
-    vectors = await embed(settings, chunks);
+    vectors = await embedChunks(settings, chunks);
   } catch (e) {
     return { ok: false, error: String(e) };
   }
-  const res = await repoAdd(repo, { name, url }, chunks, vectors);
+  const res = await repoAdd(repo, { name, url }, chunks, vectors, {
+    embedModel: embedderId(settings),
+    kind: opts.kind,
+    docExtra: opts.docExtra,
+  });
   if (!res.ok) return { ok: false, error: res.error };
   return { ok: true, chunks: chunks.length };
 }
@@ -134,7 +139,8 @@ export async function storeText(
 export async function ingestFile(
   settings: Settings,
   repo: string,
-  file: { name: string; kind: 'text' | 'pdf' | 'office'; text?: string; dataUrl?: string },
+  file: { name: string; kind: 'text' | 'pdf' | 'office'; text?: string; dataUrl?: string; path?: string; mtime?: number; size?: number },
+  repoKind: 'page' | 'folder' | 'mail' = 'page',
 ): Promise<IngestResult> {
   let text = (file.text ?? '').trim();
   try {
@@ -151,5 +157,13 @@ export async function ingestFile(
     return { ok: false, error: String(e) };
   }
   if (text.length < 1) return { ok: false, error: 'No extractable text in the file.' };
-  return storeText(settings, repo, file.name, `file:///${file.name}`, text);
+  // Folder docs keep their relative path as both the display name and url so the
+  // agent can cite the file, and as the incremental-sync key in DocMeta.
+  const path = file.path;
+  const name = path || file.name;
+  const url = `file:///${path || file.name}`;
+  return storeText(settings, repo, name, url, text, {
+    kind: repoKind,
+    docExtra: { path, mtime: file.mtime, size: file.size },
+  });
 }

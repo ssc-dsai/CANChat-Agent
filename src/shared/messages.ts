@@ -106,7 +106,12 @@ export type RuntimeRequest =
   | { type: 'repo_doc_delete'; repo: string; docId: string }
   | { type: 'repo_export' }
   | { type: 'repo_import'; repos: ExportedRepo[] }
-  | { type: 'add_files_to_repo'; repo: string; files: UploadFile[] }
+  | { type: 'add_files_to_repo'; repo: string; files: UploadFile[]; kind?: 'page' | 'folder' | 'mail' }
+  // Connect (if needed) and index the user's Office 365 mailbox into a repo via
+  // Microsoft Graph; incremental on repeat. Handled in the service worker.
+  | { type: 'index_mailbox'; repo: string }
+  | { type: 'mailbox_connected' }
+  | { type: 'mailbox_disconnect' }
   | { type: 'open_data_files'; files: DataFileUpload[] }
   | { type: 'transcribe_audio'; audioDataUrl: string }
   // Probe the signed-in environment (M365 identity, open work systems, locale) to
@@ -124,6 +129,12 @@ export interface UploadFile {
   text?: string;
   /** Set for `kind:'pdf'|'office'` — a base64 data URL the offscreen extractor fetches. */
   dataUrl?: string;
+  /** Folder ingestion: path relative to the indexed root (incremental-sync key). */
+  path?: string;
+  /** Folder ingestion: source file last-modified epoch ms. */
+  mtime?: number;
+  /** Folder ingestion: source file size in bytes. */
+  size?: number;
 }
 
 /** One picked data file on its way into the DuckDB engine (base64 bytes). */
@@ -196,6 +207,10 @@ export interface RepoInfo {
   name: string;
   docs: number;
   chunks: number;
+  /** `'folder'` for a locally-indexed directory, else page/tab captures. */
+  kind?: 'page' | 'folder' | 'mail';
+  /** Embedder the vectors were built with (e.g. `local:Xenova/all-MiniLM-L6-v2`). */
+  embedModel?: string;
 }
 
 export interface RepoDoc {
@@ -204,6 +219,12 @@ export interface RepoDoc {
   url: string;
   capturedAt: string;
   chunkCount: number;
+  /** Folder repos: path relative to the indexed root. */
+  path?: string;
+  /** Folder repos: source file last-modified epoch ms. */
+  mtime?: number;
+  /** Folder repos: source file size in bytes. */
+  size?: number;
 }
 
 /** Request to the offscreen document to parse a PDF (separate sendMessage channel). */
@@ -240,6 +261,28 @@ export interface ExtractOfficeResponse {
   truncated?: boolean;
   /** Full extracted length before any maxChars slice. */
   charCount?: number;
+  error?: string;
+}
+
+/**
+ * Embed text on-device with the offscreen document's transformers.js model. The
+ * offscreen page has the DOM/WASM context the service worker lacks; this keeps
+ * the local-RAG embedding path fully on the machine (no /embeddings egress).
+ */
+export interface EmbedLocalRequest {
+  target: 'offscreen';
+  type: 'embed_local';
+  texts: string[];
+  /** transformers.js model id; absent = the offscreen default. */
+  model?: string;
+}
+
+export interface EmbedLocalResponse {
+  ok: boolean;
+  /** One vector per input text (row-aligned). */
+  vectors?: number[][];
+  /** The model id actually used (for the repo model-lock stamp). */
+  model?: string;
   error?: string;
 }
 
@@ -286,8 +329,29 @@ export interface ExportedRepo {
 }
 
 export type RepoRequest =
-  | { target: 'offscreen-repo'; op: 'add'; repo: string; doc: { name: string; url: string }; chunks: string[]; vectors: number[][] }
-  | { target: 'offscreen-repo'; op: 'search'; repo: string; queryVector: number[]; k: number }
+  | {
+      target: 'offscreen-repo';
+      op: 'add';
+      repo: string;
+      doc: { name: string; url: string };
+      chunks: string[];
+      vectors: number[][];
+      embedModel?: string;
+      kind?: 'page' | 'folder' | 'mail';
+      docExtra?: { path?: string; mtime?: number; size?: number };
+    }
+  | {
+      target: 'offscreen-repo';
+      op: 'search';
+      repo: string;
+      queryVector: number[];
+      k: number;
+      embedModel?: string;
+      /** Raw query text, for the lexical (BM25) half of hybrid search. */
+      query?: string;
+      /** Fuse semantic + keyword (RRF). When false/absent, pure semantic. */
+      hybrid?: boolean;
+    }
   | { target: 'offscreen-repo'; op: 'list' }
   | { target: 'offscreen-repo'; op: 'delete'; repo: string }
   | { target: 'offscreen-repo'; op: 'docs'; repo: string }

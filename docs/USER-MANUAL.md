@@ -357,9 +357,24 @@ knowledge base for …". **Manage** them under **Settings → Knowledge bases**
 (see documents, chunk counts, and delete).
 
 > Everything is stored **on your device** (in the browser's private file storage,
-> OPFS). To make pages searchable, their text is sent to your configured
-> **embeddings** endpoint to compute search vectors — see
-> [Privacy](#8-privacy-and-security).
+> OPFS). By default, text is turned into search vectors by an **on-device** model
+> (no network) — see [Embeddings](#settings--advanced) to switch to an external
+> endpoint, and [Privacy](#8-privacy-and-security).
+
+**Index a local folder.** In **Settings → Knowledge bases**, **drag a folder from
+Finder/Explorer onto the drop box**. Its files and subfolders (text, Markdown, PDF,
+Word/PowerPoint/Excel) are read, embedded **on your device**, and made searchable.
+Drag the same folder again later to re-index only what changed. (Folder indexing uses
+drag-and-drop on purpose — the OS "choose folder" dialog crashes on some Chrome/macOS
+builds.)
+
+**Index your Office 365 mailbox.** One-time setup with your IT/Azure admin: register
+an Azure AD app with the **`Mail.Read`** permission (admin consent is usually required),
+set its redirect URI to `https://<extension-id>.chromiumapp.org/`, and paste its
+**Client ID** into **Settings → Advanced**. Then, in **Knowledge bases**, click
+**Connect & index mailbox** → approve the Microsoft sign-in → your mail is pulled in via
+Microsoft Graph and embedded on-device. Re-run later to add only new messages. (A whole
+mailbox can take a while on the first pass.)
 
 ### 5.8 Documents in and out
 

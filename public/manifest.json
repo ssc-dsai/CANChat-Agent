@@ -16,7 +16,8 @@
     "tabGroups",
     "unlimitedStorage",
     "downloads",
-    "cookies"
+    "cookies",
+    "identity"
   ],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
@@ -53,5 +54,10 @@
       "128": "icons/icon128.png"
     }
   },
-  "web_accessible_resources": []
+  "web_accessible_resources": [
+    {
+      "resources": ["models/*", "ort/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

@@ -134,6 +134,13 @@ export interface MemoryEntry {
   updatedAt: string;
 }
 
+/**
+ * Default on-device embedding model (transformers.js): 384-d MiniLM, ~23 MB
+ * int8. Declared here (dependency-free) so the service worker can derive the
+ * embedder identity without importing the transformers runtime.
+ */
+export const DEFAULT_LOCAL_EMBED_MODEL = 'Xenova/all-MiniLM-L6-v2';
+
 export interface Settings {
   baseUrl: string;
   apiKey: string;
@@ -149,6 +156,13 @@ export interface Settings {
   maxTokens?: number;
   /** Default number of passages a repository search returns (search_repo k). Absent = 6. */
   repoSearchK?: number;
+  /**
+   * Hybrid retrieval for repository search: fuse dense semantic ranking with a
+   * BM25 keyword ranking (Reciprocal Rank Fusion) so exact tokens — IDs, codes,
+   * surnames — surface alongside semantic matches. Default **on**; set to
+   * `false` for pure semantic search. No re-indexing needed either way.
+   */
+  hybridSearch?: boolean;
   /**
    * Max tool-iteration steps per task (the soft budget). Absent = 20. The plan
    * extension and hard ceiling scale from it: extension = round(maxSteps/2),
@@ -167,7 +181,26 @@ export interface Settings {
    * library polls this to offer one-click installs of remote skills.
    */
   playbookIndexUrl?: string;
-  /** Optional separate model id for the /embeddings route (local RAG). */
+  /**
+   * Which embedder produces RAG vectors. `'local'` (default) runs a small
+   * transformers.js model on-device in the offscreen document — nothing leaves
+   * the machine. `'external'` POSTs chunk text to the configured /embeddings
+   * endpoint. Switching this invalidates existing repos (different model ⇒
+   * incompatible vectors), so a repo records the model it was built with and
+   * refuses cross-model queries until re-indexed.
+   */
+  embedder?: 'local' | 'external';
+  /** transformers.js model id for the local embedder. Absent = the bundled default. */
+  localEmbedModel?: string;
+  /**
+   * Azure AD app **client ID** for the mailbox indexer's Microsoft Graph OAuth
+   * (auth-code + PKCE). The app needs the `Mail.Read` delegated permission and,
+   * in most enterprise tenants, admin consent. Absent = mailbox indexing is off.
+   */
+  graphClientId?: string;
+  /** Graph OAuth tenant: `organizations` (default) or a specific tenant id. */
+  graphTenant?: string;
+  /** Optional separate model id for the /embeddings route (external RAG). */
   embeddingModel?: string;
   /** Optional separate endpoint base URL for embeddings; blank = use baseUrl. */
   embeddingBaseUrl?: string;

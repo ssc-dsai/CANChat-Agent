@@ -1,4 +1,5 @@
-import type { Settings } from '../shared/types';
+import { DEFAULT_LOCAL_EMBED_MODEL, type Settings } from '../shared/types';
+import { embedLocal } from './offscreenClient';
 
 // =============================================================================
 // OpenAI-compatible network adapter — the only module that talks to a model
@@ -193,6 +194,34 @@ export function authHeaders(key: string, version: string | undefined): Record<st
 }
 
 /** Embed a batch of texts via the configured OpenAI-compatible /embeddings route. */
+/**
+ * Stable identity of the embedder a given Settings selects, stamped onto a repo
+ * so we can refuse cross-model queries (vectors from different models aren't
+ * comparable). Form: `local:<model>` or `external:<model>`.
+ */
+export function embedderId(settings: Settings): string {
+  if (settings.embedder === 'external') {
+    return `external:${settings.embeddingModel || settings.model}`;
+  }
+  return `local:${settings.localEmbedModel || DEFAULT_LOCAL_EMBED_MODEL}`;
+}
+
+/**
+ * Embed text for RAG, routing to the on-device transformers.js model (default)
+ * or the configured /embeddings endpoint based on `settings.embedder`. Both the
+ * ingest and query paths go through this so a repo's vectors and its queries use
+ * the same model. Throws on failure (the offscreen embedder or the network).
+ */
+export async function embedChunks(settings: Settings, texts: string[], signal?: AbortSignal): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  if (settings.embedder === 'external') return embed(settings, texts, signal);
+  const res = await embedLocal(texts, settings.localEmbedModel || DEFAULT_LOCAL_EMBED_MODEL);
+  if (!res.ok || !res.vectors) {
+    throw new LlmError(`Local embedder failed: ${res.error ?? 'no vectors returned'}`);
+  }
+  return res.vectors;
+}
+
 export async function embed(settings: Settings, texts: string[], signal?: AbortSignal): Promise<number[][]> {
   if (texts.length === 0) return [];
   const { base, key } = resolve(settings, 'embedding');

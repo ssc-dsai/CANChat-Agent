@@ -90,6 +90,10 @@ export function SettingsScreen({ onClose }: Props) {
       systemPrompt: settings.systemPrompt?.trim() || undefined,
       sharepointBaseUrl: settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       outlookBaseUrl: settings.outlookBaseUrl?.trim().replace(/\/+$/, '') || undefined,
+      embedder: settings.embedder === 'external' ? 'external' : 'local',
+      localEmbedModel: settings.localEmbedModel?.trim() || undefined,
+      graphClientId: settings.graphClientId?.trim() || undefined,
+      graphTenant: settings.graphTenant?.trim() || undefined,
       embeddingModel: settings.embeddingModel?.trim() || undefined,
       embeddingBaseUrl: settings.embeddingBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       embeddingApiKey: settings.embeddingApiKey?.trim() || undefined,
@@ -99,6 +103,7 @@ export function SettingsScreen({ onClose }: Props) {
       retryOnRateLimit: settings.retryOnRateLimit ?? true,
       verifyAnswers: settings.verifyAnswers ?? true,
       summarizeObservations: settings.summarizeObservations ?? true,
+      hybridSearch: settings.hybridSearch ?? true,
     };
     await chrome.storage.local.set({ ba_settings: trimmed });
     setSaved(true);
@@ -251,14 +256,61 @@ export function SettingsScreen({ onClose }: Props) {
 
         <div class="field-row">
           <label class="field">
+            <span>{t('settings.embedder')}</span>
+            <select
+              value={settings.embedder ?? 'local'}
+              onChange={(e) => update({ embedder: (e.target as HTMLSelectElement).value as 'local' | 'external' })}
+            >
+              <option value="local">{t('settings.embedder.local')}</option>
+              <option value="external">{t('settings.embedder.external')}</option>
+            </select>
+          </label>
+          <p class="settings-note">{t('settings.embedder.note')}</p>
+        </div>
+
+        <label class="memory-toggle">
+          <input
+            type="checkbox"
+            checked={settings.hybridSearch ?? true}
+            onChange={(e) => update({ hybridSearch: (e.target as HTMLInputElement).checked })}
+          />
+          <span>{t('settings.hybridSearch')}</span>
+        </label>
+        <p class="settings-note">{t('settings.hybridSearchNote')}</p>
+
+        <div class="field-row">
+          <label class="field">
             <span>{t('settings.embeddingModel')}</span>
             <input
               type="text"
-              placeholder="text-embedding-3-small"
-              value={settings.embeddingModel ?? ''}
-              onInput={(e) => update({ embeddingModel: (e.target as HTMLInputElement).value })}
+              placeholder={settings.embedder === 'external' ? 'text-embedding-3-small' : 'Xenova/all-MiniLM-L6-v2'}
+              value={settings.embedder === 'external' ? (settings.embeddingModel ?? '') : (settings.localEmbedModel ?? '')}
+              onInput={(e) =>
+                settings.embedder === 'external'
+                  ? update({ embeddingModel: (e.target as HTMLInputElement).value })
+                  : update({ localEmbedModel: (e.target as HTMLInputElement).value })
+              }
             />
           </label>
+          <label class="field">
+            <span>{t('settings.graphClientId')}</span>
+            <input
+              type="text"
+              placeholder="00000000-0000-0000-0000-000000000000"
+              value={settings.graphClientId ?? ''}
+              onInput={(e) => update({ graphClientId: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+          <label class="field">
+            <span>{t('settings.graphTenant')}</span>
+            <input
+              type="text"
+              placeholder="organizations"
+              value={settings.graphTenant ?? ''}
+              onInput={(e) => update({ graphTenant: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+          <p class="settings-note">{t('settings.graphNote')}</p>
           <label class="field">
             <span>{t('settings.repoSearchK')}</span>
             <input

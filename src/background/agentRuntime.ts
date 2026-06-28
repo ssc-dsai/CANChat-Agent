@@ -50,7 +50,7 @@ import type { M365SearchFilters } from '../shared/microsoftSearch';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
 import { mapCommand } from './mapClient';
-import { complete, embed, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
+import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { deriveStepBudget, parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
 import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
@@ -1960,11 +1960,17 @@ export class AgentRuntime {
         if (!settings) return 'Error: no model configured.';
         let queryVec: number[][];
         try {
-          queryVec = await embed(settings, [String(args.query)], this.makeSignal());
+          queryVec = await embedChunks(settings, [String(args.query)], this.makeSignal());
         } catch (e) {
           return `Error embedding the query: ${e instanceof Error ? e.message : String(e)}`;
         }
-        const res = await repoSearch(String(args.repo), queryVec[0], Number(args.k) || settings.repoSearchK || 6);
+        const res = await repoSearch(
+          String(args.repo),
+          queryVec[0],
+          Number(args.k) || settings.repoSearchK || 6,
+          embedderId(settings),
+          { query: String(args.query), hybrid: settings.hybridSearch !== false },
+        );
         if (!res.ok) return `Error: ${res.error}`;
         return JSON.stringify(res.result);
       }

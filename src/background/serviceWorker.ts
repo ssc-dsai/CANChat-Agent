@@ -39,6 +39,8 @@ import {
   repoList,
 } from './offscreenClient';
 import { ingestFile } from './repoIngest';
+import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAuth';
+import { indexMailbox } from './mailIngest';
 import { getMemoryEnabled, getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
 import { probeEnvironment } from './envProbe';
 
@@ -198,10 +200,44 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
       }
       const results = [];
       for (const file of request.files) {
-        const res = await ingestFile(settings, request.repo, file);
+        const res = await ingestFile(settings, request.repo, file, request.kind ?? 'page');
         results.push({ name: file.name, ok: res.ok, chunks: res.chunks, error: res.error });
       }
       return { ok: results.some((r) => r.ok), results };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'mailbox_connected') {
+    isMailboxConnected().then((connected) => sendResponse({ connected }));
+    return true;
+  }
+  if (request.type === 'mailbox_disconnect') {
+    disconnectMailbox().then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (request.type === 'index_mailbox') {
+    (async () => {
+      const settings = await getSettings();
+      if (!settings) return { ok: false, error: 'No model configured. Open Settings first.' };
+      if (!settings.graphClientId) return { ok: false, error: 'Set your Azure app Client ID in Settings first.' };
+      try {
+        if (!(await isMailboxConnected())) {
+          await connectMailbox(settings.graphClientId, settings.graphTenant || 'organizations');
+          chrome.runtime.sendMessage({ type: 'mailbox_connected_changed' }).catch(() => {});
+        }
+        // Broadcast progress (throttled) so the panel can show a live status line.
+        let last = 0;
+        const result = await indexMailbox(settings, request.repo, (p) => {
+          const now = Date.now();
+          if (p.phase === 'done' || now - last >= 250) {
+            last = now;
+            chrome.runtime.sendMessage({ type: 'mailbox_progress', progress: p }).catch(() => {});
+          }
+        });
+        return { ok: true, result };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
     })().then(sendResponse);
     return true;
   }
