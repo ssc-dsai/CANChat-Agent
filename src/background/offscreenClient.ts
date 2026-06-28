@@ -9,6 +9,8 @@ import type {
   DuckDbRequest,
   DuckDbResponse,
   DuckDbOp,
+  EmbedLocalRequest,
+  EmbedLocalResponse,
   ExportedRepo,
   ExtractOfficeRequest,
   ExtractOfficeResponse,
@@ -58,7 +60,7 @@ export async function extractPdf(url: string, maxChars?: number): Promise<Extrac
     return { ok: false, error: `Could not start the PDF reader: ${String(e)}` };
   }
   const request: ExtractPdfRequest = { target: 'offscreen', type: 'extract_pdf', url, maxChars };
-  return (await chrome.runtime.sendMessage(request)) as ExtractPdfResponse;
+  return sendOffscreen<ExtractPdfResponse>(request);
 }
 
 export async function generateDocument(
@@ -72,7 +74,7 @@ export async function generateDocument(
     return { ok: false, error: `Could not start the document generator: ${String(e)}` };
   }
   const request: GenerateDocumentRequest = { target: 'offscreen', type: 'generate_document', format, title, markdown };
-  return (await chrome.runtime.sendMessage(request)) as GenerateDocumentResponse;
+  return sendOffscreen<GenerateDocumentResponse>(request);
 }
 
 export async function generatePresentation(
@@ -85,7 +87,64 @@ export async function generatePresentation(
     return { ok: false, error: `Could not start the presentation generator: ${String(e)}` };
   }
   const request: GeneratePresentationRequest = { target: 'offscreen', type: 'generate_presentation', title, slides };
-  return (await chrome.runtime.sendMessage(request)) as GenerateDocumentResponse;
+  return sendOffscreen<GenerateDocumentResponse>(request);
+}
+
+/**
+ * Send a message to the offscreen document. Retries briefly when the listener
+ * isn't attached yet ("Receiving end does not exist") — a common race when the
+ * service worker recreates a cold offscreen document. If all short retries fail
+ * the offscreen doc is probably crashed or was killed by Chrome, so we force-
+ * recreate it and retry once more rather than giving up.
+ */
+async function sendOffscreen<T>(request: unknown): Promise<T | { ok: false; error: string }> {
+  const doSend = async (): Promise<T | { ok: false; error: string }> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return (await chrome.runtime.sendMessage(request)) as T;
+      } catch (e) {
+        if (attempt < 15 && /Receiving end does not exist|establish connection/i.test(String(e))) {
+          await new Promise((r) => setTimeout(r, 100));
+          continue;
+        }
+        return { ok: false, error: String(e) };
+      }
+    }
+  };
+  const res = await doSend();
+  // If the short retry window expired with the doc unresponsive, force-recreate
+  // it and retry exactly once.
+  const maybe = res as unknown as Record<string, unknown>;
+  if (maybe.ok === false && typeof maybe.error === 'string' && /Receiving end does not exist/i.test(maybe.error)) {
+    await closeAndRecreate();
+    return doSend();
+  }
+  return res;
+}
+
+/** Tear down the current offscreen doc and spin up a fresh one. */
+async function closeAndRecreate(): Promise<void> {
+  try {
+    await chrome.offscreen.closeDocument();
+  } catch {
+    // May already be closed — ignore.
+  }
+  creating = null;
+  // Give Chrome's context registry a moment to notice the close so the
+  // subsequent ensureOffscreen check sees no existing document.
+  await new Promise((r) => setTimeout(r, 200));
+  await ensureOffscreen();
+}
+
+/** Embed text on-device with the offscreen transformers.js model (local RAG). */
+export async function embedLocal(texts: string[], model?: string): Promise<EmbedLocalResponse> {
+  try {
+    await ensureOffscreen();
+  } catch (e) {
+    return { ok: false, error: `Could not start the local embedder: ${String(e)}` };
+  }
+  const request: EmbedLocalRequest = { target: 'offscreen', type: 'embed_local', texts, model };
+  return sendOffscreen<EmbedLocalResponse>(request);
 }
 
 export async function extractOffice(url: string, maxChars?: number): Promise<ExtractOfficeResponse> {
@@ -95,7 +154,7 @@ export async function extractOffice(url: string, maxChars?: number): Promise<Ext
     return { ok: false, error: `Could not start the document reader: ${String(e)}` };
   }
   const request: ExtractOfficeRequest = { target: 'offscreen', type: 'extract_office', url, maxChars };
-  return (await chrome.runtime.sendMessage(request)) as ExtractOfficeResponse;
+  return sendOffscreen<ExtractOfficeResponse>(request);
 }
 
 async function repoRequest(req: RepoRequest): Promise<RepoResponse> {
@@ -104,7 +163,7 @@ async function repoRequest(req: RepoRequest): Promise<RepoResponse> {
   } catch (e) {
     return { ok: false, error: `Could not start the repository engine: ${String(e)}` };
   }
-  return (await chrome.runtime.sendMessage(req)) as RepoResponse;
+  return sendOffscreen<RepoResponse>(req);
 }
 
 export function repoAdd(
@@ -112,12 +171,28 @@ export function repoAdd(
   doc: { name: string; url: string },
   chunks: string[],
   vectors: number[][],
+  opts: { embedModel?: string; kind?: 'page' | 'folder' | 'mail'; docExtra?: { path?: string; mtime?: number; size?: number } } = {},
 ): Promise<RepoResponse> {
-  return repoRequest({ target: 'offscreen-repo', op: 'add', repo, doc, chunks, vectors });
+  return repoRequest({ target: 'offscreen-repo', op: 'add', repo, doc, chunks, vectors, ...opts });
 }
 
-export function repoSearch(repo: string, queryVector: number[], k: number): Promise<RepoResponse> {
-  return repoRequest({ target: 'offscreen-repo', op: 'search', repo, queryVector, k });
+export function repoSearch(
+  repo: string,
+  queryVector: number[],
+  k: number,
+  embedModel?: string,
+  opts: { query?: string; hybrid?: boolean } = {},
+): Promise<RepoResponse> {
+  return repoRequest({
+    target: 'offscreen-repo',
+    op: 'search',
+    repo,
+    queryVector,
+    k,
+    embedModel,
+    query: opts.query,
+    hybrid: opts.hybrid,
+  });
 }
 
 export function repoList(): Promise<RepoResponse> {
@@ -157,17 +232,26 @@ async function sendDuckDb(request: DuckDbRequest): Promise<DuckDbResponse> {
   } catch (e) {
     return { ok: false, error: `Could not start the data engine: ${String(e)}` };
   }
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return (await chrome.runtime.sendMessage(request)) as DuckDbResponse;
-    } catch (e) {
-      if (attempt < 10 && /Receiving end does not exist|establish connection/i.test(String(e))) {
-        await new Promise((r) => setTimeout(r, 100));
-        continue;
+  const doSend = async (): Promise<DuckDbResponse> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return (await chrome.runtime.sendMessage(request)) as DuckDbResponse;
+      } catch (e) {
+        if (attempt < 10 && /Receiving end does not exist|establish connection/i.test(String(e))) {
+          await new Promise((r) => setTimeout(r, 100));
+          continue;
+        }
+        return { ok: false, error: String(e) };
       }
-      return { ok: false, error: String(e) };
     }
+  };
+  const res = await doSend();
+  const maybe = res as unknown as Record<string, unknown>;
+  if (maybe.ok === false && typeof maybe.error === 'string' && /Receiving end does not exist/i.test(maybe.error)) {
+    await closeAndRecreate();
+    return doSend();
   }
+  return res;
 }
 
 function duckDbRequest(op: DuckDbOp, sql?: string, tableName?: string, data?: string): Promise<DuckDbResponse> {

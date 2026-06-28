@@ -44,13 +44,16 @@ export interface SearchParams {
 }
 
 /**
- * Return the top-`k` chunks most similar to `queryVector`. Dot-product over the
- * int8 vectors, with the query-constant factors (the quantized query and the
- * per-dim scale²) folded into one weight vector so the hot loop is a single
- * multiply-add — identical to the extension's original repoSearch.
+ * Score **every** chunk against `queryVector`, returned sorted by score
+ * descending. Dot-product over the int8 vectors, with the query-constant factors
+ * (the quantized query and the per-dim scale²) folded into one weight vector so
+ * the hot loop is a single multiply-add. This is the semantic ranking used both
+ * by `searchVectors` (top-k) and by hybrid fusion (which needs the full ranking).
  */
-export function searchVectors(params: SearchParams): SearchHit[] {
-  const { dim, perDimScale, chunkCount, vectors, chunks, queryVector, k } = params;
+export function scoreVectors(
+  params: Pick<SearchParams, 'dim' | 'perDimScale' | 'chunkCount' | 'vectors' | 'queryVector'>,
+): Array<{ i: number; score: number }> {
+  const { dim, perDimScale, chunkCount, vectors, queryVector } = params;
   if (chunkCount === 0) return [];
   if (queryVector.length !== dim) {
     throw new Error(`Query embedding dimension ${queryVector.length} does not match repo dimension ${dim}.`);
@@ -59,21 +62,24 @@ export function searchVectors(params: SearchParams): SearchHit[] {
   const qw = new Float32Array(dim);
   for (let d = 0; d < dim; d++) qw[d] = q[d] * perDimScale[d] * perDimScale[d];
 
-  const top: Array<{ i: number; score: number }> = [];
+  const scored: Array<{ i: number; score: number }> = new Array(chunkCount);
   for (let i = 0; i < chunkCount; i++) {
     const base = i * dim;
     let score = 0;
     for (let d = 0; d < dim; d++) score += vectors[base + d] * qw[d];
-    if (top.length < k) {
-      top.push({ i, score });
-      if (top.length === k) top.sort((a, b) => a.score - b.score);
-    } else if (score > top[0].score) {
-      top[0] = { i, score };
-      top.sort((a, b) => a.score - b.score);
-    }
+    scored[i] = { i, score };
   }
-  top.sort((a, b) => b.score - a.score);
-  return top
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
+}
+
+/**
+ * Return the top-`k` chunks most similar to `queryVector` (pure semantic search).
+ */
+export function searchVectors(params: SearchParams): SearchHit[] {
+  const { chunks, k } = params;
+  return scoreVectors(params)
+    .slice(0, k)
     .map(({ i, score }) => {
       const c = chunks[i];
       return c ? { text: c.text, name: c.name, url: c.url, score } : null;

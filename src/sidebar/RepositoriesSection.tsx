@@ -1,8 +1,45 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { RepoDoc, RepoInfo } from '../shared/messages';
+import {
+  filesFromDataTransfer,
+  folderRepoName,
+  syncFolderFiles,
+  type FolderSyncProgress,
+  type IndexedDoc,
+  type PickedFile,
+} from './folderIndex';
+import { MailboxSection } from './MailboxSection';
 import { RepoUpload } from './RepoUpload';
 import { UploadBanner } from './UploadBanner';
 import { useT } from './i18n';
+
+// Coalesce per-file progress callbacks to ~5/sec. A folder with hundreds of
+// files would otherwise fire a synchronous state update (→ Preact re-render →
+// paint → compositor work) per file, churning the GPU compositor. The terminal
+// 'done' update always passes through so the final count is never dropped.
+function throttleProgress(
+  fn: (p: FolderSyncProgress) => void,
+  everyMs = 200,
+): (p: FolderSyncProgress) => void {
+  let last = 0;
+  return (p) => {
+    const now = Date.now();
+    if (p.phase === 'done' || now - last >= everyMs) {
+      last = now;
+      fn(p);
+    }
+  };
+}
+
+function summarizeSync(t: ReturnType<typeof useT>, p: FolderSyncProgress): string {
+  return t('repos.folder.synced', {
+    added: String(p.added),
+    updated: String(p.updated),
+    skipped: String(p.skipped),
+    removed: String(p.removed),
+    failed: String(p.failed),
+  });
+}
 
 function hostOf(url: string): string {
   try {
@@ -20,6 +57,9 @@ export function RepositoriesSection() {
   const [docs, setDocs] = useState<RepoDoc[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
+  const [folderBusy, setFolderBusy] = useState<string | null>(null);
+  const [folderStatus, setFolderStatus] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -72,6 +112,57 @@ export function RepositoriesSection() {
     void load(); // refresh doc/chunk counts
   };
 
+  // Shared indexer: sync `files` into `repo` (re-fetching existing docs when this
+  // is a refresh of an existing folder repo) and report progress.
+  const indexFiles = async (repo: string, files: PickedFile[], busyKey: string, isRefresh: boolean) => {
+    if (files.length === 0) {
+      setFolderStatus(t('repos.folder.emptyDrop'));
+      return;
+    }
+    setFolderBusy(busyKey);
+    setFolderStatus(t('repos.folder.scanning'));
+    try {
+      let existing: IndexedDoc[] = [];
+      if (isRefresh) {
+        const docs = ((await chrome.runtime.sendMessage({ type: 'repo_docs', repo })) as RepoDoc[]) || [];
+        existing = docs.map((d) => ({ id: d.id, path: d.path, mtime: d.mtime, size: d.size }));
+      }
+      const result = await syncFolderFiles(
+        repo,
+        files,
+        existing,
+        throttleProgress((p) =>
+          setFolderStatus(p.phase === 'done' ? summarizeSync(t, p) : t('repos.folder.indexing', { file: p.current ?? '' })),
+        ),
+      );
+      setBanner(summarizeSync(t, result));
+      setFolderStatus(null);
+      if (isRefresh && expanded === repo) await loadDocs(repo);
+      void load();
+    } catch (err) {
+      setFolderStatus(t('repos.folder.error', { msg: err instanceof Error ? err.message : String(err) }));
+    }
+    setFolderBusy(null);
+  };
+
+  // Drag-and-drop a folder onto the drop zone — never opens the native picker.
+  const onFolderDrop = async (e: DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const items = e.dataTransfer?.items;
+    if (!items || items.length === 0) return;
+    const { rootName, files } = await filesFromDataTransfer(items);
+    const repo = folderRepoName(rootName);
+    // Re-dropping a folder already indexed → incremental refresh (idempotent),
+    // not a duplicate import.
+    const exists = repos.some((r) => r.name === repo && r.kind === 'folder');
+    await indexFiles(repo, files, exists ? repo : 'new', exists);
+  };
+
+  const removeFolder = async (name: string) => {
+    await remove(name);
+  };
+
   return (
     <details class="sites-section settings-acc" open>
       <summary class="settings-header settings-acc-summary">
@@ -85,6 +176,20 @@ export function RepositoriesSection() {
           void load();
         }}
       />
+      <div
+        class={`repo-folder-drop${dragOver ? ' repo-folder-drop--over' : ''}${folderBusy !== null ? ' repo-folder-drop--busy' : ''}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (folderBusy === null) setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => folderBusy === null && void onFolderDrop(e)}
+      >
+        <strong>{folderBusy !== null ? t('repos.folder.working') : t('repos.folder.dropTitle')}</strong>
+        <span class="settings-note">{t('repos.folder.dropHint')}</span>
+      </div>
+      {folderStatus && <p class="settings-note repo-folder-status">{folderStatus}</p>}
+      <MailboxSection onChanged={() => void load()} />
       {banner && <UploadBanner text={banner} onDismiss={() => setBanner(null)} />}
       {loading ? (
         <p class="settings-note">{t('repos.loading')}</p>
@@ -105,7 +210,13 @@ export function RepositoriesSection() {
                 <span class="site-desc">
                   {r.docs} {t('repos.docs')}, {r.chunks} {t('repos.chunks')}
                 </span>
-                <button class="icon-btn" aria-label={t('repos.deleteRepo')} title={t('repos.deleteRepo')} onClick={() => remove(r.name)}>
+                {r.kind === 'folder' && folderBusy === r.name && <span class="site-desc" title={t('repos.folder.refresh')}>⏳</span>}
+                <button
+                  class="icon-btn"
+                  aria-label={t('repos.deleteRepo')}
+                  title={t('repos.deleteRepo')}
+                  onClick={() => (r.kind === 'folder' ? removeFolder(r.name) : remove(r.name))}
+                >
                   ✕
                 </button>
               </div>

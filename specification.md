@@ -578,6 +578,53 @@ existing docs and match by `normalizeUrl`. If any target page already exists, ra
 `repoDeleteDoc` the old copy then re-ingest (replace). Decline → keep the original,
 add nothing. New pages always ingest.
 
+### 8.1 Repo kinds, on-device embedder, and the model lock
+
+A repo carries a `kind`: `'page'` (tab/upload captures, the default), `'folder'` (a
+locally-indexed directory), or `'mail'` (an Office 365 mailbox). All three share the
+same store, quantization, and `search_repo`/`list_repos` surface — they differ only in
+their **source**. Folder/mail docs additionally record `{ path, mtime, size }` in
+`DocMeta`, the keys for **incremental sync** (skip unchanged, re-ingest changed, drop
+vanished).
+
+**Embedder choice (`Settings.embedder`).** RAG vectors come from either:
+- `'local'` (default) — a **transformers.js** feature-extraction model
+  (`Xenova/all-MiniLM-L6-v2`, 384-d) run in the offscreen document (`offscreen/localEmbed.ts`),
+  forced single-threaded CPU wasm with WebGPU off for stability; the ONNX wasm is bundled
+  to `dist/ort/` (vite `copyOrtWasm` plugin) and served from an extension-local URL so the
+  embed path never hits a CDN at runtime. Message text never leaves the device.
+- `'external'` — the configured OpenAI-compatible `/embeddings` endpoint (the original path).
+
+`llmProvider.embedChunks(settings, texts)` dispatches local vs external for **both** ingest
+and query; `embedderId(settings)` returns a stable identity (`local:<model>` /
+`external:<model>`). **Model lock:** `repoAdd` stamps the repo with its `embedModel` and
+rejects a later add — and `repoSearch` rejects a query — from a different embedder (vectors
+across models aren't comparable), prompting a re-index. Emptying a repo clears the lock.
+
+### 8.2 Folder indexing (drag-and-drop)
+
+`sidebar/folderIndex.ts` indexes a local directory **without the native folder picker**
+(`showDirectoryPicker`/`<input webkitdirectory>` deterministically crash Chrome's browser
+process on some macOS builds). The user **drags a folder** onto a drop zone; the dropped
+`DataTransferItem`s are recursed via `webkitGetAsEntry()` (no OS dialog), classified by the
+existing upload classifier, read, and sent through `add_files_to_repo` (`kind:'folder'`) →
+`ingestFile` → `storeText`. Re-dropping the same folder is an idempotent incremental refresh
+keyed by relative path + mtime + size.
+
+### 8.3 Mailbox indexing (Microsoft Graph, OAuth)
+
+`background/mailIngest.ts` pages the user's whole Office 365 mailbox via Microsoft Graph and
+feeds each message into the same pipeline (`messageToDoc` → `storeText`, `kind:'mail'`, keyed
+by Graph message id). Auth is **auth-code + PKCE** via `chrome.identity.launchWebAuthFlow`
+(`background/graphAuth.ts`, pure builders in `shared/graphAuth.ts`); `Mail.Read offline_access`
+tokens live in `chrome.storage.local`, refreshed silently. Requires an **Azure AD app
+registration** (`Settings.graphClientId` + `graphTenant`, redirect
+`https://<extension-id>.chromiumapp.org/`) and, in most tenants, admin consent. Bodies are
+fetched as plain text (`Prefer: outlook.body-content-type="text"`), pages follow
+`@odata.nextLink`, and 429/5xx are retried with `Retry-After`. **Incremental** via a
+high-water-mark on `receivedDateTime` (`$filter=receivedDateTime gt <lastSeen>`) plus
+skip-by-id. The pure URL/projection helpers live in `shared/graphMail.ts`.
+
 ---
 
 ## 9. Other subsystems
@@ -1026,13 +1073,14 @@ governance, centralized updates, less local config.
 (`use_skill`) **and** a user-facing slash dispatch is wired: typing `/<name> [args]`
 forces the matching skill (built-in `/learn` plus any seeded/user skill), passing the
 trailing text as the task (`agentRuntime` slash parser; composer autocomplete in
-`ChatPanel`). Two intent→query skills ship in the basic set: **`/search-sharepoint`**
-translates a request into precise **KQL** (filename / filetype / `path:` site scope /
-author / date) and runs `sharepoint_search`; **`/search-mail`** translates into mail KQL
-keywords (`from` / `to` / `subject` / `received` / `hasattachments`) and runs the search
-in the signed-in **Outlook web app**. Both use the same query syntax Microsoft Graph
-Search uses, executed over the signed-in browser session (no Graph bearer token). What's
-still ⬜ is a richer **command→tool-chain**
+`ChatPanel`). Two search skills ship in the basic set: **`/search-sharepoint`** and
+**`/search-mail`** lead with the **`microsoft365_search`** tool (REST over the signed-in
+session — SharePoint/Microsoft Search for files incl. OneDrive, Outlook-on-the-web for
+mail), mapping the request to its structured parameters (`source` / `query` / `from` /
+`fileType` / `sitePath` / `editedByMe` / `since` / `until` / `orderBy` / `top`) rather
+than hand-writing KQL; `/search-mail` falls back to driving the Outlook web UI only if the
+mail endpoint returns a `mailError`. Cookie auth over the signed-in browser session (no
+Graph bearer token). What's still ⬜ is a richer **command→tool-chain**
 framework (a dedicated `command` + `arguments` parser expanding one slash command into a
 fixed multi-tool workflow, e.g. `/travel-claim …`). Principle to preserve: **tools are
 capabilities (agent-selected); skills are workflows (user-invoked).**
@@ -1045,3 +1093,84 @@ entries with endpoint / auth / cost / capabilities / context-window metadata.
 export interface across CSV, JSON, SQLite, DuckDB, Parquet, GeoParquet, XLSX, DOCX,
 PPTX, PDF. Today these are handled piecemeal (DuckDB for CSV/JSON; offscreen extractors
 for PDF/Office); a single handler registry is not yet built.
+
+---
+
+## 16. Security model & boundaries
+
+The extension's security posture is best stated as **what the browser boundary gives us,
+what it deliberately does not, and what the app must therefore enforce itself.** Stating
+it this way avoids the common over-claim that "the browser sandboxes the agent" — it does
+not; the extension is a *privileged* party that operates above the per-site sandbox.
+
+### 16.1 Boundaries inherited from the browser (used, not reimplemented)
+- **Authentication & sessions.** Auth is delegated to the browser and the user's IdP. The
+  agent reaches authenticated systems by *inheriting the signed-in session* (cookies),
+  so the extension never stores or handles the target systems' credentials or tokens.
+- **Transport.** TLS and certificate validation are the browser's; the extension makes no
+  raw socket connections.
+- **Site isolation (for web content).** Same-origin policy / CORS, cookie scoping, and
+  process/site isolation protect *sites from each other* and *the user from arbitrary
+  pages* — battle-tested mechanisms the extension relies on rather than rebuilds.
+- **Web search** specifically rides the user's own **default search engine** in a real
+  tab — no third-party search API or key; egress matches ordinary browsing.
+
+This makes "we use the browser as a mature, well-understood trust-and-transport boundary"
+a *fair and accurate* claim.
+
+### 16.2 Where the browser boundary does NOT contain the agent
+The extension is granted broad privileges precisely so the agent can be useful, and those
+privileges sit **above** the protections in §16.1:
+- **Elevated permissions.** `<all_urls>`, `scripting` (incl. MAIN-world injection),
+  `cookies`, `tabs`, `search`, `bookmarks` — the agent can read any page, run page script,
+  read cookies, and make **credentialed cross-origin** requests. The same-origin policy
+  does **not** fence the agent the way it fences a website.
+- **Ambient credentialed authority (confused-deputy surface).** Because the agent acts
+  with the user's live sessions across *every* origin, a single task spans authorities
+  that SOP would normally keep apart. Site isolation says nothing about this.
+- **The model is the new untrusted element.** The security-relevant boundary is
+  **model ↔ privileged action**, not site ↔ site. Page/email/document content can attempt
+  **prompt injection** to steer a privileged agent; the browser sandbox provides no defense
+  against an injected instruction to misuse a tool the extension is already allowed to use.
+- **An egress hop the browser boundary doesn't cover.** Content read via the browser is
+  sent to the user's **configured LLM endpoint** (and embeddings to the embeddings
+  endpoint). That hop is in-scope for the threat model even though TLS protects it.
+
+### 16.3 Boundaries the app enforces itself
+Because §16.2 is real, the controls that actually bound the agent are implemented in the
+app, not borrowed from the browser:
+- **Instruction-source boundary.** Only the user (via chat) issues commands; everything
+  observed through tools (page DOM, emails, documents, file contents, tool results) is
+  **data, not instructions**. Content that tries to direct the agent is surfaced to the
+  user, not acted on — the primary prompt-injection defense.
+- **Approval gate + tool classification (§5).** `READ_ONLY_TOOLS` run freely and in
+  parallel; every `APPROVAL_REQUIRED` tool (page mutation, `run_javascript`, MCP/WebMCP
+  calls, bulk tab reads, …) emits a plain-language approval card and blocks on a user
+  decision. State-changing/outward-facing actions are confirmed, not assumed.
+- **Capability trust levels (§9).** A tool's gating can be relaxed (auto-approve) or kept
+  strict based on the *sourcing capability's* trust level; the browser session remains the
+  root trust boundary. OAuth/OIDC is **not** implemented — only browser-session and
+  static-token auth.
+- **Auth auto-pause (§5).** A detected login wall pauses the task for the user to sign in,
+  rather than the agent attempting credentials.
+- **Local-only persistence.** Settings, skills, memory, conversations, RAG vectors, and
+  DuckDB datasets live in `chrome.storage.local` / OPFS on-device; the only outbound
+  traffic is to endpoints the user explicitly configures (model, embeddings, transcription)
+  plus the tool actions the agent takes in the browser.
+
+### 16.4 Data egress summary
+Data leaves the device only via: (1) the **LLM endpoint** (prompts, including page/file
+content the agent read); (2) the **embeddings endpoint** for RAG; (3) the **transcription
+endpoint** for voice; and (4) **explicit agent actions** in the authenticated browser
+(navigations, credentialed fetches such as `microsoft365_search` / `sharepoint_search`,
+`open_data_url`). An on-prem/self-hosted model + embeddings endpoint keeps (1)–(3)
+in-boundary; (4) is always the user's own sessions on the open web or their own systems.
+
+### 16.5 Honest non-claims
+- The browser does **not** sandbox or contain the agent — the extension's permissions are
+  exactly the bypass of the per-site sandbox.
+- There is **no Microsoft Graph bearer-token integration**; `microsoft365_search` and
+  `sharepoint_search` are cookie-session REST, bounded by what the signed-in user can see.
+- Prompt-injection defense is **mitigation, not a guarantee**: the instruction-source
+  boundary plus the approval gate reduce but do not eliminate the risk inherent in giving a
+  language model privileged tools.
