@@ -92,8 +92,6 @@ export function SettingsScreen({ onClose }: Props) {
       outlookBaseUrl: settings.outlookBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       embedder: settings.embedder === 'external' ? 'external' : 'local',
       localEmbedModel: settings.localEmbedModel?.trim() || undefined,
-      graphClientId: settings.graphClientId?.trim() || undefined,
-      graphTenant: settings.graphTenant?.trim() || undefined,
       embeddingModel: settings.embeddingModel?.trim() || undefined,
       embeddingBaseUrl: settings.embeddingBaseUrl?.trim().replace(/\/+$/, '') || undefined,
       embeddingApiKey: settings.embeddingApiKey?.trim() || undefined,
@@ -292,25 +290,6 @@ export function SettingsScreen({ onClose }: Props) {
               }
             />
           </label>
-          <label class="field">
-            <span>{t('settings.graphClientId')}</span>
-            <input
-              type="text"
-              placeholder="00000000-0000-0000-0000-000000000000"
-              value={settings.graphClientId ?? ''}
-              onInput={(e) => update({ graphClientId: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-          <label class="field">
-            <span>{t('settings.graphTenant')}</span>
-            <input
-              type="text"
-              placeholder="organizations"
-              value={settings.graphTenant ?? ''}
-              onInput={(e) => update({ graphTenant: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-          <p class="settings-note">{t('settings.graphNote')}</p>
           <label class="field">
             <span>{t('settings.repoSearchK')}</span>
             <input

@@ -13,22 +13,28 @@ interface MailProgress {
 }
 
 /**
- * "📧 Mailbox" card — connect via Microsoft Graph (OAuth) and index the mailbox
- * into the RAG store, reusing the same on-device embedding pipeline as folders.
- * Hidden until an Azure app Client ID is set in Settings.
+ * "📧 Mailbox" card — index the mailbox into the RAG store over the user's
+ * EXISTING Outlook-on-the-web session (cookie auth; no Azure app, no OAuth). If
+ * there's no signed-in Outlook session, prompt the user to open Outlook first.
  */
 export function MailboxSection({ onChanged }: { onChanged: () => void }) {
   const t = useT();
-  const [clientId, setClientId] = useState('');
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [base, setBase] = useState('https://outlook.office.com');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  useEffect(() => {
-    chrome.storage.local.get('ba_settings').then((r) => {
-      const s = (r.ba_settings ?? {}) as { graphClientId?: string };
-      setClientId((s.graphClientId ?? '').trim());
-    });
-  }, []);
+  // Probe whether an Outlook web session cookie is present.
+  const checkSession = () => {
+    chrome.runtime
+      .sendMessage({ type: 'mailbox_session' })
+      .then((r: { connected?: boolean; base?: string }) => {
+        setConnected(Boolean(r?.connected));
+        if (r?.base) setBase(r.base);
+      })
+      .catch(() => setConnected(false));
+  };
+  useEffect(checkSession, []);
 
   // Live progress broadcast by the service worker during a long index.
   useEffect(() => {
@@ -69,23 +75,31 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
     setBusy(false);
   };
 
-  const disconnect = async () => {
-    await chrome.runtime.sendMessage({ type: 'mailbox_disconnect' });
-    setStatus(t('mail.disconnected'));
-  };
-
-  if (!clientId) return <p class="settings-note">{t('mail.needClientId')}</p>;
+  // Not signed into Outlook on the web → prompt to open it, then re-check.
+  if (connected === false) {
+    return (
+      <div class="repo-folder-drop">
+        <strong>{t('mail.title')}</strong>
+        <span class="settings-note">{t('mail.needSession')}</span>
+        <div class="repo-folder-row">
+          <a class="btn" href={`${base}/mail/`} target="_blank" rel="noreferrer">
+            {t('mail.openOutlook')}
+          </a>
+          <button class="btn" onClick={checkSession}>
+            {t('mail.recheck')}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div class={`repo-folder-drop${busy ? ' repo-folder-drop--busy' : ''}`}>
       <strong>{busy ? t('mail.working') : t('mail.title')}</strong>
       <span class="settings-note">{t('mail.hint')}</span>
       <div class="repo-folder-row">
-        <button class="btn" disabled={busy} onClick={() => void index()}>
+        <button class="btn" disabled={busy || connected === null} onClick={() => void index()}>
           {t('mail.index')}
-        </button>
-        <button class="btn" disabled={busy} onClick={() => void disconnect()}>
-          {t('mail.disconnect')}
         </button>
       </div>
       {status && <p class="settings-note repo-folder-status">{status}</p>}

@@ -192,14 +192,6 @@ export interface Settings {
   embedder?: 'local' | 'external';
   /** transformers.js model id for the local embedder. Absent = the bundled default. */
   localEmbedModel?: string;
-  /**
-   * Azure AD app **client ID** for the mailbox indexer's Microsoft Graph OAuth
-   * (auth-code + PKCE). The app needs the `Mail.Read` delegated permission and,
-   * in most enterprise tenants, admin consent. Absent = mailbox indexing is off.
-   */
-  graphClientId?: string;
-  /** Graph OAuth tenant: `organizations` (default) or a specific tenant id. */
-  graphTenant?: string;
   /** Optional separate model id for the /embeddings route (external RAG). */
   embeddingModel?: string;
   /** Optional separate endpoint base URL for embeddings; blank = use baseUrl. */

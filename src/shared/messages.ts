@@ -110,8 +110,7 @@ export type RuntimeRequest =
   // Connect (if needed) and index the user's Office 365 mailbox into a repo via
   // Microsoft Graph; incremental on repeat. Handled in the service worker.
   | { type: 'index_mailbox'; repo: string }
-  | { type: 'mailbox_connected' }
-  | { type: 'mailbox_disconnect' }
+  | { type: 'mailbox_session' }
   | { type: 'open_data_files'; files: DataFileUpload[] }
   | { type: 'transcribe_audio'; audioDataUrl: string }
   // Probe the signed-in environment (M365 identity, open work systems, locale) to

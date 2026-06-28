@@ -39,8 +39,8 @@ import {
   repoList,
 } from './offscreenClient';
 import { ingestFile } from './repoIngest';
-import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAuth';
-import { indexMailbox } from './mailIngest';
+import { indexMailbox, resolveOutlookBase } from './mailIngest';
+import { readCanary } from './owaClient';
 import { getMemoryEnabled, getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
 import { probeEnvironment } from './envProbe';
 
@@ -207,24 +207,24 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
     })().then(sendResponse);
     return true;
   }
-  if (request.type === 'mailbox_connected') {
-    isMailboxConnected().then((connected) => sendResponse({ connected }));
-    return true;
-  }
-  if (request.type === 'mailbox_disconnect') {
-    disconnectMailbox().then(() => sendResponse({ ok: true }));
+  if (request.type === 'mailbox_session') {
+    (async () => {
+      const settings = await getSettings();
+      const base = resolveOutlookBase(settings ?? ({} as NonNullable<typeof settings>));
+      try {
+        await readCanary(base);
+        return { connected: true, base };
+      } catch {
+        return { connected: false, base };
+      }
+    })().then(sendResponse);
     return true;
   }
   if (request.type === 'index_mailbox') {
     (async () => {
       const settings = await getSettings();
       if (!settings) return { ok: false, error: 'No model configured. Open Settings first.' };
-      if (!settings.graphClientId) return { ok: false, error: 'Set your Azure app Client ID in Settings first.' };
       try {
-        if (!(await isMailboxConnected())) {
-          await connectMailbox(settings.graphClientId, settings.graphTenant || 'organizations');
-          chrome.runtime.sendMessage({ type: 'mailbox_connected_changed' }).catch(() => {});
-        }
         // Broadcast progress (throttled) so the panel can show a live status line.
         let last = 0;
         const result = await indexMailbox(settings, request.repo, (p) => {

@@ -611,19 +611,25 @@ existing upload classifier, read, and sent through `add_files_to_repo` (`kind:'f
 `ingestFile` → `storeText`. Re-dropping the same folder is an idempotent incremental refresh
 keyed by relative path + mtime + size.
 
-### 8.3 Mailbox indexing (Microsoft Graph, OAuth)
+### 8.3 Mailbox indexing (cookie-session OWA, no app registration)
 
-`background/mailIngest.ts` pages the user's whole Office 365 mailbox via Microsoft Graph and
-feeds each message into the same pipeline (`messageToDoc` → `storeText`, `kind:'mail'`, keyed
-by Graph message id). Auth is **auth-code + PKCE** via `chrome.identity.launchWebAuthFlow`
-(`background/graphAuth.ts`, pure builders in `shared/graphAuth.ts`); `Mail.Read offline_access`
-tokens live in `chrome.storage.local`, refreshed silently. Requires an **Azure AD app
-registration** (`Settings.graphClientId` + `graphTenant`, redirect
-`https://<extension-id>.chromiumapp.org/`) and, in most tenants, admin consent. Bodies are
-fetched as plain text (`Prefer: outlook.body-content-type="text"`), pages follow
-`@odata.nextLink`, and 429/5xx are retried with `Retry-After`. **Incremental** via a
-high-water-mark on `receivedDateTime` (`$filter=receivedDateTime gt <lastSeen>`) plus
-skip-by-id. The pure URL/projection helpers live in `shared/graphMail.ts`.
+`background/mailIngest.ts` indexes the user's whole Office 365 mailbox over their **existing
+Outlook-on-the-web session** — **no Microsoft Graph, no OAuth, no Azure app registration**.
+It rides the same cookie-auth path as `microsoft365_search`: POSTs to OWA's internal
+`service.svc` EWS-over-JSON endpoint with `credentials:'include'` and the `X-OWA-CANARY`
+anti-CSRF cookie (`background/owaClient.ts`). The flow: `FindFolder` (deep, from
+`msgfolderroot`) enumerates folders → filter to `IPF.Note` mail folders → `FindItem` pages
+message ids per folder (newest-first, stops early past the high-water-mark) → `GetItem`
+fetches full plain-text bodies in batches → `messageToMailDoc` → `storeText` (`kind:'mail'`,
+keyed by EWS ItemId). 429/5xx are retried with `Retry-After`; a missing/expired session
+(no canary, or HTTP 401/440) surfaces as an `OwaSessionError` prompting re-sign-in. The pure
+request/response builders/parsers live in `shared/owaMail.ts` (unit-tested without
+`chrome.*`/network). **Incremental** via a high-water-mark on `receivedDateTime` plus
+skip-by-id. The Outlook origin comes from `Settings.outlookBaseUrl` (default
+`https://outlook.office.com`). Trade-off: `service.svc` is OWA's undocumented internal API
+(EWS is on a long-term deprecation path), so it's more fragile than Graph but needs zero IT
+setup — chosen because the user wanted to reuse their existing sign-in rather than register
+an app.
 
 ---
 
@@ -1169,8 +1175,9 @@ in-boundary; (4) is always the user's own sessions on the open web or their own 
 ### 16.5 Honest non-claims
 - The browser does **not** sandbox or contain the agent — the extension's permissions are
   exactly the bypass of the per-site sandbox.
-- There is **no Microsoft Graph bearer-token integration**; `microsoft365_search` and
-  `sharepoint_search` are cookie-session REST, bounded by what the signed-in user can see.
+- There is **no Microsoft Graph bearer-token integration**; `microsoft365_search`,
+  `sharepoint_search`, and the **mailbox indexer** (OWA `service.svc`) are all cookie-session
+  REST, bounded by what the signed-in user can see.
 - Prompt-injection defense is **mitigation, not a guarantee**: the instruction-source
   boundary plus the approval gate reduce but do not eliminate the risk inherent in giving a
   language model privileged tools.

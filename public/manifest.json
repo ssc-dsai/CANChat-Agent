@@ -16,8 +16,7 @@
     "tabGroups",
     "unlimitedStorage",
     "downloads",
-    "cookies",
-    "identity"
+    "cookies"
   ],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
