@@ -101,6 +101,8 @@ const EN: Dict = {
   'repos.folder.scanning': 'Scanning folder…',
   'repos.folder.indexing': 'Indexing {file}…',
   'repos.folder.synced': 'Indexed: {added} added, {updated} updated, {skipped} unchanged, {removed} removed, {failed} failed.',
+  'repos.folder.unreadableHint':
+    '{n} file(s) couldn’t be read — likely OneDrive/SharePoint online-only files. In Explorer/Finder, right-click them and choose “Always keep on this device” (or open them once to download), then drag the folder again.',
   'repos.folder.refresh': 'Refresh from folder',
   'repos.folder.noHandle': 'No saved folder for this base — re-index it.',
   'repos.folder.denied': 'Folder access was denied. Click Refresh and allow access.',
@@ -328,6 +330,8 @@ const FR: Dict = {
   'repos.folder.scanning': 'Analyse du dossier…',
   'repos.folder.indexing': 'Indexation de {file}…',
   'repos.folder.synced': 'Indexé : {added} ajoutés, {updated} mis à jour, {skipped} inchangés, {removed} supprimés, {failed} échoués.',
+  'repos.folder.unreadableHint':
+    '{n} fichier(s) illisibles — probablement des fichiers OneDrive/SharePoint « en ligne seulement ». Dans l’Explorateur/Finder, faites un clic droit et choisissez « Toujours conserver sur cet appareil » (ou ouvrez-les une fois pour les télécharger), puis glissez le dossier de nouveau.',
   'repos.folder.refresh': 'Actualiser depuis le dossier',
   'repos.folder.noHandle': 'Aucun dossier enregistré pour cette base — réindexez-la.',
   'repos.folder.denied': 'Accès au dossier refusé. Cliquez sur Actualiser et autorisez l’accès.',

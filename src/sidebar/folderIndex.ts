@@ -127,23 +127,61 @@ export interface FolderSyncProgress {
   skipped: number;
   removed: number;
   failed: number;
+  /**
+   * Subset of `failed` that couldn't be read at all — typically OneDrive /
+   * SharePoint "online-only" (Files On-Demand) placeholders that throw
+   * NotReadableError when the dragged reference is touched. Tracked separately so
+   * the UI can explain the cause and how to fix it.
+   */
+  unreadable: number;
   /** Most recent file path touched, for a live status line. */
   current?: string;
 }
 
-async function toUploadFile(w: PickedFile): Promise<UploadFile | { error: string; name: string }> {
+/** A read failed because the file's bytes aren't actually local (cloud stub). */
+function isUnreadable(e: unknown): boolean {
+  const name = (e as { name?: string } | null)?.name;
+  if (name === 'NotReadableError' || name === 'NotFoundError') return true;
+  return /could not be read|not be read|permission/i.test(String((e as { message?: string })?.message ?? e));
+}
+
+/**
+ * Read a cloud-backed file, retrying once. OneDrive/SharePoint online-only files
+ * throw NotReadableError on first touch while the OS hydrates them on demand; a
+ * brief pause and a second attempt often succeeds once the download lands.
+ */
+async function readWithRetry<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (e) {
+    if (!isUnreadable(e)) throw e;
+    await new Promise((r) => setTimeout(r, 800));
+    return read();
+  }
+}
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function toUploadFile(
+  w: PickedFile,
+): Promise<UploadFile | { error: string; name: string; unreadable?: boolean }> {
   const kind = classifyUpload(w.file.name, w.file.type);
   if (!kind) return { error: 'unsupported type', name: w.path };
   if (w.file.size > MAX_UPLOAD_BYTES) return { error: 'too large', name: w.path };
   const base = { name: w.file.name, path: w.path, mtime: w.file.lastModified, size: w.file.size };
-  if (kind === 'text') return { ...base, kind, text: await w.file.text() };
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(w.file);
-  });
-  return { ...base, kind, dataUrl };
+  try {
+    if (kind === 'text') return { ...base, kind, text: await readWithRetry(() => w.file.text()) };
+    return { ...base, kind, dataUrl: await readWithRetry(() => readAsDataUrl(w.file)) };
+  } catch (e) {
+    return { error: String((e as { message?: string })?.message ?? e), name: w.path, unreadable: isUnreadable(e) };
+  }
 }
 
 async function ingestOne(repo: string, payload: UploadFile): Promise<boolean> {
@@ -171,7 +209,7 @@ export async function syncFolderFiles(
   existing: IndexedDoc[],
   onProgress?: (p: FolderSyncProgress) => void,
 ): Promise<FolderSyncProgress> {
-  const prog: FolderSyncProgress = { phase: 'indexing', added: 0, updated: 0, skipped: 0, removed: 0, failed: 0 };
+  const prog: FolderSyncProgress = { phase: 'indexing', added: 0, updated: 0, skipped: 0, removed: 0, failed: 0, unreadable: 0 };
   const byPath = new Map<string, IndexedDoc>();
   for (const d of existing) if (d.path) byPath.set(d.path, d);
   const seen = new Set<string>();
@@ -188,6 +226,8 @@ export async function syncFolderFiles(
     const payload = await toUploadFile(w);
     if ('error' in payload) {
       prog.failed++;
+      if (payload.unreadable) prog.unreadable++;
+      onProgress?.({ ...prog, current: w.path });
       continue;
     }
     if (prior) await deleteDoc(repo, prior.id); // re-ingest cleanly
