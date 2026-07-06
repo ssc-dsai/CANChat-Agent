@@ -14,12 +14,13 @@ export const CURATED_PLAYBOOKS: CuratedPlaybook[] = [
     description: 'Outlook on the web: read, search, compose, and send mail.',
     body: [
       'Outlook Web App (OWA). It is a keyboard-driven app; prefer press_keys for its shortcuts.',
+      'Endpoint-first rule: for mail search/read, use microsoft365_search with source:"mail" before this web UI playbook. For calendar/schedule/Teams meeting questions, use calendar_search before this web UI playbook. Use these UI steps only for unsupported actions or after endpoint/session errors.',
       '- Compose: press_keys "n" (or "c") to open a new message. Wait for the compose form with wait_for_element on the To/subject fields.',
       '- Address/subject/body: get_element_map then fill_input on the To, Subject, and body fields. The compose surface may be in a same-origin iframe — get_element_map now sees into it.',
       '- Send: press_keys "Control+Enter".',
-      '- Search: focus the search box (press_keys "/" often focuses it) or fill_input the search field, then press_keys "Enter".',
+      '- Fallback search only: if microsoft365_search failed, focus the search box (press_keys "/" often focuses it) or fill_input the search field, then press_keys "Enter".',
       '- Navigate the message list with ArrowUp/ArrowDown; open with Enter.',
-      'Reading mail: use get_tab_content on the reading pane; for structured fields not in the DOM text, try run_javascript.',
+      'Fallback reading only: if endpoint tools failed, use get_tab_content on the reading pane; for structured fields not in the DOM text, try run_javascript.',
     ].join('\n'),
   },
   {
@@ -28,9 +29,10 @@ export const CURATED_PLAYBOOKS: CuratedPlaybook[] = [
     description: 'Outlook.com (personal): read, search, compose, and send mail.',
     body: [
       'Personal Outlook.com — same app family as OWA. Keyboard-driven; prefer press_keys.',
+      'Endpoint-first rule for work Outlook accounts: for mail search/read, use microsoft365_search with source:"mail" before web UI automation; for calendar/schedule, use calendar_search first. Use this UI playbook only for unsupported actions or after endpoint/session errors.',
       '- New message: press_keys "n". Send: press_keys "Control+Enter".',
       '- Fill To/Subject/body via get_element_map + fill_input (compose may be in a same-origin iframe).',
-      '- Search: fill_input the search box then press_keys "Enter".',
+      '- Fallback search only: fill_input the search box then press_keys "Enter".',
     ].join('\n'),
   },
   {

@@ -422,7 +422,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'microsoft365_search',
       description:
-        "Search the user's Microsoft 365 mail AND files in one call, using the signed-in browser session (no setup or token). Files come from SharePoint/Microsoft Search (covers SharePoint sites and OneDrive); mail comes from Outlook on the web. Use this for questions about the user's own email or documents, with filters for time, document type, sender, and source. Returns ranked results — emails as {subject, from, received, url, preview}; files as {title, url, modified, modifiedBy, snippet} — each with a URL to cite. Examples: 'my last five emails from Brian Ray' → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; 'the last Word file I edited on my work SharePoint site' → {source:'files', fileType:'docx', editedByMe:true, orderBy:'date', top:1}. If the mail side errors, fall back to the /search-mail skill.",
+        "Preferred direct endpoint-backed tool for the user's Microsoft 365 mail AND files, using the signed-in browser session (no setup or token). For Outlook mail questions, call this with source:'mail' before any browser/page/Outlook UI tools; do not navigate to Outlook unless this returns mailError/session failure. Files come from SharePoint/Microsoft Search (covers SharePoint sites and OneDrive); mail comes from Outlook on the web. Use this for questions about the user's own email or documents, with filters for time, document type, sender, and source. Returns ranked results — emails as {subject, from, received, url, preview}; files as {title, url, modified, modifiedBy, snippet} — each with a URL to cite. Examples: 'my last five emails from Brian Ray' → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; 'the last Word file I edited on my work SharePoint site' → {source:'files', fileType:'docx', editedByMe:true, orderBy:'date', top:1}. If the mail side errors, ask the user to open Outlook/sign in and retry; only then fall back to the /search-mail skill.",
       parameters: {
         type: 'object',
         properties: {
@@ -454,7 +454,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'calendar_search',
       description:
-        "Read the user's Outlook calendar using the signed-in Outlook-on-the-web session (no setup or token). Use this for schedule, meeting, and Teams-link questions. Returns events with subject, time, location, organizer, attendees, body/preview, Teams URL when found, and an Outlook URL. For meeting prep, call this first, then use list_repos/search_repo separately to pull relevant documents.",
+        "Preferred direct endpoint-backed tool for Outlook calendar, schedule, meeting, and Teams-link questions, using the signed-in Outlook-on-the-web session (no setup or token). Call this before any browser/page/Outlook UI tools; do not navigate to Outlook unless this returns an endpoint/session error. Returns events with subject, time, location, organizer, attendees, body/preview, Teams URL when found, and an Outlook URL. For meeting prep, call this first, then use list_repos/search_repo separately to pull relevant documents.",
       parameters: {
         type: 'object',
         properties: {
