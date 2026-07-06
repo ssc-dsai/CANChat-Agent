@@ -4,6 +4,7 @@
 // isolation; the LLM calls that feed them live in AgentRuntime.
 
 import type { LlmMessage } from './llmProvider';
+import type { LessonEntry } from '../shared/types';
 
 /** Default soft step budget when the user hasn't set settings.maxSteps. */
 export const DEFAULT_MAX_STEPS = 20;
@@ -23,6 +24,10 @@ export function deriveStepBudget(maxSteps?: number): { soft: number; extension: 
 /** Strip a leading/trailing markdown code fence (```json … ```), if present. */
 function stripCodeFence(raw: string): string {
   return raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
+}
+
+function terms(text: string): string[] {
+  return text.toLowerCase().match(/[a-z0-9][a-z0-9._-]*/g)?.filter((t) => t.length > 2) ?? [];
 }
 
 /**
@@ -68,6 +73,72 @@ export function parseReflectionVerdict(raw: string): ReflectionVerdict {
   const revise = typeof obj.verdict === 'string' && obj.verdict.trim().toLowerCase() === 'revise';
   const issues = typeof obj.issues === 'string' ? obj.issues.trim() : '';
   return { revise, issues };
+}
+
+export interface ParsedLesson {
+  lesson: string;
+  triggers: string[];
+  tools: string[];
+  origin?: string;
+  confidence: number;
+}
+
+export function parseLesson(raw: string): ParsedLesson | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripCodeFence(raw));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const obj = parsed as { lesson?: unknown; triggers?: unknown; tools?: unknown; origin?: unknown; confidence?: unknown };
+  const lesson = typeof obj.lesson === 'string' ? obj.lesson.trim().replace(/\s+/g, ' ') : '';
+  const triggers = Array.isArray(obj.triggers)
+    ? obj.triggers.map(String).map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 8)
+    : [];
+  const tools = Array.isArray(obj.tools)
+    ? obj.tools.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 8)
+    : [];
+  const origin = typeof obj.origin === 'string' && obj.origin.trim() ? obj.origin.trim().toLowerCase() : undefined;
+  const confidence = typeof obj.confidence === 'number' && Number.isFinite(obj.confidence) ? obj.confidence : 0;
+  if (!lesson || triggers.length === 0 || confidence < 0.7) return null;
+  return { lesson, triggers, tools, origin, confidence };
+}
+
+export function lessonScore(lesson: LessonEntry, taskText: string, activeHost = ''): number {
+  const haystack = new Set(terms(taskText));
+  let score = 0;
+  if (lesson.origin && activeHost && (activeHost === lesson.origin || activeHost.endsWith(`.${lesson.origin}`))) score += 4;
+  for (const trigger of lesson.triggers ?? []) {
+    const normalized = trigger.toLowerCase().trim();
+    if (!normalized) continue;
+    if (taskText.toLowerCase().includes(normalized)) score += 2;
+    else score += terms(normalized).filter((t) => haystack.has(t)).length;
+  }
+  return score;
+}
+
+export function relevantLessons(lessons: LessonEntry[], taskText: string, activeHost = '', limit = 3): LessonEntry[] {
+  return lessons
+    .map((lesson) => ({ lesson, score: lessonScore(lesson, taskText, activeHost) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || (b.lesson.uses ?? 0) - (a.lesson.uses ?? 0))
+    .slice(0, limit)
+    .map((x) => x.lesson);
+}
+
+export function findSimilarLesson(lessons: LessonEntry[], parsed: ParsedLesson): LessonEntry | undefined {
+  const newTerms = new Set(terms([parsed.lesson, ...parsed.triggers].join(' ')));
+  return lessons.find((lesson) => {
+    if (lesson.origin && parsed.origin && lesson.origin === parsed.origin) {
+      if (lesson.triggers.some((t) => parsed.triggers.includes(t.toLowerCase()))) return true;
+    }
+    const oldTerms = new Set(terms([lesson.text, ...(lesson.triggers ?? [])].join(' ')));
+    let overlap = 0;
+    for (const t of newTerms) if (oldTerms.has(t)) overlap++;
+    return overlap >= Math.min(4, Math.max(2, Math.ceil(newTerms.size / 2)));
+  });
 }
 
 /**

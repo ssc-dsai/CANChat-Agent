@@ -5,7 +5,7 @@ import { saveFile } from './download';
 import { useT } from './i18n';
 
 // chrome.storage.local keys that make up the user's configuration.
-const STORAGE_KEYS = ['ba_settings', 'ba_sites', 'ba_skills', 'ba_memory', 'ba_memory_enabled', 'ba_language'];
+const STORAGE_KEYS = ['ba_settings', 'ba_sites', 'ba_skills', 'ba_memory', 'ba_lessons', 'ba_memory_enabled', 'ba_language'];
 const CONVERSATION_INDEX_KEY = 'ba_conv_index';
 const CONVERSATION_KEY_PREFIX = 'ba_conv_';
 const CONVERSATION_LABELS_KEY = 'ba_conv_labels';

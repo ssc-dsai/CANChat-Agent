@@ -134,6 +134,23 @@ export interface MemoryEntry {
   updatedAt: string;
 }
 
+/** One durable agent-behavior lesson learned from prior tasks. */
+export interface LessonEntry {
+  id: string;
+  /** Concise instruction to apply on similar future tasks. */
+  text: string;
+  /** Keywords/phrases used to match future tasks. */
+  triggers: string[];
+  /** Optional normalized site host for site-specific lessons. */
+  origin?: string;
+  /** Tool names associated with the lesson. */
+  tools?: string[];
+  /** Number of times a matching lesson was reinforced/merged. */
+  uses: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * Default on-device embedding model (transformers.js): 384-d MiniLM, ~23 MB
  * int8. Declared here (dependency-free) so the service worker can derive the

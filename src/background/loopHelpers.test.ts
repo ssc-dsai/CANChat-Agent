@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { deriveStepBudget, parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
+import { deriveStepBudget, findSimilarLesson, lessonScore, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
 import type { LlmMessage } from './llmProvider';
+import type { LessonEntry } from '../shared/types';
 
 describe('deriveStepBudget', () => {
   it('reproduces the historical 20/10/40 defaults when unset', () => {
@@ -125,5 +126,50 @@ describe('repairToolPairing', () => {
     const msgs: LlmMessage[] = [asst('a')];
     repairToolPairing(msgs);
     expect(msgs).toHaveLength(1);
+  });
+});
+
+describe('lesson helpers', () => {
+  const lesson = (overrides: Partial<LessonEntry>): LessonEntry => ({
+    id: 'l1',
+    text: 'Use Outlook endpoint tools before DOM automation.',
+    triggers: ['outlook mail', 'microsoft365_search'],
+    tools: ['microsoft365_search'],
+    uses: 1,
+    createdAt: '',
+    updatedAt: '',
+    ...overrides,
+  });
+
+  it('parses a high-confidence lesson and strips code fences', () => {
+    expect(parseLesson('```json\n{"lesson":"Use endpoint first.","triggers":["mail"],"tools":["microsoft365_search"],"origin":null,"confidence":0.9}\n```'))
+      .toMatchObject({ lesson: 'Use endpoint first.', triggers: ['mail'], tools: ['microsoft365_search'], confidence: 0.9 });
+  });
+
+  it('rejects malformed, low-confidence, or untriggered lessons', () => {
+    expect(parseLesson('nope')).toBeNull();
+    expect(parseLesson('{"lesson":"x","triggers":["mail"],"confidence":0.2}')).toBeNull();
+    expect(parseLesson('{"lesson":"x","triggers":[],"confidence":0.9}')).toBeNull();
+  });
+
+  it('scores matching triggers and same-origin lessons higher', () => {
+    const base = lesson({ origin: 'outlook.office.com' });
+    expect(lessonScore(base, 'Find my Outlook mail from Brian', 'outlook.office.com')).toBeGreaterThan(
+      lessonScore(base, 'Summarize this PDF', 'example.com'),
+    );
+  });
+
+  it('returns only relevant lessons ordered by score', () => {
+    const lessons = [
+      lesson({ id: 'a', triggers: ['pdf'], text: 'Use read_pdf.' }),
+      lesson({ id: 'b', triggers: ['outlook mail'], text: 'Use mail endpoint.' }),
+    ];
+    expect(relevantLessons(lessons, 'Search Outlook mail', '', 1).map((l) => l.id)).toEqual(['b']);
+  });
+
+  it('detects similar lessons for reinforcement', () => {
+    const existing = lesson({ triggers: ['outlook mail'], origin: 'outlook.office.com' });
+    const parsed = parseLesson('{"lesson":"Prefer endpoint tools for Outlook mail before web UI.","triggers":["outlook mail"],"origin":"outlook.office.com","confidence":0.95}');
+    expect(parsed && findSimilarLesson([existing], parsed)?.id).toBe('l1');
   });
 });

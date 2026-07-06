@@ -29,6 +29,7 @@ const backup = {
     ba_skills: [{ id: 's1', name: 'research', description: 'research', body: '1. do it' }],
     ba_sites: [{ id: 'site1', name: 'Wiki', url: 'https://w', description: 'docs' }],
     ba_memory: [{ id: 'm1', text: 'likes metric', createdAt: '', updatedAt: '' }],
+    ba_lessons: [{ id: 'l1', text: 'Use endpoint tools first.', triggers: ['mail'], uses: 1, createdAt: '', updatedAt: '' }],
   },
   repos: [
     {
@@ -44,12 +45,13 @@ const backup = {
 };
 
 describe('parseBackup', () => {
-  it('extracts settings, skills, sites, memory, and repos', () => {
+  it('extracts settings, skills, sites, memory, lessons, and repos', () => {
     const parsed = parseBackup(backup);
     expect(parsed.settings?.model).toBe('m');
     expect(parsed.skills.map((s) => s.name)).toEqual(['research']);
     expect(parsed.sites).toHaveLength(1);
     expect(parsed.memory).toHaveLength(1);
+    expect(parsed.lessons.map((l) => l.text)).toEqual(['Use endpoint tools first.']);
     expect(parsed.repos).toHaveLength(1);
   });
 

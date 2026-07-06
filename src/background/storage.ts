@@ -12,6 +12,7 @@ import type {
   ChatMessageView,
   ConversationLabel,
   ConversationSummary,
+  LessonEntry,
   MemoryEntry,
   PlanStepStatus,
   Settings,
@@ -26,8 +27,10 @@ const CAPABILITIES_KEY = 'ba_capabilities';
 const SKILLS_KEY = 'ba_skills';
 const MEMORY_KEY = 'ba_memory';
 const MEMORY_ENABLED_KEY = 'ba_memory_enabled';
+const LESSONS_KEY = 'ba_lessons';
 
 export const MEMORY_MAX_ENTRIES = 100;
+export const LESSON_MAX_ENTRIES = 50;
 
 // --- saved conversations (auto-history) ---------------------------------------
 // One lightweight index array plus one body record per conversation. Splitting
@@ -196,6 +199,16 @@ export async function getMemories(): Promise<MemoryEntry[]> {
 
 export async function saveMemories(entries: MemoryEntry[]): Promise<void> {
   await chrome.storage.local.set({ [MEMORY_KEY]: entries });
+}
+
+export async function getLessons(): Promise<LessonEntry[]> {
+  const result = await chrome.storage.local.get(LESSONS_KEY);
+  const entries = result[LESSONS_KEY];
+  return Array.isArray(entries) ? (entries as LessonEntry[]) : [];
+}
+
+export async function saveLessons(entries: LessonEntry[]): Promise<void> {
+  await chrome.storage.local.set({ [LESSONS_KEY]: entries.slice(0, LESSON_MAX_ENTRIES) });
 }
 
 /** The History list, newest-first. Read by the runtime and (directly) the UI. */

@@ -40,6 +40,7 @@ import type {
   ConversationLabel,
   DataExport,
   FileArtifact,
+  LessonEntry,
   MemoryEntry,
   Settings,
   Skill,
@@ -53,7 +54,7 @@ import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
 import { mapCommand } from './mapClient';
 import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
-import { deriveStepBudget, parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
+import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
 import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
 import type { SearchHit } from '../shared/vectorSearch';
@@ -68,14 +69,17 @@ import {
   getCapabilities,
   getConversation,
   getConversationLabels,
+  getLessons,
   getMemories,
   getMemoryEnabled,
   getSessionApprovals,
   getSettings,
   getSkills,
+  LESSON_MAX_ENTRIES,
   MEMORY_MAX_ENTRIES,
   saveConversation,
   saveConversationLabels,
+  saveLessons,
   saveMemories,
   saveSkills,
   setConversationLabels as setStoredConversationLabels,
@@ -379,6 +383,14 @@ function memoryPromptBlock(entries: MemoryEntry[]): string {
   );
 }
 
+function lessonsPromptBlock(entries: LessonEntry[]): string {
+  if (entries.length === 0) return '';
+  return (
+    `\n\nLessons from prior tasks — apply these when relevant, but defer to current user instructions and fresh tool output:\n` +
+    entries.map((e) => `- ${e.text}${e.origin ? ` (site: ${e.origin})` : ''}`).join('\n')
+  );
+}
+
 function buildLearnTask(focus: string, existing?: Skill): string {
   const existingBlock = existing
     ? `\nYou already have a playbook for this site (name: "${existing.name}"). REFINE and improve it rather than starting over, and when you save, reuse the name "${existing.name}" so it replaces the current one. Current playbook:\n${existing.body}\n`
@@ -506,6 +518,7 @@ export class AgentRuntime {
   // How many times the answer-verification gate has sent the task back for a fix
   // this turn. Capped at 1 so a self-check can't loop indefinitely.
   private reflectionsDone = 0;
+  private reflectionIssues: string[] = [];
   // How many times the plan-execution guard has pushed the task back for trying
   // to finish over an unstarted plan. Capped at 1.
   private planNudgesDone = 0;
@@ -516,6 +529,8 @@ export class AgentRuntime {
   private authResumedOrigins = new Set<string>();
   private canDistill = false;
   private lastUserText = '';
+  private taskConversationStart = 0;
+  private taskActivityStart = 0;
   private activeHost = '';
   private activeTabLabel = '';
   // Active-tab URL captured at the previous user turn, to detect navigation
@@ -735,10 +750,13 @@ export class AgentRuntime {
     this.stepCeiling = budget.ceiling;
     this.toolCallCount = 0;
     this.reflectionsDone = 0;
+    this.reflectionIssues = [];
     this.planNudgesDone = 0;
     this.authResumedOrigins.clear();
     this.setDistill(false);
     this.emit({ type: 'plan_update', plan: null });
+    this.taskConversationStart = this.conversation.length;
+    this.taskActivityStart = this.activities.length;
 
     try {
       await this.runLoop(taskText, snapshots, epoch);
@@ -769,6 +787,7 @@ export class AgentRuntime {
         // Autosave every settled turn (including errored ones) so the thread
         // survives service-worker eviction and shows up in History.
         void this.persistCurrentConversation();
+        void this.maybeLearnLesson(settings, epoch);
         // Once the first exchange exists, generate a descriptive topic title.
         // Fire-and-forget so it never delays the user's next message; retries on
         // later turns until it succeeds, then locks (see titleIsAuto).
@@ -920,6 +939,84 @@ export class AgentRuntime {
       // Metadata is optional; leave the heuristics and retry on a later turn.
     } finally {
       this.metaInFlight = false;
+    }
+  }
+
+  private async maybeLearnLesson(settings: Settings, epoch: number): Promise<void> {
+    if (this.taskEpoch !== epoch || this.stopRequested || this.unattended) return;
+    if (!(await getMemoryEnabled())) return;
+    const taskMessages = this.conversation.slice(this.taskConversationStart);
+    const toolOutputs = taskMessages
+      .filter((m) => m.role === 'tool' && typeof m.content === 'string')
+      .map((m) => String(m.content));
+    const toolOutputErrors = toolOutputs.filter((o) => /^Error\b|Error from\b|.*\berror\b/i.test(o)).slice(-6);
+    const taskActivities = this.activities.slice(this.taskActivityStart);
+    const failedActivities = taskActivities
+      .filter((a) => a.status === 'error' || a.status === 'denied')
+      .slice(-8);
+    const substantial = (this.plan?.length ?? 0) >= 3 || this.toolCallCount >= 4;
+    const corrected = this.reflectionsDone > 0 || this.planNudgesDone > 0;
+    if (!substantial && !corrected && failedActivities.length === 0 && toolOutputErrors.length === 0) return;
+
+    const finalAnswer = [...this.messages].reverse().find((m) => m.role === 'assistant')?.text ?? '';
+    const planText = this.plan?.map((s, i) => `${i + 1}. [${s.status}] ${s.text}`).join('\n') ?? '(no plan)';
+    const tools = [...new Set(taskActivities.map((a) => a.tool))].slice(0, 12);
+    const prompt: LlmMessage[] = [
+      {
+        role: 'system',
+        content:
+          'Distill ONE reusable browser-agent lesson from this completed task. Save only actionable behavior that would prevent a repeated mistake or preserve a successful site/tool strategy. Do not save user facts, secrets, credentials, or page content. If there is no durable lesson, return confidence below 0.7. Reply ONLY JSON: {"lesson":"<one concise imperative>","triggers":["<future task keyword>"],"tools":["<tool names>"],"origin":"<host or null>","confidence":0-1}.',
+      },
+      {
+        role: 'user',
+        content:
+          `Request:\n${this.lastUserText}\n\n` +
+          `Active host:\n${this.activeHost || '(none)'}\n\n` +
+          `Plan:\n${planText}\n\n` +
+          `Self-check revisions:\n${this.reflectionIssues.join('\n') || '(none)'}\n\n` +
+          `Plan nudges: ${this.planNudgesDone}\n\n` +
+          `Tools used:\n${tools.join(', ') || '(none)'}\n\n` +
+          `Tool failures/errors:\n${[
+            ...failedActivities.map((a) => `${a.tool}: ${a.detail ?? a.status}`),
+            ...toolOutputErrors.map((e) => e.slice(0, 500)),
+          ].join('\n') || '(none)'}\n\n` +
+          `Findings:\n${this.findings.slice(-10).join('\n') || '(none)'}\n\n` +
+          `Final answer excerpt:\n${finalAnswer.slice(0, 1200)}`,
+      },
+    ];
+    try {
+      const reply = await complete({ ...settings, maxTokens: 300, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
+      if (this.taskEpoch !== epoch) return;
+      const parsed = parseLesson(typeof reply.content === 'string' ? reply.content : '');
+      if (!parsed) return;
+      const now = new Date().toISOString();
+      const origin = parsed.origin ? normalizeHost(parsed.origin) : this.activeHost || undefined;
+      const lessons = await getLessons();
+      const existing = findSimilarLesson(lessons, { ...parsed, origin });
+      if (existing) {
+        existing.text = parsed.lesson.length < existing.text.length || existing.uses < 2 ? parsed.lesson : existing.text;
+        existing.triggers = [...new Set([...existing.triggers, ...parsed.triggers])].slice(0, 12);
+        existing.tools = [...new Set([...(existing.tools ?? []), ...parsed.tools])].slice(0, 12);
+        existing.origin = existing.origin ?? origin;
+        existing.uses = (existing.uses ?? 0) + 1;
+        existing.updatedAt = now;
+      } else {
+        const entry: LessonEntry = {
+          id: `lesson-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          text: parsed.lesson,
+          triggers: parsed.triggers,
+          tools: parsed.tools.length > 0 ? parsed.tools : undefined,
+          origin,
+          uses: 1,
+          createdAt: now,
+          updatedAt: now,
+        };
+        lessons.unshift(entry);
+      }
+      lessons.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      await saveLessons(lessons.slice(0, LESSON_MAX_ENTRIES));
+    } catch {
+      // Automatic lessons are opportunistic; never affect the completed task.
     }
   }
 
@@ -1390,12 +1487,14 @@ export class AgentRuntime {
     // appended as a trailing message each turn (see withWorkingState).
     const capabilities = await getCapabilities();
     this.knownSiteNames = capabilities.map((c) => c.name);
+    const memoryEntries = memoryEnabled ? await getMemories() : [];
+    const lessonEntries = memoryEnabled ? relevantLessons(await getLessons(), userText, this.activeHost, 3) : [];
     this.systemBase =
       SYSTEM_PROMPT +
       capabilitiesPromptBlock(capabilities) +
       mcpPromptBlock(capabilities) +
       skillsPromptBlock(await getSkills(), this.activeHost) +
-      (memoryEnabled ? memoryPromptBlock(await getMemories()) : '') +
+      (memoryEnabled ? memoryPromptBlock(memoryEntries) + lessonsPromptBlock(lessonEntries) : '') +
       customInstructions;
     // Keep conversation[0] = the byte-stable system base (no volatile state).
     // The live working-state is appended as a trailing message at call time (see
@@ -1489,6 +1588,7 @@ export class AgentRuntime {
           if (this.aborted(epoch)) return;
           if (verdict.revise) {
             this.reflectionsDone++;
+            if (verdict.issues) this.reflectionIssues.push(verdict.issues);
             this.conversation.push({ role: 'assistant', content: text });
             this.conversation.push({
               role: 'user',

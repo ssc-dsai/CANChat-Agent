@@ -6,7 +6,7 @@
 
 import type { CapabilityRegistryEntry } from './capabilities';
 import type { ExportedRepo } from './messages';
-import type { MemoryEntry, Settings, SiteEntry, Skill } from './types';
+import type { LessonEntry, MemoryEntry, Settings, SiteEntry, Skill } from './types';
 
 /** A repository with its vectors decoded back into an Int8Array. */
 export interface ParsedRepo {
@@ -29,6 +29,7 @@ export interface ParsedBackup {
   sites: SiteEntry[];
   capabilities: CapabilityRegistryEntry[];
   memory: MemoryEntry[];
+  lessons: LessonEntry[];
   repos: ParsedRepo[];
 }
 
@@ -69,6 +70,7 @@ export function parseBackup(input: unknown): ParsedBackup {
     sites: Array.isArray(storage.ba_sites) ? (storage.ba_sites as SiteEntry[]) : [],
     capabilities: Array.isArray(storage.ba_capabilities) ? (storage.ba_capabilities as CapabilityRegistryEntry[]) : [],
     memory: Array.isArray(storage.ba_memory) ? (storage.ba_memory as MemoryEntry[]) : [],
+    lessons: Array.isArray(storage.ba_lessons) ? (storage.ba_lessons as LessonEntry[]) : [],
     repos: Array.isArray(b.repos) ? b.repos.map(parseRepo) : [],
   };
 }
