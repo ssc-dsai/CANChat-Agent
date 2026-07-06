@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from './url';
+import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost, resolvePdfUrl } from './url';
 
 describe('collectGroupUrls', () => {
   it('keeps http(s) tabs and carries titles', () => {
@@ -91,6 +91,14 @@ describe('documentKindForUrl', () => {
 
   it('classifies PDFs', () => {
     expect(documentKindForUrl('https://example.com/docs/manual.pdf')).toBe('pdf');
+    expect(documentKindForUrl('https://example.com/docs/manual.pdf?download=1#page=2')).toBe('pdf');
+  });
+
+  it('unwraps Chrome PDF viewer URLs', () => {
+    const pdf = 'https://example.com/docs/manual.pdf?download=1#page=2';
+    const viewer = `chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/index.html?src=${encodeURIComponent(pdf)}`;
+    expect(resolvePdfUrl(viewer)).toBe(pdf);
+    expect(documentKindForUrl(viewer)).toBe('pdf');
   });
 
   it('returns null for normal web pages', () => {

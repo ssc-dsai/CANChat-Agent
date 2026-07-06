@@ -27,6 +27,7 @@ import type {
   PageStateResult,
   TabSummary,
 } from '../shared/types';
+import { resolvePdfUrl } from '../shared/url';
 import { normalizeUrl } from '../shared/repoChunk';
 import { buildFileKql, buildMailQuery, clampTop, type M365SearchFilters } from '../shared/microsoftSearch';
 import { analyzeAuthState } from './authDetector';
@@ -35,6 +36,7 @@ import { readCanary } from './owaClient';
 import { hasAllUrlsAccess } from './permissions';
 
 const PAGE_LOAD_TIMEOUT_MS = 20000;
+const READ_PDF_CONTEXT_CHARS = 60_000;
 // Cap a video transcript put into the model's context (mirrors read_pdf).
 const VIDEO_TRANSCRIPT_CONTEXT_CHARS = 60_000;
 
@@ -139,6 +141,30 @@ export async function getTabContent(tabId: number): Promise<PageContent> {
   }
   const url = tab.url ?? '';
   const title = tab.title ?? '';
+  const pdfUrl = resolvePdfUrl(url);
+  if (pdfUrl) {
+    const result = await extractPdf(pdfUrl, READ_PDF_CONTEXT_CHARS);
+    if (!result.ok) {
+      return emptyContent(tabId, url, title, 'unsupported', `PDF extraction failed: ${result.error ?? 'unknown error'}`);
+    }
+    const text = result.text ?? '';
+    return {
+      tabId,
+      url,
+      title,
+      text,
+      metadata: {
+        'ba:sourceType': 'pdf',
+        'ba:pdfUrl': pdfUrl,
+        ...(result.truncated ? { 'ba:note': `PDF text truncated to ~${READ_PDF_CONTEXT_CHARS.toLocaleString()} characters.` } : {}),
+        ...(!text.trim() ? { 'ba:note': 'PDF had no extractable selectable text; it may be scanned/image-only.' } : {}),
+      },
+      links: [],
+      headings: [],
+      extractionStatus: result.truncated || !text.trim() ? 'partial' : 'ok',
+      capturedAt: new Date().toISOString(),
+    };
+  }
   if (isRestrictedUrl(url)) {
     return emptyContent(tabId, url, title, 'unsupported', 'Browser-internal pages cannot be read.');
   }
@@ -593,22 +619,26 @@ export async function callWebmcpTool(
 
 export async function readPdf(tabId: number | undefined, url: string | undefined): Promise<string> {
   let target = url;
+  let visibleUrl = url;
   if (!target) {
     try {
       const tab = tabId ? await chrome.tabs.get(tabId) : await queryActiveTab();
       target = tab?.url;
+      visibleUrl = tab?.url;
     } catch {
       // fall through
     }
   }
   if (!target) return JSON.stringify({ error: 'No URL or tab provided to read a PDF from.' });
+  const resolved = resolvePdfUrl(target);
+  if (!resolved) return JSON.stringify({ url: target, error: 'The target tab/URL is not a direct PDF or Chrome PDF viewer URL.' });
   // Cap what we put in the model's context; ingestion (add_to_repo) reads the
   // whole document instead.
-  const READ_PDF_CONTEXT_CHARS = 60_000;
-  const result = await extractPdf(target, READ_PDF_CONTEXT_CHARS);
-  if (!result.ok) return JSON.stringify({ url: target, error: result.error });
+  const result = await extractPdf(resolved, READ_PDF_CONTEXT_CHARS);
+  if (!result.ok) return JSON.stringify({ url: visibleUrl ?? target, pdfUrl: resolved, error: result.error });
   return JSON.stringify({
-    url: target,
+    url: visibleUrl ?? target,
+    pdfUrl: resolved,
     pageCount: result.pageCount,
     charCount: result.charCount,
     truncated: result.truncated,

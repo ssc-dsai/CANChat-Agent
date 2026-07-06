@@ -11,15 +11,11 @@
 import { chunkText } from '../shared/repoChunk';
 import type { RepoKind } from '../shared/messages';
 import type { Settings } from '../shared/types';
+import { resolvePdfUrl } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { complete, embedChunks, embedderId, type ContentPart } from './llmProvider';
 import { extractOffice, extractPdf, repoAdd } from './offscreenClient';
-
-/** Heuristic: does this URL point at a PDF the pdf.js path can extract? */
-function looksLikePdf(url: string): boolean {
-  return /\.pdf(\?|#|$)/i.test(url);
-}
 
 /** Heuristic: does this URL point at an OOXML Office file we can extract? */
 function looksLikeOffice(url: string): boolean {
@@ -64,9 +60,10 @@ export async function ingestTab(
 ): Promise<IngestResult> {
   let text = '';
   // PDFs: pdf.js gives clean, selectable text — try it before the DOM/OCR ladder.
-  if (looksLikePdf(url)) {
+  const pdfUrl = resolvePdfUrl(url);
+  if (pdfUrl) {
     try {
-      const pdf = await extractPdf(url);
+      const pdf = await extractPdf(pdfUrl);
       if (pdf.ok && pdf.text && pdf.text.trim().length > 30) text = pdf.text;
     } catch {
       // fall through to the page-content ladder

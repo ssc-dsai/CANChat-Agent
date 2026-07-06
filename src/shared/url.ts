@@ -32,6 +32,41 @@ export function collectGroupUrls(
   return out;
 }
 
+const CHROME_PDF_VIEWER_EXTENSION_ID = 'mhjfbmdgcfjbbpaeojofohoefgiehjai';
+
+function pathLooksLikePdf(url: string): boolean {
+  try {
+    return /\.pdf$/i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Return the real PDF URL for a direct PDF URL or Chrome's built-in PDF viewer
+ * wrapper (`chrome-extension://mhj.../index.html?src=<pdf-url>`). The browser tab
+ * often exposes the wrapper URL, but pdf.js needs the underlying document URL.
+ */
+export function resolvePdfUrl(url: string): string | null {
+  if (pathLooksLikePdf(url)) return url;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'chrome-extension:' || parsed.hostname !== CHROME_PDF_VIEWER_EXTENSION_ID) return null;
+  const src = parsed.searchParams.get('src');
+  if (!src) return null;
+  try {
+    const srcUrl = new URL(src);
+    if (srcUrl.protocol === 'chrome-extension:' || srcUrl.protocol === 'chrome:' || srcUrl.protocol === 'chrome-untrusted:') return null;
+    return src;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Classify a URL by file type so the agent reads documents instead of navigating
  * to them (the browser downloads Office/PDF files rather than rendering, leaving
@@ -39,6 +74,7 @@ export function collectGroupUrls(
  * (e.g. SharePoint's `…/Report.pptx?web=1`). Returns null for normal web pages.
  */
 export function documentKindForUrl(url: string): 'office' | 'pdf' | null {
+  if (resolvePdfUrl(url)) return 'pdf';
   let pathname: string;
   try {
     pathname = new URL(url).pathname.toLowerCase();
