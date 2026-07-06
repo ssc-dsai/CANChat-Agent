@@ -182,16 +182,18 @@ export function repoSearch(
   queryVector: number[],
   k: number,
   embedModel?: string,
-  opts: { query?: string; hybrid?: boolean } = {},
+  opts: { query?: string; hybrid?: boolean; queryVectors?: number[][]; queries?: string[] } = {},
 ): Promise<RepoResponse> {
   return repoRequest({
     target: 'offscreen-repo',
     op: 'search',
     repo,
     queryVector,
+    queryVectors: opts.queryVectors,
     k,
     embedModel,
     query: opts.query,
+    queries: opts.queries,
     hybrid: opts.hybrid,
   });
 }

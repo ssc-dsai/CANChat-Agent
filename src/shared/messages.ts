@@ -348,10 +348,13 @@ export type RepoRequest =
       op: 'search';
       repo: string;
       queryVector: number[];
+      queryVectors?: number[][];
       k: number;
       embedModel?: string;
       /** Raw query text, for the lexical (BM25) half of hybrid search. */
       query?: string;
+      /** Raw query variants aligned to queryVectors for multi-query lexical fusion. */
+      queries?: string[];
       /** Fuse semantic + keyword (RRF). When false/absent, pure semantic. */
       hybrid?: boolean;
     }

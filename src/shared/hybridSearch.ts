@@ -8,7 +8,7 @@
 // per-query normalization, no tunable blend weight. A chunk's fused score is the
 // sum over each list it appears in of 1/(rrfK + rank).
 
-import { bm25Rank } from './keywordSearch';
+import { bm25Rank, bm25RankIndexed, type KeywordIndex } from './keywordSearch';
 import { scoreVectors, type SearchHit, type SearchParams } from './vectorSearch';
 
 export interface RankedItem {
@@ -60,6 +60,16 @@ export interface HybridParams extends SearchParams {
   query: string;
   rrfK?: number;
   pool?: number;
+  keywordIndex?: KeywordIndex;
+}
+
+export interface MultiHybridParams extends Omit<SearchParams, 'queryVector'> {
+  queryVectors: number[][];
+  queries?: string[];
+  hybrid?: boolean;
+  rrfK?: number;
+  pool?: number;
+  keywordIndex?: KeywordIndex;
 }
 
 /**
@@ -71,9 +81,29 @@ export function hybridSearch(params: HybridParams): SearchHit[] {
   const { chunks, query, k, dim, perDimScale, chunkCount, vectors, queryVector } = params;
   if (chunkCount === 0) return [];
   const semantic = scoreVectors({ dim, perDimScale, chunkCount, vectors, queryVector });
-  const keyword = bm25Rank({ chunks, query });
+  const keyword = params.keywordIndex ? bm25RankIndexed({ index: params.keywordIndex, query }) : bm25Rank({ chunks, query });
   // No query terms matched anything lexically: nothing to fuse, just use dense.
   const lists = keyword.length > 0 ? [semantic, keyword] : [semantic];
+  return fuseRRF({ lists, k, rrfK: params.rrfK, pool: params.pool })
+    .map(({ i, score }) => {
+      const c = chunks[i];
+      return c ? { text: c.text, name: c.name, url: c.url, score } : null;
+    })
+    .filter((r): r is SearchHit => r !== null);
+}
+
+export function multiHybridSearch(params: MultiHybridParams): SearchHit[] {
+  const { chunks, k, queryVectors, queries = [], hybrid = true } = params;
+  if (params.chunkCount === 0 || queryVectors.length === 0) return [];
+  const lists: RankedItem[][] = [];
+  for (let i = 0; i < queryVectors.length; i++) {
+    lists.push(scoreVectors({ ...params, queryVector: queryVectors[i] }));
+    const q = queries[i];
+    if (hybrid && q) {
+      const keyword = params.keywordIndex ? bm25RankIndexed({ index: params.keywordIndex, query: q }) : bm25Rank({ chunks, query: q });
+      if (keyword.length > 0) lists.push(keyword);
+    }
+  }
   return fuseRRF({ lists, k, rrfK: params.rrfK, pool: params.pool })
     .map(({ i, score }) => {
       const c = chunks[i];

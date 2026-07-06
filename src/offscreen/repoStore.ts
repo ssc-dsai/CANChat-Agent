@@ -3,7 +3,8 @@
 // so it uses the async OPFS API (no sync access handles, which are Worker-only).
 
 import type { ExportedRepo, RepoKind } from '../shared/messages';
-import { hybridSearch } from '../shared/hybridSearch';
+import { hybridSearch, multiHybridSearch } from '../shared/hybridSearch';
+import { buildKeywordIndex, extendKeywordIndex, type KeywordIndex } from '../shared/keywordSearch';
 import { normalizeVector, quantizeVector, searchVectors, type SearchHit } from '../shared/vectorSearch';
 
 interface DocMeta {
@@ -99,12 +100,37 @@ async function writeVectors(dir: FileSystemDirectoryHandle, data: Int8Array): Pr
   await w.close();
 }
 
+async function readOrBuildKeywordIndex(dir: FileSystemDirectoryHandle, chunks: ChunkRec[]): Promise<KeywordIndex> {
+  const existing = await readJson<KeywordIndex | null>(dir, 'keywordIndex.json', null);
+  if (existing?.version === 1 && existing.docLen.length === chunks.length) return existing;
+  const rebuilt = buildKeywordIndex(chunks);
+  await writeJson(dir, 'keywordIndex.json', rebuilt);
+  return rebuilt;
+}
+
+async function rebuildKeywordIndex(dir: FileSystemDirectoryHandle, chunks: ChunkRec[]): Promise<void> {
+  await writeJson(dir, 'keywordIndex.json', buildKeywordIndex(chunks));
+}
+
+async function appendKeywordIndex(
+  dir: FileSystemDirectoryHandle,
+  previousChunkCount: number,
+  newChunks: ChunkRec[],
+  allChunks: ChunkRec[],
+): Promise<void> {
+  const existing = await readJson<KeywordIndex | null>(dir, 'keywordIndex.json', null);
+  const next = existing?.version === 1 && existing.docLen.length === previousChunkCount
+    ? extendKeywordIndex(existing, newChunks)
+    : buildKeywordIndex(allChunks);
+  await writeJson(dir, 'keywordIndex.json', next);
+}
+
 export async function repoAdd(
   repo: string,
   doc: { name: string; url: string },
   chunks: string[],
   vectors: number[][],
-    opts: { embedModel?: string; kind?: RepoKind; docExtra?: DocExtra } = {},
+  opts: { embedModel?: string; kind?: RepoKind; docExtra?: DocExtra } = {},
 ): Promise<{ docId: string; chunkCount: number }> {
   if (chunks.length === 0 || vectors.length !== chunks.length) {
     throw new Error('repoAdd: chunk/vector count mismatch.');
@@ -145,9 +171,12 @@ export async function repoAdd(
   await appendVectors(dir, packed);
 
   const allChunks = await readJson<ChunkRec[]>(dir, 'chunks.json', []);
+  const previousChunkCount = allChunks.length;
   const docId = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  for (const text of chunks) allChunks.push({ docId, name: doc.name, url: doc.url, text });
+  const newChunks = chunks.map((text) => ({ docId, name: doc.name, url: doc.url, text }));
+  allChunks.push(...newChunks);
   await writeJson(dir, 'chunks.json', allChunks);
+  await appendKeywordIndex(dir, previousChunkCount, newChunks, allChunks);
 
   meta.docs.push({
     id: docId,
@@ -170,7 +199,7 @@ export async function repoSearch(
   queryVector: number[],
   k: number,
   embedModel?: string,
-  opts: { query?: string; hybrid?: boolean } = {},
+  opts: { query?: string; hybrid?: boolean; queryVectors?: number[][]; queries?: string[] } = {},
 ): Promise<{ results: SearchHit[] }> {
   const dir = await repoDir(repo);
   const meta = await readJson<RepoMeta | null>(dir, 'meta.json', null);
@@ -184,19 +213,24 @@ export async function repoSearch(
   }
   const vectors = await readVectors(dir);
   const chunks = await readJson<ChunkRec[]>(dir, 'chunks.json', []);
+  const keywordIndex = await readOrBuildKeywordIndex(dir, chunks);
   const base = {
     dim: meta.dim,
     perDimScale: meta.perDimScale,
     chunkCount: meta.chunkCount,
     vectors,
     chunks,
-    queryVector,
     k,
   };
   // Hybrid (semantic + BM25, RRF-fused) when enabled and the raw query is known;
   // otherwise pure semantic. The query text is only present on the hybrid path.
-  const results =
-    opts.hybrid && opts.query ? hybridSearch({ ...base, query: opts.query }) : searchVectors(base);
+  const queryVectors = opts.queryVectors?.length ? opts.queryVectors : [queryVector];
+  const queries = opts.queries?.length ? opts.queries : opts.query ? [opts.query] : [];
+  const results = queryVectors.length > 1 || queries.length > 1
+    ? multiHybridSearch({ ...base, queryVectors, queries, hybrid: opts.hybrid !== false, keywordIndex })
+    : opts.hybrid && opts.query
+      ? hybridSearch({ ...base, queryVector, query: opts.query, keywordIndex })
+      : searchVectors({ ...base, queryVector });
   return { results };
 }
 
@@ -275,6 +309,7 @@ export async function repoImportAll(repos: ExportedRepo[]): Promise<{ imported: 
     const d = await root.getDirectoryHandle(r.name, { create: true });
     await writeJson(d, 'meta.json', r.meta);
     await writeJson(d, 'chunks.json', Array.isArray(r.chunks) ? r.chunks : []);
+    await rebuildKeywordIndex(d, Array.isArray(r.chunks) ? (r.chunks as ChunkRec[]) : []);
     const u8 = b64ToU8(r.vectorsB64 ?? '');
     await writeVectors(d, new Int8Array(u8.buffer, u8.byteOffset, u8.byteLength));
     imported++;
@@ -312,6 +347,7 @@ export async function repoDeleteDoc(repo: string, docId: string): Promise<{ remo
   const allChunks = await readJson<ChunkRec[]>(dir, 'chunks.json', []);
   allChunks.splice(start, doc.chunkCount);
   await writeJson(dir, 'chunks.json', allChunks);
+  await rebuildKeywordIndex(dir, allChunks);
 
   // Drop the doc and re-sequence every remaining doc's chunkStart.
   meta.docs = meta.docs.filter((d) => d.id !== docId);

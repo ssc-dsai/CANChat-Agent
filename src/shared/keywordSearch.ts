@@ -22,6 +22,14 @@ export interface KeywordHit {
   score: number;
 }
 
+export interface KeywordIndex {
+  version: 1;
+  avgdl: number;
+  docLen: number[];
+  docFreq: Record<string, number>;
+  termFreqs: Array<Array<[term: string, freq: number]>>;
+}
+
 export interface Bm25Params {
   /** Chunk records aligned to the vector rows (only `text` is read). */
   chunks: Array<{ text: string }>;
@@ -32,58 +40,86 @@ export interface Bm25Params {
   b?: number;
 }
 
-/**
- * Rank chunks by BM25 against the query. Returns only chunks with a non-zero
- * score (i.e. that share at least one query term), sorted by score descending.
- * IDF and average document length are computed across the supplied chunks at
- * query time — no persisted inverted index, which keeps the stored repo format
- * unchanged and is sub-millisecond for the corpus sizes here (hundreds–thousands
- * of chunks).
- */
-export function bm25Rank(params: Bm25Params): KeywordHit[] {
-  const { chunks, query } = params;
-  const k1 = params.k1 ?? 1.5;
-  const b = params.b ?? 0.75;
-  const N = chunks.length;
-  if (N === 0) return [];
-  const qTerms = [...new Set(tokenize(query))];
-  if (qTerms.length === 0) return [];
-
-  // Per-chunk term frequencies + lengths (single tokenize pass over the corpus).
-  const termFreqs: Array<Map<string, number>> = new Array(N);
-  const docLen = new Array<number>(N);
+export function buildKeywordIndex(chunks: Array<{ text: string }>): KeywordIndex {
+  const docLen: number[] = [];
+  const docFreq: Record<string, number> = {};
+  const termFreqs: Array<Array<[string, number]>> = [];
   let totalLen = 0;
-  for (let i = 0; i < N; i++) {
-    const toks = tokenize(chunks[i].text);
-    docLen[i] = toks.length;
+  for (const chunk of chunks) {
+    const toks = tokenize(chunk.text);
+    docLen.push(toks.length);
     totalLen += toks.length;
     const tf = new Map<string, number>();
     for (const t of toks) tf.set(t, (tf.get(t) ?? 0) + 1);
-    termFreqs[i] = tf;
+    for (const term of tf.keys()) docFreq[term] = (docFreq[term] ?? 0) + 1;
+    termFreqs.push([...tf.entries()]);
   }
-  const avgdl = totalLen / N || 1;
+  return { version: 1, avgdl: totalLen / Math.max(1, chunks.length), docLen, docFreq, termFreqs };
+}
 
-  // Document frequency + IDF per query term.
-  const idf = new Map<string, number>();
-  for (const term of qTerms) {
-    let df = 0;
-    for (let i = 0; i < N; i++) if (termFreqs[i].has(term)) df++;
-    // BM25 idf with the +1 inside log to keep it non-negative for common terms.
-    idf.set(term, Math.log(1 + (N - df + 0.5) / (df + 0.5)));
+export function extendKeywordIndex(index: KeywordIndex, chunks: Array<{ text: string }>): KeywordIndex {
+  const docLen = [...index.docLen];
+  const docFreq: Record<string, number> = { ...index.docFreq };
+  const termFreqs = index.termFreqs.map((tf) => tf.slice());
+  let totalLen = docLen.reduce((n, len) => n + len, 0);
+  for (const chunk of chunks) {
+    const toks = tokenize(chunk.text);
+    docLen.push(toks.length);
+    totalLen += toks.length;
+    const tf = new Map<string, number>();
+    for (const t of toks) tf.set(t, (tf.get(t) ?? 0) + 1);
+    for (const term of tf.keys()) docFreq[term] = (docFreq[term] ?? 0) + 1;
+    termFreqs.push([...tf.entries()]);
   }
+  return { version: 1, avgdl: totalLen / Math.max(1, docLen.length), docLen, docFreq, termFreqs };
+}
+
+export interface Bm25IndexedParams {
+  index: KeywordIndex;
+  query: string;
+  k1?: number;
+  b?: number;
+}
+
+export function bm25RankIndexed(params: Bm25IndexedParams): KeywordHit[] {
+  const { index, query } = params;
+  const k1 = params.k1 ?? 1.5;
+  const b = params.b ?? 0.75;
+  const N = index.docLen.length;
+  if (N === 0 || index.version !== 1) return [];
+  const qTerms = [...new Set(tokenize(query))];
+  if (qTerms.length === 0) return [];
+
+  const qIdf = new Map<string, number>();
+  for (const term of qTerms) {
+    const df = index.docFreq[term] ?? 0;
+    if (df > 0) qIdf.set(term, Math.log(1 + (N - df + 0.5) / (df + 0.5)));
+  }
+  if (qIdf.size === 0) return [];
 
   const hits: KeywordHit[] = [];
   for (let i = 0; i < N; i++) {
-    const tf = termFreqs[i];
+    const tf = new Map(index.termFreqs[i] ?? []);
     let score = 0;
-    const norm = k1 * (1 - b + b * (docLen[i] / avgdl));
-    for (const term of qTerms) {
+    const norm = k1 * (1 - b + b * ((index.docLen[i] ?? 0) / (index.avgdl || 1)));
+    for (const [term, idf] of qIdf) {
       const f = tf.get(term);
       if (!f) continue;
-      score += (idf.get(term) as number) * ((f * (k1 + 1)) / (f + norm));
+      score += idf * ((f * (k1 + 1)) / (f + norm));
     }
     if (score > 0) hits.push({ i, score });
   }
   hits.sort((a, b) => b.score - a.score);
   return hits;
+}
+
+/**
+ * Rank chunks by BM25 against the query. Returns only chunks with a non-zero
+ * score (i.e. that share at least one query term), sorted by score descending.
+ * Convenience wrapper that builds an in-memory keyword index for callers that do
+ * not have a persisted index. Repos use `KeywordIndex` directly to avoid
+ * re-tokenizing the whole corpus on every query.
+ */
+export function bm25Rank(params: Bm25Params): KeywordHit[] {
+  return bm25RankIndexed({ index: buildKeywordIndex(params.chunks), query: params.query, k1: params.k1, b: params.b });
 }

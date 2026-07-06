@@ -56,6 +56,7 @@ import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, type ContentPart, ty
 import { deriveStepBudget, parseReflectionVerdict, parseSummaryArray, repairToolPairing } from './loopHelpers';
 import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
+import type { SearchHit } from '../shared/vectorSearch';
 import { ingestTab } from './repoIngest';
 import { resolveOutlookBase } from './mailIngest';
 import { owaCreateDraft, owaGetCalendarView, readCanary } from './owaClient';
@@ -137,6 +138,25 @@ function emailBodyType(value: unknown): 'Text' | 'HTML' {
 
 function emailImportance(value: unknown): 'Low' | 'Normal' | 'High' {
   return value === 'Low' || value === 'High' ? value : 'Normal';
+}
+
+function extractJsonObject(text: string): unknown {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text)?.[1];
+  const raw = fenced ?? text;
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('No JSON object found.');
+  return JSON.parse(raw.slice(start, end + 1));
+}
+
+function uniqueQueries(original: string, variants: unknown): string[] {
+  const out: string[] = [];
+  for (const q of [original, ...(Array.isArray(variants) ? variants : [])]) {
+    const s = String(q ?? '').trim().replace(/\s+/g, ' ');
+    if (s && !out.some((x) => x.toLowerCase() === s.toLowerCase())) out.push(s);
+    if (out.length >= 3) break;
+  }
+  return out;
 }
 const FINDINGS_SHOWN = 20;
 
@@ -2045,21 +2065,28 @@ export class AgentRuntime {
       case 'search_repo': {
         const settings = await getSettings();
         if (!settings) return 'Error: no model configured.';
+        const query = String(args.query);
+        const finalK = Number(args.k) || settings.repoSearchK || 6;
+        const candidateK = Math.max(20, finalK * 3);
+        const queries = await this.repoQueryVariants(settings, query);
         let queryVec: number[][];
         try {
-          queryVec = await embedChunks(settings, [String(args.query)], this.makeSignal());
+          queryVec = await embedChunks(settings, queries, this.makeSignal());
         } catch (e) {
           return `Error embedding the query: ${e instanceof Error ? e.message : String(e)}`;
         }
         const res = await repoSearch(
           String(args.repo),
           queryVec[0],
-          Number(args.k) || settings.repoSearchK || 6,
+          candidateK,
           embedderId(settings),
-          { query: String(args.query), hybrid: settings.hybridSearch !== false },
+          { query, queryVectors: queryVec, queries, hybrid: settings.hybridSearch !== false },
         );
         if (!res.ok) return `Error: ${res.error}`;
-        return JSON.stringify(res.result);
+        const result = res.result as { results?: SearchHit[] } | undefined;
+        const hits = Array.isArray(result?.results) ? result.results : [];
+        const reranked = await this.rerankRepoHits(settings, query, hits, finalK);
+        return JSON.stringify({ results: reranked, queries, candidateCount: hits.length });
       }
       case 'list_repos': {
         const res = await repoList();
@@ -2707,6 +2734,56 @@ export class AgentRuntime {
     if (kind === 'office') return browser.readOfficeDocument(undefined, url);
     if (kind === 'pdf') return browser.readPdf(undefined, url);
     return null;
+  }
+
+  private async repoQueryVariants(settings: Settings, query: string): Promise<string[]> {
+    try {
+      const reply = await complete(
+        settings,
+        [
+          { role: 'system', content: 'Generate 2 concise retrieval query paraphrases for RAG search. Preserve names, dates, codes, and quoted terms. Return ONLY JSON: {"queries":["..."]}.' },
+          { role: 'user', content: query },
+        ],
+        undefined,
+        this.makeSignal(),
+      );
+      const obj = extractJsonObject(reply.content ?? '{}') as { queries?: unknown };
+      return uniqueQueries(query, obj.queries);
+    } catch {
+      return [query];
+    }
+  }
+
+  private async rerankRepoHits(settings: Settings, query: string, hits: SearchHit[], k: number): Promise<SearchHit[]> {
+    if (hits.length <= k) return hits.slice(0, k);
+    try {
+      const candidates = hits.slice(0, 20).map((h, i) => ({ id: i + 1, name: h.name, url: h.url, text: h.text.slice(0, 1200) }));
+      const reply = await complete(
+        settings,
+        [
+          { role: 'system', content: 'Rerank retrieval chunks for direct usefulness in answering the query. Prefer specific, answer-bearing chunks over generic or duplicate chunks. Return ONLY JSON: {"ids":[candidate ids in best order]}.' },
+          { role: 'user', content: JSON.stringify({ query, candidates }) },
+        ],
+        undefined,
+        this.makeSignal(),
+      );
+      const obj = extractJsonObject(reply.content ?? '{}') as { ids?: unknown };
+      const ids = Array.isArray(obj.ids) ? obj.ids.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= candidates.length) : [];
+      const seen = new Set<number>();
+      const reranked: SearchHit[] = [];
+      for (const id of ids) {
+        const idx = id - 1;
+        if (!seen.has(idx) && hits[idx]) {
+          seen.add(idx);
+          reranked.push(hits[idx]);
+        }
+        if (reranked.length >= k) break;
+      }
+      for (let i = 0; reranked.length < k && i < hits.length; i++) if (!seen.has(i)) reranked.push(hits[i]);
+      return reranked;
+    } catch {
+      return hits.slice(0, k);
+    }
   }
 
   private exportData(args: Record<string, unknown>): string {

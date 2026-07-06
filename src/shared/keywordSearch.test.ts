@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bm25Rank, tokenize } from './keywordSearch';
+import { bm25Rank, bm25RankIndexed, buildKeywordIndex, extendKeywordIndex, tokenize } from './keywordSearch';
 
 describe('tokenize', () => {
   it('lowercases and splits on whitespace/punctuation', () => {
@@ -58,5 +58,18 @@ describe('bm25Rank', () => {
     // "rare" appears in 1 of 3 docs; "common" in all 3 → rare should drive ranking.
     const hits = bm25Rank({ chunks: corpus, query: 'rare common' });
     expect(hits[0].i).toBe(0);
+  });
+
+  it('matches the precomputed keyword index ranking', () => {
+    const direct = bm25Rank({ chunks, query: 'budget costs invoice' });
+    const indexed = bm25RankIndexed({ index: buildKeywordIndex(chunks), query: 'budget costs invoice' });
+    expect(indexed).toEqual(direct);
+  });
+
+  it('extends a keyword index without changing rankings', () => {
+    const extended = extendKeywordIndex(buildKeywordIndex(chunks.slice(0, 1)), chunks.slice(1));
+    expect(bm25RankIndexed({ index: extended, query: 'budget costs invoice' })).toEqual(
+      bm25Rank({ chunks, query: 'budget costs invoice' }),
+    );
   });
 });

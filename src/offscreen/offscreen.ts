@@ -371,6 +371,8 @@ async function handleRepo(req: RepoRequest): Promise<RepoResponse> {
           ok: true,
           result: await repoSearch(req.repo, req.queryVector, req.k, req.embedModel, {
             query: req.query,
+            queryVectors: req.queryVectors,
+            queries: req.queries,
             hybrid: req.hybrid,
           }),
         };

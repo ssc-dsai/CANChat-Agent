@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fuseRRF, hybridSearch } from './hybridSearch';
+import { fuseRRF, hybridSearch, multiHybridSearch } from './hybridSearch';
 import { quantizeVector, normalizeVector } from './vectorSearch';
 
 describe('fuseRRF', () => {
@@ -80,5 +80,16 @@ describe('hybridSearch', () => {
 
   it('returns [] for an empty repo', () => {
     expect(hybridSearch({ ...base, chunkCount: 0, query: 'anything' })).toEqual([]);
+  });
+
+  it('fuses lexical matches from paraphrase queries', () => {
+    const hits = multiHybridSearch({
+      ...base,
+      queryVectors: [[1, 0], [1, 0]],
+      queries: ['budget overrun', 'XJ-9000'],
+      hybrid: true,
+      k: 3,
+    });
+    expect(hits.map((h) => h.name)).toContain('b');
   });
 });
