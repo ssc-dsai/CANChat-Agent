@@ -32,21 +32,36 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
   const [connected, setConnected] = useState<boolean | null>(null);
   const [base, setBase] = useState('https://outlook.office.com');
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastAuto, setLastAuto] = useState<MailAutoRefreshStatus | null>(null);
 
   // Probe whether an Outlook web session cookie is present.
-  const checkSession = () => {
-    chrome.runtime
-      .sendMessage({ type: 'mailbox_session' })
-      .then((r: { connected?: boolean; base?: string }) => {
-        setConnected(Boolean(r?.connected));
-        if (r?.base) setBase(r.base);
-      })
-      .catch(() => setConnected(false));
+  const checkSession = async (showStatus = false) => {
+    if (showStatus) {
+      setChecking(true);
+      setStatus(t('mail.checking'));
+    }
+    try {
+      const r = (await chrome.runtime.sendMessage({ type: 'mailbox_session' })) as {
+        connected?: boolean;
+        base?: string;
+        error?: string;
+      };
+      setConnected(Boolean(r?.connected));
+      if (r?.base) setBase(r.base);
+      if (showStatus) setStatus(r?.connected ? null : t('mail.sessionError', { msg: r?.error ?? 'unknown error' }));
+    } catch (e) {
+      setConnected(false);
+      if (showStatus) setStatus(t('mail.sessionError', { msg: e instanceof Error ? e.message : String(e) }));
+    } finally {
+      if (showStatus) setChecking(false);
+    }
   };
-  useEffect(checkSession, []);
+  useEffect(() => {
+    void checkSession();
+  }, []);
 
   // Load the auto-refresh toggle + the last background-refresh result, and stay
   // live if either changes (e.g. the hourly alarm fires while the panel is open).
@@ -124,10 +139,11 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
           <a class="btn" href={`${base}/mail/`} target="_blank" rel="noreferrer">
             {t('mail.openOutlook')}
           </a>
-          <button class="btn" onClick={checkSession}>
+          <button class="btn" disabled={checking} onClick={() => void checkSession(true)}>
             {t('mail.recheck')}
           </button>
         </div>
+        {status && <p class="settings-note repo-folder-status">{status}</p>}
       </div>
     );
   }

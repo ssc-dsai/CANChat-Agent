@@ -34,12 +34,16 @@ export const GET_BATCH_SIZE = 20;
 export class OwaSessionError extends Error {}
 
 async function readCanaryCookie(base: string): Promise<string | undefined> {
-  try {
-    const cookie = await chrome.cookies.get({ url: base, name: 'X-OWA-CANARY' });
-    return cookie?.value ?? undefined;
-  } catch {
-    return undefined;
+  const clean = base.replace(/\/+$/, '');
+  for (const url of [`${clean}/`, `${clean}/owa/`, `${clean}/mail/`]) {
+    try {
+      const cookie = await chrome.cookies.get({ url, name: 'X-OWA-CANARY' });
+      if (cookie?.value) return cookie.value;
+    } catch {
+      // Try the next likely OWA path; the final caller decides whether this is fatal.
+    }
   }
+  return undefined;
 }
 
 /**

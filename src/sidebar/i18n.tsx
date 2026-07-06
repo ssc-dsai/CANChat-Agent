@@ -118,6 +118,8 @@ const EN: Dict = {
   'mail.needSession': 'Sign in to Outlook on the web first, then re-check. This uses your existing session — no Azure app needed.',
   'mail.openOutlook': 'Open Outlook',
   'mail.recheck': 'Re-check',
+  'mail.checking': 'Checking Outlook session…',
+  'mail.sessionError': 'Outlook session check failed: {msg}',
   'mail.autoRefresh': 'Auto-refresh hourly',
   'mail.autoRefreshNote':
     'Keeps the mailbox current in the background over your existing Outlook session — no need to click Index again. Off by default; only refreshes a mailbox you’ve indexed at least once.',
@@ -364,6 +366,8 @@ const FR: Dict = {
   'mail.needSession': 'Connectez-vous d’abord à Outlook sur le web, puis revérifiez. Utilise votre session existante — aucune application Azure requise.',
   'mail.openOutlook': 'Ouvrir Outlook',
   'mail.recheck': 'Revérifier',
+  'mail.checking': 'Vérification de la session Outlook…',
+  'mail.sessionError': 'Échec de la vérification de la session Outlook : {msg}',
   'mail.autoRefresh': 'Actualisation automatique (toutes les heures)',
   'mail.autoRefreshNote':
     'Garde la boîte à jour en arrière-plan avec votre session Outlook existante — plus besoin de cliquer sur Indexer. Désactivé par défaut; n’actualise qu’une boîte déjà indexée au moins une fois.',

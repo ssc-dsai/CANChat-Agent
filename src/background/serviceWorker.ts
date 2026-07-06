@@ -316,8 +316,8 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
       try {
         await readCanary(base);
         return { connected: true, base };
-      } catch {
-        return { connected: false, base };
+      } catch (e) {
+        return { connected: false, base, error: e instanceof Error ? e.message : String(e) };
       }
     })().then(sendResponse);
     return true;
