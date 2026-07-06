@@ -33,18 +33,47 @@ export const GET_BATCH_SIZE = 20;
 /** Thrown when there's no usable Outlook web session to ride on. */
 export class OwaSessionError extends Error {}
 
-/** Read the OWA anti-CSRF token from the session cookies, or throw. */
-export async function readCanary(base: string): Promise<string> {
-  let value: string | undefined;
+async function readCanaryCookie(base: string): Promise<string | undefined> {
   try {
     const cookie = await chrome.cookies.get({ url: base, name: 'X-OWA-CANARY' });
-    value = cookie?.value ?? undefined;
+    return cookie?.value ?? undefined;
   } catch {
-    // cookies permission missing or cookie unreadable — fall through to the throw.
+    return undefined;
+  }
+}
+
+/**
+ * OWA only issues the X-OWA-CANARY token after the web app/session has been
+ * touched. If Microsoft 365 cookies exist but the canary is absent, quietly hit
+ * Outlook's own app routes with credentials so the endpoint tools can bootstrap
+ * the session without asking the user to manually open Outlook first.
+ */
+async function bootstrapOwaSession(base: string): Promise<void> {
+  const root = base.replace(/\/+$/, '');
+  for (const path of ['/mail/', '/owa/']) {
+    try {
+      await fetch(`${root}${path}`, {
+        credentials: 'include',
+        redirect: 'follow',
+        cache: 'no-store',
+      });
+    } catch {
+      // Best effort; the final cookie read below determines whether it worked.
+    }
+  }
+}
+
+/** Read the OWA anti-CSRF token from the session cookies, or throw. */
+export async function readCanary(base: string): Promise<string> {
+  const clean = base.replace(/\/+$/, '');
+  let value = await readCanaryCookie(clean);
+  if (!value) {
+    await bootstrapOwaSession(clean);
+    value = await readCanaryCookie(clean);
   }
   if (!value) {
     throw new OwaSessionError(
-      `No Outlook session found at ${base}. Open Outlook on the web, sign in, then try again.`,
+      `Could not establish an Outlook endpoint session at ${clean}. Sign in to Outlook/Microsoft 365 once, then retry.`,
     );
   }
   return value;

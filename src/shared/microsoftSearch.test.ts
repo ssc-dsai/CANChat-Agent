@@ -23,8 +23,13 @@ describe('normalizeFileType', () => {
 });
 
 describe('buildFileKql', () => {
-  it('falls back to IsDocument:1 with no filters', () => {
-    expect(buildFileKql({})).toBe('IsDocument:1');
+  it('defaults to a curated user-content file type filter with no filters', () => {
+    const kql = buildFileKql({});
+    expect(kql).toContain('filetype:docx');
+    expect(kql).toContain('filetype:pdf');
+    expect(kql).toContain('filetype:html');
+    expect(kql).toContain('filetype:mp4');
+    expect(kql).not.toContain('filetype:dll');
   });
 
   it('combines terms, filetype, site path, and date range', () => {
@@ -41,13 +46,17 @@ describe('buildFileKql', () => {
   });
 
   it('adds an Editor clause only when editedByMe + a resolved name are present', () => {
-    expect(buildFileKql({ editedByMe: true }, 'Jane Doe')).toBe('Editor:"Jane Doe"');
-    expect(buildFileKql({ editedByMe: true })).toBe('IsDocument:1'); // no name → no clause
-    expect(buildFileKql({ query: 'x' }, 'Jane Doe')).toBe('x'); // name ignored without editedByMe
+    expect(buildFileKql({ editedByMe: true }, 'Jane Doe')).toContain('Editor:"Jane Doe"');
+    expect(buildFileKql({ editedByMe: true })).toContain('filetype:docx'); // no name → no editor clause
+    expect(buildFileKql({ query: 'x' }, 'Jane Doe')).not.toContain('Editor:'); // name ignored without editedByMe
   });
 
   it('ignores malformed dates and sanitizes quotes in terms', () => {
-    expect(buildFileKql({ query: "o'brien", since: 'not-a-date' })).toBe('o brien');
+    expect(buildFileKql({ query: "o'brien", since: 'not-a-date' })).toContain('o brien');
+  });
+
+  it('uses an explicit fileType instead of the default content-file filter', () => {
+    expect(buildFileKql({ fileType: 'docx' })).toBe('filetype:docx');
   });
 });
 

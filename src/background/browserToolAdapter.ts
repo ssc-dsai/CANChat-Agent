@@ -31,6 +31,7 @@ import { normalizeUrl } from '../shared/repoChunk';
 import { buildFileKql, buildMailQuery, clampTop, type M365SearchFilters } from '../shared/microsoftSearch';
 import { analyzeAuthState } from './authDetector';
 import { extractOffice, extractPdf } from './offscreenClient';
+import { readCanary } from './owaClient';
 import { hasAllUrlsAccess } from './permissions';
 
 const PAGE_LOAD_TIMEOUT_MS = 20000;
@@ -868,7 +869,7 @@ export async function fileSearch(
     `&rowlimit=${rowlimit}` +
     `&selectproperties='${encodeURIComponent(props)}'` +
     `&clienttype='ContentSearchRegular'`;
-  if (f.orderBy === 'date') {
+  if (f.orderBy !== 'relevance') {
     url += `&sortlist='${encodeURIComponent('LastModifiedTime:descending')}'`;
   }
 
@@ -920,12 +921,12 @@ export async function sharepointSearch(base: string, opts: SharepointSearchOptio
     query: opts.query,
     top: opts.top,
     editedByMe: opts.editedByMe,
-    orderBy: opts.sortBy === 'modified' ? 'date' : 'relevance',
+    orderBy: opts.sortBy === 'relevance' ? 'relevance' : 'date',
   });
   if ('error' in out) return JSON.stringify({ error: out.error });
   return JSON.stringify({
     base,
-    sortBy: opts.sortBy ?? 'relevance',
+    sortBy: opts.sortBy ?? 'modified',
     editedByMe: Boolean(opts.editedByMe),
     count: out.results.length,
     results: out.results,
@@ -934,26 +935,20 @@ export async function sharepointSearch(base: string, opts: SharepointSearchOptio
 
 /**
  * Mail search over Outlook-on-the-web's own FindItem endpoint, authenticated by the
- * session cookie + the `X-OWA-CANARY` anti-CSRF token (read via the `cookies`
- * permission). Undocumented and best-effort — on any failure it returns a clear error
- * telling the caller to fall back to the `/search-mail` skill (which drives the UI).
+ * session cookie + the `X-OWA-CANARY` anti-CSRF token. Undocumented and
+ * best-effort; the canary helper first tries to bootstrap the OWA web session so
+ * users don't have to manually open Outlook before endpoint-backed search.
  */
 export async function outlookMailSearch(
   outlookBase: string,
   f: M365SearchFilters,
 ): Promise<{ results: MailResult[] } | { error: string }> {
   const base = outlookBase.replace(/\/+$/, '');
-  let canary: string | undefined;
+  let canary: string;
   try {
-    const cookie = await chrome.cookies.get({ url: base, name: 'X-OWA-CANARY' });
-    canary = cookie?.value ?? undefined;
-  } catch {
-    // cookies permission missing or cookie unreadable
-  }
-  if (!canary) {
-    return {
-      error: `Could not read your Outlook session (no X-OWA-CANARY cookie at ${base}). Open Outlook on the web and sign in, then retry — or use the /search-mail skill.`,
-    };
+    canary = await readCanary(base);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
   }
 
   const max = clampTop(f.top);
@@ -1007,18 +1002,18 @@ export async function outlookMailSearch(
       body: JSON.stringify(body),
     });
   } catch (err) {
-    return { error: `Could not reach Outlook at ${base}: ${String(err)}. Use the /search-mail skill instead.` };
+    return { error: `Could not reach Outlook endpoint at ${base}: ${String(err)}` };
   }
   if (!res.ok) {
     return {
-      error: `Outlook mail search failed (HTTP ${res.status}). The Outlook web endpoint may have changed — use the /search-mail skill instead.`,
+      error: `Outlook endpoint mail search failed (HTTP ${res.status}).`,
     };
   }
   let data: unknown;
   try {
     data = await res.json();
   } catch {
-    return { error: 'Outlook returned a non-JSON response. Use the /search-mail skill instead.' };
+    return { error: 'Outlook endpoint returned a non-JSON response.' };
   }
 
   // Defensive: the OWA response shape is undocumented and may vary.

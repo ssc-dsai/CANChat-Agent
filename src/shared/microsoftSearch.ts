@@ -31,6 +31,13 @@ export interface M365SearchFilters {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+const DEFAULT_FILE_TYPES = [
+  // Office / document formats
+  'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pdf', 'txt', 'rtf', 'md', 'csv', 'html', 'htm',
+  // Common image/audio/video formats users usually mean by "files".
+  'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'svg', 'mp3', 'wav', 'm4a', 'mp4', 'mov', 'wmv', 'avi', 'webm',
+];
+
 /** Clamp the requested result count to a sane [1, 25], default 10. */
 export function clampTop(top?: number): number {
   if (!Number.isFinite(top)) return 10;
@@ -57,8 +64,8 @@ function kqlSafe(s: string): string {
 /**
  * Build the SharePoint/Microsoft Search KQL `querytext` for a file search. The
  * caller resolves the signed-in user's display name (for editedByMe) and passes it
- * as `editorName`, since that needs a network call. Falls back to `IsDocument:1` so
- * a pure "recent files" listing still has rows to sort.
+ * as `editorName`, since that needs a network call. Without an explicit fileType,
+ * it scopes results to user-content file types rather than executables/components.
  */
 export function buildFileKql(f: M365SearchFilters, editorName?: string): string {
   const clauses: string[] = [];
@@ -67,6 +74,7 @@ export function buildFileKql(f: M365SearchFilters, editorName?: string): string 
 
   const ft = normalizeFileType(f.fileType);
   if (ft) clauses.push(`filetype:${ft}`);
+  else clauses.push(`(${DEFAULT_FILE_TYPES.map((t) => `filetype:${t}`).join(' OR ')})`);
 
   const site = (f.sitePath ?? '').trim();
   if (site) clauses.push(`path:"${site.replace(/"/g, '')}"`);
@@ -78,7 +86,6 @@ export function buildFileKql(f: M365SearchFilters, editorName?: string): string 
   if (since) clauses.push(`LastModifiedTime>=${since}`);
   if (until) clauses.push(`LastModifiedTime<=${until}`);
 
-  if (clauses.length === 0) clauses.push('IsDocument:1');
   return clauses.join(' ');
 }
 

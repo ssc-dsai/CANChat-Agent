@@ -310,7 +310,7 @@ export async function seedSkillsIfEmpty(): Promise<void> {
       id: 'skill-example-search-sharepoint',
       name: 'search-sharepoint',
       description:
-        'Search your SharePoint and OneDrive files via the microsoft365_search tool (REST over the signed-in session) — filter by document type, site, author, and date.',
+        'Search your SharePoint and OneDrive files via the microsoft365_search tool (REST over the signed-in session) — defaults to recent content files, with filters for document type, site, author, and date.',
       body: [
         'Goal: answer a SharePoint/OneDrive file question accurately using the microsoft365_search tool, which calls the SharePoint/Microsoft Search REST API over your signed-in session (no setup or token; covers SharePoint sites AND OneDrive).',
         '',
@@ -319,7 +319,7 @@ export async function seedSkillsIfEmpty(): Promise<void> {
         '- document type → fileType (docx | xlsx | pptx | pdf)',
         '- a specific site/library → sitePath (its URL, e.g. https://contoso.sharepoint.com/sites/Finance)',
         '- "files I edited" / "my files" → editedByMe:true (the tool resolves your identity)',
-        '- a date window → since / until (YYYY-MM-DD); for "latest/recent" set orderBy:\'date\'',
+        '- a date window → since / until (YYYY-MM-DD); file searches default to orderBy:\'date\' (most recent first), use orderBy:\'relevance\' only when explicitly requested',
         '- how many → top (default 10, max 25)',
         '',
         'Step 2 — Resolve the site URL when the user names a site but not its address: ask, or use an open *.sharepoint.com tab. The tenant base comes from Settings or an open SharePoint tab automatically.',
@@ -330,7 +330,7 @@ export async function seedSkillsIfEmpty(): Promise<void> {
         '',
         'Step 5 — Present each hit as: **Title** (linked to its url) — file type, last modified, editor; one-line snippet. End with the standard "Source tabs:" list of the result URLs. Never invent files not in the results.',
         '',
-        'Note: this is REST over your cookie session, not the Graph bearer-token API. The simpler sharepoint_search tool (files only) is an alternative if needed. To read a file\'s full contents, pass its url to read_office_document or read_pdf.',
+        'Note: this is REST over your cookie session, not the Graph bearer-token API. By default it searches user-content file types (Office docs, PDFs, text/html, images, audio, video), not executables/components like DLLs. The simpler sharepoint_search tool (files only) is an alternative if needed. To read a file\'s full contents, pass its url to read_office_document or read_pdf.',
       ].join('\n'),
     },
     {
@@ -351,7 +351,7 @@ export async function seedSkillsIfEmpty(): Promise<void> {
         '',
         'Step 3 — Present each match as: **Subject** — sender, date; one-line preview, linked to its url. End with a "Source tabs:" list of the message URLs. Never invent messages. If results are thin, loosen the query once (drop the tightest filter) and retry.',
         '',
-        'Fallback — ONLY if the response has a "mailError" or session error: tell the user to open Outlook on the web and sign in, then retry. If it still fails, drive the Outlook web UI. Open https://outlook.office.com/mail/ (the task pauses for sign-in if a login wall appears; if an outlook-owa / outlook-live playbook is active, follow it). Focus the search box (press_keys "/", else fill_input it), type a keyword query (e.g. from:"Brian Ray" received>=2024-01-01), press_keys "Enter", then read the list with get_tab_content. These page actions are approval-gated — give a clear reason like "search your mailbox for X".',
+        'Fallback — ONLY if the response has a "mailError" or session error: explain that the endpoint could not establish an Outlook/Microsoft 365 session and ask the user to sign in once, then retry. If it still fails, drive the Outlook web UI. Open https://outlook.office.com/mail/ (the task pauses for sign-in if a login wall appears; if an outlook-owa / outlook-live playbook is active, follow it). Focus the search box (press_keys "/", else fill_input it), type a keyword query (e.g. from:"Brian Ray" received>=2024-01-01), press_keys "Enter", then read the list with get_tab_content. These page actions are approval-gated — give a clear reason like "search your mailbox for X".',
       ].join('\n'),
     },
     {

@@ -397,7 +397,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'sharepoint_search',
       description:
-        "Search the user's SharePoint using its Search API and the current signed-in browser session (no setup or token). Returns ranked results, each with a snippet, the source document URL, who created and last modified the file, and the modified date. Set sortBy:'modified' to get the most-recently-changed files first, and editedByMe:true to limit to files the signed-in user last edited (e.g. 'the last 5 files I edited'). query is optional — omit it (with sortBy:'modified') to list recent documents. Use the snippets as evidence and cite the URLs.",
+        "Search the user's SharePoint/OneDrive using its Search API and the current signed-in browser session (no setup or token). File searches default to most-recently-modified first and to user-content file types (Office docs, PDFs, text/html, images, audio, video), avoiding executables/components like DLLs unless a specific fileType is supplied. Returns results with snippet, source document URL, creator/editor, and modified date. Set sortBy:'relevance' only when relevance ranking is explicitly more important than recency; editedByMe:true limits to files the signed-in user last edited. query is optional — omit it to list recent content files. Use the snippets as evidence and cite the URLs.",
       parameters: {
         type: 'object',
         properties: {
@@ -406,7 +406,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           sortBy: {
             type: 'string',
             enum: ['relevance', 'modified'],
-            description: "Ranking: 'relevance' (default) or 'modified' (most recently changed first).",
+            description: "Ranking: 'modified' (default, most recently changed first) or 'relevance'.",
           },
           editedByMe: {
             type: 'boolean',
@@ -422,7 +422,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'microsoft365_search',
       description:
-        "Preferred direct endpoint-backed tool for the user's Microsoft 365 mail AND files, using the signed-in browser session (no setup or token). For Outlook mail questions, call this with source:'mail' before any browser/page/Outlook UI tools; do not navigate to Outlook unless this returns mailError/session failure. Files come from SharePoint/Microsoft Search (covers SharePoint sites and OneDrive); mail comes from Outlook on the web. Use this for questions about the user's own email or documents, with filters for time, document type, sender, and source. Returns ranked results — emails as {subject, from, received, url, preview}; files as {title, url, modified, modifiedBy, snippet} — each with a URL to cite. Examples: 'my last five emails from Brian Ray' → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; 'the last Word file I edited on my work SharePoint site' → {source:'files', fileType:'docx', editedByMe:true, orderBy:'date', top:1}. If the mail side errors, ask the user to open Outlook/sign in and retry; only then fall back to the /search-mail skill.",
+        "Preferred direct endpoint-backed tool for the user's Microsoft 365 mail AND files, using the signed-in browser session (no setup or token). For Outlook mail questions, call this with source:'mail' before any browser/page/Outlook UI tools; do not navigate to Outlook unless this returns mailError/session failure. Files come from SharePoint/Microsoft Search (covers SharePoint sites and OneDrive) and default to most-recently-modified first plus user-content file types (Office docs, PDFs, text/html, images, audio, video), avoiding executables/components like DLLs unless a specific fileType is supplied; mail comes from Outlook on the web. Use this for questions about the user's own email or documents, with filters for time, document type, sender, and source. Returns ranked results — emails as {subject, from, received, url, preview}; files as {title, url, modified, modifiedBy, snippet} — each with a URL to cite. Examples: 'my last five emails from Brian Ray' → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; 'the last Word file I edited on my work SharePoint site' → {source:'files', fileType:'docx', editedByMe:true, top:1}. If the mail side errors, explain that the endpoint could not establish an Outlook/Microsoft 365 session and ask the user to sign in once, then retry; only then fall back to the /search-mail skill.",
       parameters: {
         type: 'object',
         properties: {
@@ -441,7 +441,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           orderBy: {
             type: 'string',
             enum: ['relevance', 'date'],
-            description: "Ranking: 'relevance' (default) or 'date' (newest first).",
+              description: "Ranking: 'date' (default, newest files/messages first) or 'relevance'.",
           },
           top: { type: 'number', description: 'Max results per source (default 10, max 25).' },
         },
