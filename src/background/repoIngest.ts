@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { chunkText } from '../shared/repoChunk';
+import type { RepoKind } from '../shared/messages';
 import type { Settings } from '../shared/types';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
@@ -112,7 +113,7 @@ export async function storeText(
   name: string,
   url: string,
   text: string,
-  opts: { kind?: 'page' | 'folder' | 'mail'; docExtra?: { path?: string; mtime?: number; size?: number } } = {},
+  opts: { kind?: RepoKind; docExtra?: { path?: string; mtime?: number; size?: number } } = {},
 ): Promise<IngestResult> {
   const chunks = chunkText(text);
   if (chunks.length === 0) return { ok: false, error: 'No chunks produced.' };
@@ -140,7 +141,7 @@ export async function ingestFile(
   settings: Settings,
   repo: string,
   file: { name: string; kind: 'text' | 'pdf' | 'office'; text?: string; dataUrl?: string; path?: string; mtime?: number; size?: number },
-  repoKind: 'page' | 'folder' | 'mail' = 'page',
+  repoKind: RepoKind = 'page',
 ): Promise<IngestResult> {
   let text = (file.text ?? '').trim();
   try {

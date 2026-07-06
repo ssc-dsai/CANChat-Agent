@@ -72,4 +72,34 @@ describe('syncFolderFiles incremental sync', () => {
     expect(ingests.every((m) => m.kind === 'folder')).toBe(true);
     expect(ingests.flatMap((m) => m.files ?? []).map((f) => f.path).sort()).toEqual(['root/change.md', 'root/new.md']);
   });
+
+  it('isolates a NotReadableError (cloud placeholder) and still indexes the rest', async () => {
+    // A OneDrive online-only file: reading throws NotReadableError on every try.
+    const cloud = {
+      name: 'cloud.md',
+      type: '',
+      size: 10,
+      lastModified: 1,
+      webkitRelativePath: 'root/cloud.md',
+      text: async () => {
+        throw Object.assign(new Error('The requested file could not be read'), { name: 'NotReadableError' });
+      },
+    } as unknown as File;
+    const picked: PickedFile[] = [
+      { file: cloud, path: 'root/cloud.md' },
+      { file: fakeFile('ok.md', 'root/ok.md', 1, 10), path: 'root/ok.md' },
+    ];
+
+    const sendMessage = vi.fn(async (msg: { type: string }) =>
+      msg.type === 'add_files_to_repo' ? { ok: true, results: [{ name: 'x', ok: true }] } : { ok: true },
+    );
+    vi.stubGlobal('chrome', { runtime: { sendMessage } });
+
+    const prog = await syncFolderFiles('repo', picked, []);
+
+    expect(prog.added).toBe(1); // ok.md still indexed — the batch did not abort
+    expect(prog.failed).toBe(1);
+    expect(prog.unreadable).toBe(1);
+    expect(prog.phase).toBe('done');
+  }, 10_000); // allows the single 800ms read-retry
 });

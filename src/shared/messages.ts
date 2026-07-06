@@ -106,12 +106,13 @@ export type RuntimeRequest =
   | { type: 'repo_doc_delete'; repo: string; docId: string }
   | { type: 'repo_export' }
   | { type: 'repo_import'; repos: ExportedRepo[] }
-  | { type: 'add_files_to_repo'; repo: string; files: UploadFile[]; kind?: 'page' | 'folder' | 'mail' }
+  | { type: 'add_files_to_repo'; repo: string; files: UploadFile[]; kind?: RepoKind }
   // Connect (if needed) and index the user's Office 365 mailbox into a repo via
   // Microsoft Graph; incremental on repeat. Handled in the service worker.
   | { type: 'index_mailbox'; repo: string }
-  | { type: 'mailbox_connected' }
-  | { type: 'mailbox_disconnect' }
+  | { type: 'mailbox_session' }
+  | { type: 'index_sharepoint_library'; repo: string; libraryUrl: string }
+  | { type: 'sharepoint_session'; base?: string }
   | { type: 'open_data_files'; files: DataFileUpload[] }
   | { type: 'transcribe_audio'; audioDataUrl: string }
   // Probe the signed-in environment (M365 identity, open work systems, locale) to
@@ -208,10 +209,12 @@ export interface RepoInfo {
   docs: number;
   chunks: number;
   /** `'folder'` for a locally-indexed directory, else page/tab captures. */
-  kind?: 'page' | 'folder' | 'mail';
+  kind?: RepoKind;
   /** Embedder the vectors were built with (e.g. `local:Xenova/all-MiniLM-L6-v2`). */
   embedModel?: string;
 }
+
+export type RepoKind = 'page' | 'folder' | 'mail' | 'sharepoint';
 
 export interface RepoDoc {
   id: string;
@@ -337,7 +340,7 @@ export type RepoRequest =
       chunks: string[];
       vectors: number[][];
       embedModel?: string;
-      kind?: 'page' | 'folder' | 'mail';
+      kind?: RepoKind;
       docExtra?: { path?: string; mtime?: number; size?: number };
     }
   | {

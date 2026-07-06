@@ -10,6 +10,7 @@ import {
 } from './folderIndex';
 import { MailboxSection } from './MailboxSection';
 import { RepoUpload } from './RepoUpload';
+import { SharePointSection } from './SharePointSection';
 import { UploadBanner } from './UploadBanner';
 import { useT } from './i18n';
 
@@ -32,13 +33,17 @@ function throttleProgress(
 }
 
 function summarizeSync(t: ReturnType<typeof useT>, p: FolderSyncProgress): string {
-  return t('repos.folder.synced', {
+  const base = t('repos.folder.synced', {
     added: String(p.added),
     updated: String(p.updated),
     skipped: String(p.skipped),
     removed: String(p.removed),
     failed: String(p.failed),
   });
+  // Most folder-index failures in practice are OneDrive/SharePoint online-only
+  // files; tell the user how to make them indexable rather than leaving a bare
+  // "N failed" count.
+  return p.unreadable > 0 ? `${base} ${t('repos.folder.unreadableHint', { n: String(p.unreadable) })}` : base;
 }
 
 function hostOf(url: string): string {
@@ -189,6 +194,7 @@ export function RepositoriesSection() {
         <span class="settings-note">{t('repos.folder.dropHint')}</span>
       </div>
       {folderStatus && <p class="settings-note repo-folder-status">{folderStatus}</p>}
+      <SharePointSection onChanged={() => void load()} />
       <MailboxSection onChanged={() => void load()} />
       {banner && <UploadBanner text={banner} onDismiss={() => setBanner(null)} />}
       {loading ? (

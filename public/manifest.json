@@ -17,7 +17,7 @@
     "unlimitedStorage",
     "downloads",
     "cookies",
-    "identity"
+    "alarms"
   ],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [

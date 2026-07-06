@@ -18,7 +18,8 @@
 // sends periodic `ping`s to reset the idle timer during long tasks.
 // =============================================================================
 
-import type { BackgroundEvent, RuntimeRequest, SidebarCommand, TestConnectionResponse } from '../shared/messages';
+import type { BackgroundEvent, RepoInfo, RuntimeRequest, SidebarCommand, TestConnectionResponse } from '../shared/messages';
+import { MAIL_REPO } from '../shared/owaMail';
 import { AgentRuntime } from './agentRuntime';
 import { LlmError, testConnection, transcribe } from './llmProvider';
 import {
@@ -39,10 +40,109 @@ import {
   repoList,
 } from './offscreenClient';
 import { ingestFile } from './repoIngest';
-import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAuth';
-import { indexMailbox } from './mailIngest';
+import { indexMailbox, resolveOutlookBase, type MailSyncProgress } from './mailIngest';
+import {
+  indexSharePointLibrary,
+  probeSharePointSession,
+  resolveSharePointBase,
+  type SharePointSyncProgress,
+} from './sharepointIngest';
+import { readCanary } from './owaClient';
+import { reconcileScheduledAlarms, runScheduledTaskById, taskIdFromAlarm } from './scheduler';
 import { getMemoryEnabled, getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
 import { probeEnvironment } from './envProbe';
+
+// ----- Mailbox auto-refresh (chrome.alarms, opt-in) -----
+//
+// Rides the same cookie-session OWA path as a manual "Index my Outlook
+// mailbox" click. Only ever refreshes a mailbox already indexed at least
+// once — never runs the (potentially large) initial full index silently in
+// the background. A session-expiry or network failure is recorded for the
+// Mailbox card to display, not surfaced as an intrusive error (no user is
+// present when the alarm fires).
+
+const MAILBOX_ALARM = 'mailbox_auto_refresh';
+const MAILBOX_STATUS_KEY = 'mailAutoRefreshStatus';
+
+export interface MailAutoRefreshStatus {
+  ts: number;
+  ok: boolean;
+  added?: number;
+  failed?: number;
+  error?: string;
+}
+
+// Guards manual and auto-triggered indexing from overlapping (both ride the
+// same OWA session and would otherwise double up on requests/embeddings).
+let mailIndexBusy = false;
+let sharePointIndexBusy = false;
+
+async function syncMailAlarm(): Promise<void> {
+  const settings = await getSettings();
+  if (settings?.mailAutoRefresh) {
+    chrome.alarms.create(MAILBOX_ALARM, { periodInMinutes: 60 });
+  } else {
+    chrome.alarms.clear(MAILBOX_ALARM);
+  }
+}
+void syncMailAlarm();
+void reconcileScheduledAlarms();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.ba_settings) void syncMailAlarm();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === MAILBOX_ALARM) void runAutoMailboxRefresh();
+  const scheduledTaskId = taskIdFromAlarm(alarm.name);
+  if (scheduledTaskId) void runScheduledTaskById(scheduledTaskId, runtime);
+});
+
+function broadcastMailProgress(p: MailSyncProgress, last: { at: number }): void {
+  const now = Date.now();
+  if (p.phase === 'done' || now - last.at >= 250) {
+    last.at = now;
+    chrome.runtime.sendMessage({ type: 'mailbox_progress', progress: p }).catch(() => {});
+  }
+}
+
+function broadcastSharePointProgress(p: SharePointSyncProgress, last: { at: number }): void {
+  const now = Date.now();
+  if (p.phase === 'done' || now - last.at >= 250) {
+    last.at = now;
+    chrome.runtime.sendMessage({ type: 'sharepoint_progress', progress: p }).catch(() => {});
+  }
+}
+
+async function runAutoMailboxRefresh(): Promise<void> {
+  if (mailIndexBusy) return; // a manual index is already in flight
+  const settings = await getSettings();
+  if (!settings?.mailAutoRefresh) return; // toggled off since the alarm fired
+
+  const listRes = await repoList();
+  const repos = listRes.ok && Array.isArray(listRes.result) ? (listRes.result as RepoInfo[]) : [];
+  const alreadyIndexed = repos.some((r) => r.name === MAIL_REPO && r.kind === 'mail' && r.docs > 0);
+  if (!alreadyIndexed) return;
+
+  mailIndexBusy = true;
+  const last = { at: 0 };
+  try {
+    const result = await indexMailbox(settings, MAIL_REPO, (p) => broadcastMailProgress(p, last));
+    await chrome.storage.local.set({
+      [MAILBOX_STATUS_KEY]: { ts: Date.now(), ok: true, added: result.added, failed: result.failed } satisfies MailAutoRefreshStatus,
+    });
+  } catch (e) {
+    await chrome.storage.local.set({
+      [MAILBOX_STATUS_KEY]: {
+        ts: Date.now(),
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      } satisfies MailAutoRefreshStatus,
+    });
+  } finally {
+    mailIndexBusy = false;
+  }
+}
 
 // Clicking the toolbar icon opens the side panel.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -50,6 +150,8 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => 
 chrome.runtime.onInstalled.addListener(() => {
   void seedSkillsIfEmpty();
   void migrateLegacySites();
+  void syncMailAlarm();
+  void reconcileScheduledAlarms();
 });
 
 // Every connected side panel holds a Port here. There is usually one, but the
@@ -207,36 +309,69 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
     })().then(sendResponse);
     return true;
   }
-  if (request.type === 'mailbox_connected') {
-    isMailboxConnected().then((connected) => sendResponse({ connected }));
+  if (request.type === 'mailbox_session') {
+    (async () => {
+      const settings = await getSettings();
+      const base = resolveOutlookBase(settings ?? ({} as NonNullable<typeof settings>));
+      try {
+        await readCanary(base);
+        return { connected: true, base };
+      } catch {
+        return { connected: false, base };
+      }
+    })().then(sendResponse);
     return true;
   }
-  if (request.type === 'mailbox_disconnect') {
-    disconnectMailbox().then(() => sendResponse({ ok: true }));
+  if (request.type === 'sharepoint_session') {
+    (async () => {
+      const settings = await getSettings();
+      const base = request.base?.trim().replace(/\/+$/, '') || (settings ? resolveSharePointBase(settings) : undefined);
+      if (!base) return { connected: false, error: 'No SharePoint base URL configured.' };
+      return probeSharePointSession(base);
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'index_sharepoint_library') {
+    (async () => {
+      if (sharePointIndexBusy) return { ok: false, error: 'A SharePoint refresh is already running — try again shortly.' };
+      const settings = await getSettings();
+      if (!settings) return { ok: false, error: 'No model configured. Open Settings first.' };
+      sharePointIndexBusy = true;
+      const last = { at: 0 };
+      try {
+        const result = await indexSharePointLibrary(settings, request.repo, request.libraryUrl, (p) =>
+          broadcastSharePointProgress(p, last),
+        );
+        return { ok: true, result };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      } finally {
+        sharePointIndexBusy = false;
+      }
+    })().then(sendResponse);
     return true;
   }
   if (request.type === 'index_mailbox') {
     (async () => {
+      if (mailIndexBusy) return { ok: false, error: 'A mailbox refresh is already running — try again shortly.' };
       const settings = await getSettings();
       if (!settings) return { ok: false, error: 'No model configured. Open Settings first.' };
-      if (!settings.graphClientId) return { ok: false, error: 'Set your Azure app Client ID in Settings first.' };
+      mailIndexBusy = true;
+      const last = { at: 0 };
       try {
-        if (!(await isMailboxConnected())) {
-          await connectMailbox(settings.graphClientId, settings.graphTenant || 'organizations');
-          chrome.runtime.sendMessage({ type: 'mailbox_connected_changed' }).catch(() => {});
-        }
-        // Broadcast progress (throttled) so the panel can show a live status line.
-        let last = 0;
-        const result = await indexMailbox(settings, request.repo, (p) => {
-          const now = Date.now();
-          if (p.phase === 'done' || now - last >= 250) {
-            last = now;
-            chrome.runtime.sendMessage({ type: 'mailbox_progress', progress: p }).catch(() => {});
-          }
+        const result = await indexMailbox(settings, request.repo, (p) => broadcastMailProgress(p, last));
+        await chrome.storage.local.set({
+          [MAILBOX_STATUS_KEY]: { ts: Date.now(), ok: true, added: result.added, failed: result.failed } satisfies MailAutoRefreshStatus,
         });
         return { ok: true, result };
       } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        const error = e instanceof Error ? e.message : String(e);
+        await chrome.storage.local.set({
+          [MAILBOX_STATUS_KEY]: { ts: Date.now(), ok: false, error } satisfies MailAutoRefreshStatus,
+        });
+        return { ok: false, error };
+      } finally {
+        mailIndexBusy = false;
       }
     })().then(sendResponse);
     return true;

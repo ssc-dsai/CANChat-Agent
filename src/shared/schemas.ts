@@ -452,6 +452,98 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'calendar_search',
+      description:
+        "Read the user's Outlook calendar using the signed-in Outlook-on-the-web session (no setup or token). Use this for schedule, meeting, and Teams-link questions. Returns events with subject, time, location, organizer, attendees, body/preview, Teams URL when found, and an Outlook URL. For meeting prep, call this first, then use list_repos/search_repo separately to pull relevant documents.",
+      parameters: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', description: 'Inclusive start date/time. ISO date or datetime; default is today.' },
+          until: { type: 'string', description: 'Exclusive end date/time. ISO date or datetime; default is 7 days after since.' },
+          query: { type: 'string', description: 'Optional filter over subject, body, location, organizer, and attendees.' },
+          top: { type: 'number', description: 'Max events to return (default 25, max 100).' },
+          includeBody: { type: 'boolean', description: 'Include event body text when available (default true).' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'draft_email',
+      description:
+        "Create a saved Outlook email draft using the signed-in Outlook-on-the-web session. This does NOT send the email; it only saves a draft for the user to review and send manually. State-changing: requires user approval.",
+      parameters: {
+        type: 'object',
+        properties: {
+          to: { type: 'array', items: { type: 'string' }, description: 'Recipient email addresses.' },
+          cc: { type: 'array', items: { type: 'string' }, description: 'Optional CC recipient email addresses.' },
+          bcc: { type: 'array', items: { type: 'string' }, description: 'Optional BCC recipient email addresses.' },
+          subject: { type: 'string', description: 'Draft email subject.' },
+          body: { type: 'string', description: 'Draft email body.' },
+          bodyType: { type: 'string', enum: ['Text', 'HTML'], description: "Body format. Default is 'Text'." },
+          importance: { type: 'string', enum: ['Low', 'Normal', 'High'], description: "Message importance. Default is 'Normal'." },
+          ...reasonParam,
+        },
+        required: ['to', 'subject', 'body', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'schedule_task',
+      description:
+        'Create a one-shot or recurring scheduled agent task. The task runs unattended in the background at the requested time using read-only tools where possible; approval-gated tools cannot run unattended and will be recorded as needing approval. Requires user approval because it creates persistent automation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short human-readable task name.' },
+          prompt: { type: 'string', description: 'The exact instruction to run when the schedule fires.' },
+          runAt: { type: 'string', description: 'One-shot future run time as an ISO datetime. Omit when using recurrence.' },
+          recurrence: {
+            type: 'object',
+            description: 'Recurring schedule. Use instead of runAt.',
+            properties: {
+              kind: { type: 'string', enum: ['daily', 'weekly', 'interval'] },
+              timeOfDay: { type: 'string', description: 'Local time HH:mm for daily/weekly schedules.' },
+              daysOfWeek: { type: 'array', items: { type: 'number' }, description: 'For weekly schedules: Sunday=0 through Saturday=6.' },
+              intervalMinutes: { type: 'number', description: 'For interval schedules: minutes between runs.' },
+            },
+          },
+          ...reasonParam,
+        },
+        required: ['title', 'prompt', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_scheduled_tasks',
+      description: 'List scheduled tasks, including next run time and last run status.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancel_scheduled_task',
+      description: 'Cancel/delete a scheduled task by id. Requires user approval because it modifies persistent automation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Scheduled task id from list_scheduled_tasks.' },
+          ...reasonParam,
+        },
+        required: ['id', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_known_sites',
       description:
         "Search the user's curated directory of known sites (names, URLs, descriptions, optional search-URL templates) for sites likely to contain the data a task needs. Check this before falling back to a generic web search. Some entries are MCP servers (they have an mcpUrl) — for those, use list_mcp_tools/call_mcp_tool instead of opening a URL.",

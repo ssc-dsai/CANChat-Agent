@@ -368,13 +368,19 @@ Drag the same folder again later to re-index only what changed. (Folder indexing
 drag-and-drop on purpose — the OS "choose folder" dialog crashes on some Chrome/macOS
 builds.)
 
-**Index your Office 365 mailbox.** One-time setup with your IT/Azure admin: register
-an Azure AD app with the **`Mail.Read`** permission (admin consent is usually required),
-set its redirect URI to `https://<extension-id>.chromiumapp.org/`, and paste its
-**Client ID** into **Settings → Advanced**. Then, in **Knowledge bases**, click
-**Connect & index mailbox** → approve the Microsoft sign-in → your mail is pulled in via
-Microsoft Graph and embedded on-device. Re-run later to add only new messages. (A whole
-mailbox can take a while on the first pass.)
+**Index your Office 365 mailbox.** No app registration, no Azure admin, no extra sign-in —
+it rides your **existing Outlook-on-the-web session**. Just make sure you're signed into
+Outlook on the web in this browser, then in **Knowledge bases** click **Index my Outlook
+mailbox**. Your mail is read through your current session, and the messages are embedded
+**on-device**. Re-run later to add only new messages. (A whole mailbox can take a while on
+the first pass.) If the button shows a sign-in prompt instead, open Outlook on the web,
+sign in, and click **Re-check**.
+
+Once you've indexed it at least once, you can turn on **Auto-refresh hourly** to keep the
+mailbox current without clicking Index again — it quietly checks for new mail in the
+background over your existing session. It's off by default and never runs the first full
+index on its own; if your Outlook session expires, the next auto-refresh just records the
+failure (shown under the toggle) instead of interrupting you.
 
 ### 5.8 Documents in and out
 

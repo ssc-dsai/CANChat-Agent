@@ -1,6 +1,6 @@
 # CANChat Agent — User Manual
 
-CANChat Agent is a Chromium extension that puts an AI agent in your browser's side panel and gives it **the browser itself as its toolset**. Instead of calling external APIs, the agent does what you would do: it opens tabs, runs searches through your default search engine, reads pages (including pages behind your existing logins), and synthesizes answers — pausing for your approval before anything state-changing, and pausing for you whenever a site wants a login.
+CANChat Agent is a Chromium only extension that puts an AI agent in your browser's side panel and gives it **the browser itself as its toolset**. Instead of calling external APIs, the agent does what you would do: it opens tabs, runs searches through your default search engine, reads pages (including pages behind your existing logins), and synthesizes answers — pausing for your approval before anything state-changing, and pausing for you whenever a site wants a login.
 
 You bring your own model: any OpenAI-compatible endpoint works, from OpenAI's API to a local Ollama instance. Nothing ships preconfigured and your API key never leaves your machine.
 

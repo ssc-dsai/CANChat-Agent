@@ -176,6 +176,15 @@ export interface Settings {
   /** Optional Outlook-on-the-web base URL for microsoft365_search mail; default https://outlook.office.com. */
   outlookBaseUrl?: string;
   /**
+   * Keep the mailbox repo current automatically via an hourly `chrome.alarms`
+   * refresh, riding the same Outlook-on-the-web cookie session as a manual
+   * index. Default **off** (opt-in) — only takes effect once the mailbox has
+   * been indexed at least once; a background refresh never runs the initial
+   * full index. Silently no-ops (recorded, not surfaced as an error banner) if
+   * the Outlook session has expired.
+   */
+  mailAutoRefresh?: boolean;
+  /**
    * URL of a hosted playbook index (JSON listing installable SKILL.md files).
    * Absent = the bundled default (DEFAULT_PLAYBOOK_INDEX_URL). The App playbook
    * library polls this to offer one-click installs of remote skills.
@@ -192,14 +201,6 @@ export interface Settings {
   embedder?: 'local' | 'external';
   /** transformers.js model id for the local embedder. Absent = the bundled default. */
   localEmbedModel?: string;
-  /**
-   * Azure AD app **client ID** for the mailbox indexer's Microsoft Graph OAuth
-   * (auth-code + PKCE). The app needs the `Mail.Read` delegated permission and,
-   * in most enterprise tenants, admin consent. Absent = mailbox indexing is off.
-   */
-  graphClientId?: string;
-  /** Graph OAuth tenant: `organizations` (default) or a specific tenant id. */
-  graphTenant?: string;
   /** Optional separate model id for the /embeddings route (external RAG). */
   embeddingModel?: string;
   /** Optional separate endpoint base URL for embeddings; blank = use baseUrl. */
