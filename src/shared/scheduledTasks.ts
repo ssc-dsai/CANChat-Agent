@@ -1,0 +1,100 @@
+export type ScheduledTaskStatus = 'ok' | 'error' | 'deferred' | 'needs_approval';
+
+export interface ScheduledTaskRecurrence {
+  kind: 'daily' | 'weekly' | 'interval';
+  /** Local 24-hour time, HH:mm. */
+  timeOfDay?: string;
+  /** JavaScript day indexes, Sunday = 0. */
+  daysOfWeek?: number[];
+  intervalMinutes?: number;
+}
+
+export interface ScheduledTask {
+  id: string;
+  title: string;
+  prompt: string;
+  enabled: boolean;
+  createdAt: number;
+  nextRunAt: number;
+  lastRunAt?: number;
+  lastStatus?: ScheduledTaskStatus;
+  lastError?: string;
+  recurrence?: ScheduledTaskRecurrence;
+}
+
+export interface ScheduledRun {
+  id: string;
+  taskId: string;
+  startedAt: number;
+  finishedAt?: number;
+  status: ScheduledTaskStatus | 'running';
+  summary?: string;
+  error?: string;
+}
+
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+export function parseLocalTimeOfDay(value?: string): { hours: number; minutes: number } | null {
+  const m = HHMM.exec((value ?? '').trim());
+  if (!m) return null;
+  return { hours: Number(m[1]), minutes: Number(m[2]) };
+}
+
+function localAt(base: Date, timeOfDay: string): Date | null {
+  const t = parseLocalTimeOfDay(timeOfDay);
+  if (!t) return null;
+  const d = new Date(base);
+  d.setHours(t.hours, t.minutes, 0, 0);
+  return d;
+}
+
+export function computeNextRunAt(recurrence: ScheduledTaskRecurrence, fromMs = Date.now()): number | null {
+  if (recurrence.kind === 'interval') {
+    const minutes = Math.floor(Number(recurrence.intervalMinutes));
+    if (!Number.isFinite(minutes) || minutes < 1) return null;
+    return fromMs + minutes * 60_000;
+  }
+
+  if (!recurrence.timeOfDay) return null;
+  const from = new Date(fromMs);
+  if (recurrence.kind === 'daily') {
+    const candidate = localAt(from, recurrence.timeOfDay);
+    if (!candidate) return null;
+    if (candidate.getTime() <= fromMs) candidate.setDate(candidate.getDate() + 1);
+    return candidate.getTime();
+  }
+
+  const days = [...new Set((recurrence.daysOfWeek ?? []).map(Number))]
+    .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+    .sort((a, b) => a - b);
+  if (recurrence.kind === 'weekly' && days.length > 0) {
+    for (let add = 0; add <= 7; add++) {
+      const candidateBase = new Date(from);
+      candidateBase.setDate(candidateBase.getDate() + add);
+      if (!days.includes(candidateBase.getDay())) continue;
+      const candidate = localAt(candidateBase, recurrence.timeOfDay);
+      if (candidate && candidate.getTime() > fromMs) return candidate.getTime();
+    }
+  }
+  return null;
+}
+
+export function nextRunFromSchedule(runAt?: string, recurrence?: ScheduledTaskRecurrence, now = Date.now()): number | null {
+  if (recurrence) return computeNextRunAt(recurrence, now);
+  const t = Date.parse(String(runAt ?? ''));
+  return Number.isFinite(t) && t > now ? t : null;
+}
+
+export function summarizeTask(task: ScheduledTask): Record<string, unknown> {
+  return {
+    id: task.id,
+    title: task.title,
+    prompt: task.prompt,
+    enabled: task.enabled,
+    nextRunAt: new Date(task.nextRunAt).toISOString(),
+    lastRunAt: task.lastRunAt ? new Date(task.lastRunAt).toISOString() : undefined,
+    lastStatus: task.lastStatus,
+    lastError: task.lastError,
+    recurrence: task.recurrence,
+  };
+}

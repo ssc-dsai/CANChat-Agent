@@ -46,6 +46,7 @@ import type {
 } from '../shared/types';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
 import { eventMatchesQuery } from '../shared/owaCalendar';
+import type { ScheduledTaskRecurrence } from '../shared/scheduledTasks';
 import * as browser from './browserToolAdapter';
 import type { M365SearchFilters } from '../shared/microsoftSearch';
 import { captureFullPage } from './fullPageCapture';
@@ -81,6 +82,12 @@ import {
 } from './storage';
 import { deriveSummary, deriveTitle, derivePreview, parseConversationMeta } from '../shared/conversationMeta';
 import * as tabContext from './tabContextManager';
+import {
+  cancelScheduledTask,
+  createScheduledTask,
+  getScheduledTasks,
+  summarizeScheduledTasks,
+} from './scheduler';
 
 const SOFT_STEP_BUDGET = 20; // default tool-iteration budget per task
 const STEP_BUDGET_EXTENSION = 10; // granted when the plan still has work left
@@ -162,6 +169,8 @@ const APPROVAL_REQUIRED = new Set([
   'call_mcp_tool', // invokes an external MCP method — gated like any outbound action
   'call_webmcp_tool', // invokes an in-page tool with the user's session — gated
   'draft_email', // creates a server-side Outlook draft — confirm first
+  'schedule_task', // creates persistent background automation — confirm first
+  'cancel_scheduled_task', // deletes persistent automation — confirm first
 ]);
 
 /** Read-only / local tools that are safe to run concurrently within one turn. */
@@ -178,6 +187,7 @@ const READ_ONLY_TOOLS = new Set([
   'sharepoint_search',
   'microsoft365_search',
   'calendar_search',
+  'list_scheduled_tasks',
   'read_tab_group',
   'search_repo',
   'list_repos',
@@ -285,6 +295,7 @@ Working method:
 - For questions about the user's own Microsoft 365 email AND/OR files, prefer microsoft365_search — one call over the signed-in session covering Outlook mail and SharePoint/OneDrive files, with filters: source ('mail'|'files'|'both'), from (sender), fileType, sitePath, editedByMe, since/until (YYYY-MM-DD), orderBy ('relevance'|'date'), top. E.g. "last five emails from Brian Ray" → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; "last Word file I edited on my SharePoint site" → {source:'files', fileType:'docx', editedByMe:true, orderBy:'date', top:1}. Cite each result's url. If the response has a mailError, fall back to the /search-mail skill (which drives the Outlook web UI). To read a file's full contents beyond its snippet, pass its url to read_office_document (Office) or read_pdf (PDFs) — do not navigate to it (that downloads it).
 - For Outlook calendar/schedule/Teams meeting questions, use calendar_search over the signed-in Outlook web session. For meeting prep ("pull docs I need", "prep me for meetings"), first call calendar_search, then call list_repos/search_repo separately with each meeting's subject, organizer, attendees, and agenda terms; cite both meeting URLs and repository source URLs.
 - When the user asks you to draft an email, use draft_email. It creates a saved Outlook draft only — it does NOT send. Never claim an email was sent. For requests to send an email, create a draft and tell the user to review/send it manually unless a future send tool exists. Always provide a clear approval reason naming the recipients and subject.
+- When the user asks to schedule a future or recurring task/workflow, call schedule_task with a concrete future runAt or recurrence. Scheduled tasks run unattended in the background; they may use read-only tools, but approval-gated tools will not run unattended and will be recorded as needing approval. Use list_scheduled_tasks/cancel_scheduled_task for management.
 - For files-only retrieval you can also use sharepoint_search (the simpler SharePoint-only tool): pass sortBy:'modified' + editedByMe:true for "recent files"/"files I edited"; cite the URLs.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 - Map workspace: when the user wants to see or work with a map, use the map_* tools. They all act on ONE persistent map that opens automatically in its own tab and is reused across requests — never assume a new map each time; build on the current state (call map_get_state to see what's there). map_set_view/map_fly_to move it, map_set_basemap switches tiles, map_add_marker/map_add_geojson/map_add_shape add elements, map_animate moves a marker along a path, map_fit_bounds frames things, map_clear removes overlays. These act on the extension's own map page, so they don't need approval.
@@ -452,6 +463,8 @@ export class AgentRuntime {
   private pauseRequested = false;
   private pauseWaiter: (() => void) | null = null;
   private pendingApproval: PendingApproval | null = null;
+  private unattended = false;
+  private unattendedApprovalBlocked = false;
   private authWait: AuthWait | null = null;
   private permissionWait: PermissionWait | null = null;
   private abortController: AbortController | null = null;
@@ -740,6 +753,27 @@ export class AgentRuntime {
         // later turns until it succeeds, then locks (see titleIsAuto).
         void this.maybeGenerateMeta();
       }
+    }
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  async runScheduledTask(title: string, prompt: string): Promise<{ ok: boolean; response?: string; error?: string; needsApproval?: boolean }> {
+    if (this.running) return { ok: false, error: 'Agent is already running.' };
+    const before = this.messages.length;
+    this.unattended = true;
+    this.unattendedApprovalBlocked = false;
+    try {
+      await this.handleUserMessage(`[Scheduled task: ${title}]\n${prompt}`);
+      const response = [...this.messages.slice(before)].reverse().find((m) => m.role === 'assistant')?.text;
+      if (this.unattendedApprovalBlocked) {
+        return { ok: false, response, error: 'Scheduled task needs user approval for a state-changing tool.', needsApproval: true };
+      }
+      return { ok: Boolean(response), response, error: response ? undefined : 'Scheduled task produced no response.' };
+    } finally {
+      this.unattended = false;
     }
   }
 
@@ -1913,6 +1947,11 @@ export class AgentRuntime {
     }
 
     if (needsApproval && !skipApproval) {
+      if (this.unattended) {
+        this.unattendedApprovalBlocked = true;
+        this.finishActivity(activity, 'denied', 'Approval-gated tool cannot run unattended');
+        return `Error: tool "${name}" requires user approval and cannot run unattended in a scheduled task.`;
+      }
       const reason =
         typeof args.reason === 'string' && args.reason.trim()
           ? args.reason.trim()
@@ -2117,6 +2156,38 @@ export class AgentRuntime {
         } catch (e) {
           return `Error reading Outlook calendar: ${e instanceof Error ? e.message : String(e)}`;
         }
+      }
+      case 'schedule_task': {
+        const recurrenceArg = args.recurrence as Record<string, unknown> | undefined;
+        const recurrence: ScheduledTaskRecurrence | undefined = recurrenceArg
+          ? {
+              kind: recurrenceArg.kind === 'weekly' || recurrenceArg.kind === 'interval' ? recurrenceArg.kind : 'daily',
+              timeOfDay: recurrenceArg.timeOfDay ? String(recurrenceArg.timeOfDay) : undefined,
+              daysOfWeek: Array.isArray(recurrenceArg.daysOfWeek) ? recurrenceArg.daysOfWeek.map(Number) : undefined,
+              intervalMinutes: recurrenceArg.intervalMinutes ? Number(recurrenceArg.intervalMinutes) : undefined,
+            }
+          : undefined;
+        try {
+          const task = await createScheduledTask({
+            title: String(args.title ?? ''),
+            prompt: String(args.prompt ?? ''),
+            runAt: args.runAt ? String(args.runAt) : undefined,
+            recurrence,
+          });
+          return JSON.stringify({ ok: true, task: { ...task, nextRunAtIso: new Date(task.nextRunAt).toISOString() } });
+        } catch (e) {
+          return `Error scheduling task: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      }
+      case 'list_scheduled_tasks': {
+        const tasks = await getScheduledTasks();
+        return JSON.stringify({ tasks: summarizeScheduledTasks(tasks) });
+      }
+      case 'cancel_scheduled_task': {
+        const id = String(args.id ?? '').trim();
+        if (!id) return 'Error: cancel_scheduled_task needs an id.';
+        const ok = await cancelScheduledTask(id);
+        return JSON.stringify({ ok, id, error: ok ? undefined : 'No scheduled task with that id.' });
       }
       case 'draft_email': {
         const settings = await getSettings();
@@ -2807,6 +2878,10 @@ export class AgentRuntime {
         return `Call the page's in-page tool "${args.name}" with ${JSON.stringify(args.arguments ?? {}).slice(0, 200)}`;
       case 'draft_email':
         return `Create an Outlook draft to ${stringArray(args.to).join(', ')} with subject "${String(args.subject ?? '').slice(0, 120)}". This will not send the email.`;
+      case 'schedule_task':
+        return `Schedule "${String(args.title ?? '').slice(0, 120)}" to run ${args.runAt ? `at ${args.runAt}` : `on ${JSON.stringify(args.recurrence ?? {})}`}.`;
+      case 'cancel_scheduled_task':
+        return `Cancel scheduled task ${String(args.id ?? '')}.`;
       default:
         return `${name} ${JSON.stringify(args).slice(0, 120)}`;
     }

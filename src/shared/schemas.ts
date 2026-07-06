@@ -493,6 +493,57 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'schedule_task',
+      description:
+        'Create a one-shot or recurring scheduled agent task. The task runs unattended in the background at the requested time using read-only tools where possible; approval-gated tools cannot run unattended and will be recorded as needing approval. Requires user approval because it creates persistent automation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short human-readable task name.' },
+          prompt: { type: 'string', description: 'The exact instruction to run when the schedule fires.' },
+          runAt: { type: 'string', description: 'One-shot future run time as an ISO datetime. Omit when using recurrence.' },
+          recurrence: {
+            type: 'object',
+            description: 'Recurring schedule. Use instead of runAt.',
+            properties: {
+              kind: { type: 'string', enum: ['daily', 'weekly', 'interval'] },
+              timeOfDay: { type: 'string', description: 'Local time HH:mm for daily/weekly schedules.' },
+              daysOfWeek: { type: 'array', items: { type: 'number' }, description: 'For weekly schedules: Sunday=0 through Saturday=6.' },
+              intervalMinutes: { type: 'number', description: 'For interval schedules: minutes between runs.' },
+            },
+          },
+          ...reasonParam,
+        },
+        required: ['title', 'prompt', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_scheduled_tasks',
+      description: 'List scheduled tasks, including next run time and last run status.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cancel_scheduled_task',
+      description: 'Cancel/delete a scheduled task by id. Requires user approval because it modifies persistent automation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Scheduled task id from list_scheduled_tasks.' },
+          ...reasonParam,
+        },
+        required: ['id', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_known_sites',
       description:
         "Search the user's curated directory of known sites (names, URLs, descriptions, optional search-URL templates) for sites likely to contain the data a task needs. Check this before falling back to a generic web search. Some entries are MCP servers (they have an mcpUrl) — for those, use list_mcp_tools/call_mcp_tool instead of opening a URL.",

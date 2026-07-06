@@ -48,6 +48,7 @@ import {
   type SharePointSyncProgress,
 } from './sharepointIngest';
 import { readCanary } from './owaClient';
+import { reconcileScheduledAlarms, runScheduledTaskById, taskIdFromAlarm } from './scheduler';
 import { getMemoryEnabled, getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
 import { probeEnvironment } from './envProbe';
 
@@ -85,6 +86,7 @@ async function syncMailAlarm(): Promise<void> {
   }
 }
 void syncMailAlarm();
+void reconcileScheduledAlarms();
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.ba_settings) void syncMailAlarm();
@@ -92,6 +94,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === MAILBOX_ALARM) void runAutoMailboxRefresh();
+  const scheduledTaskId = taskIdFromAlarm(alarm.name);
+  if (scheduledTaskId) void runScheduledTaskById(scheduledTaskId, runtime);
 });
 
 function broadcastMailProgress(p: MailSyncProgress, last: { at: number }): void {
@@ -147,6 +151,7 @@ chrome.runtime.onInstalled.addListener(() => {
   void seedSkillsIfEmpty();
   void migrateLegacySites();
   void syncMailAlarm();
+  void reconcileScheduledAlarms();
 });
 
 // Every connected side panel holds a Port here. There is usually one, but the
