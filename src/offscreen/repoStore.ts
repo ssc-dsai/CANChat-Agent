@@ -2,7 +2,7 @@
 // quantized embedding vectors. Runs in the offscreen document (Window context),
 // so it uses the async OPFS API (no sync access handles, which are Worker-only).
 
-import type { ExportedRepo } from '../shared/messages';
+import type { ExportedRepo, RepoKind } from '../shared/messages';
 import { hybridSearch } from '../shared/hybridSearch';
 import { normalizeVector, quantizeVector, searchVectors, type SearchHit } from '../shared/vectorSearch';
 
@@ -35,8 +35,8 @@ interface RepoMeta {
   perDimScale: number[]; // calibration, fixed from the first batch
   docs: DocMeta[];
   chunkCount: number;
-  /** `'page'` (tabs/uploads, default) or `'folder'` (a recursively-indexed local directory). */
-  kind?: 'page' | 'folder' | 'mail';
+  /** Source family for the repository. */
+  kind?: RepoKind;
   /** Embedder identity (e.g. `local:Xenova/all-MiniLM-L6-v2`) the vectors were built with. */
   embedModel?: string;
 }
@@ -104,7 +104,7 @@ export async function repoAdd(
   doc: { name: string; url: string },
   chunks: string[],
   vectors: number[][],
-  opts: { embedModel?: string; kind?: 'page' | 'folder' | 'mail'; docExtra?: DocExtra } = {},
+    opts: { embedModel?: string; kind?: RepoKind; docExtra?: DocExtra } = {},
 ): Promise<{ docId: string; chunkCount: number }> {
   if (chunks.length === 0 || vectors.length !== chunks.length) {
     throw new Error('repoAdd: chunk/vector count mismatch.');
@@ -201,9 +201,9 @@ export async function repoSearch(
 }
 
 export async function repoList(): Promise<
-  Array<{ name: string; docs: number; chunks: number; kind?: 'page' | 'folder' | 'mail'; embedModel?: string }>
+  Array<{ name: string; docs: number; chunks: number; kind?: RepoKind; embedModel?: string }>
 > {
-  const out: Array<{ name: string; docs: number; chunks: number; kind?: 'page' | 'folder' | 'mail'; embedModel?: string }> = [];
+  const out: Array<{ name: string; docs: number; chunks: number; kind?: RepoKind; embedModel?: string }> = [];
   const dir = await reposDir();
   // @ts-expect-error - entries() exists on FileSystemDirectoryHandle in Chrome
   for await (const [name, handle] of dir.entries()) {

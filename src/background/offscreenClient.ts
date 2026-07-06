@@ -22,6 +22,7 @@ import type {
   SlideSpec,
   RepoRequest,
   RepoResponse,
+  RepoKind,
 } from '../shared/messages';
 
 // pdf.js needs a DOM/worker context the service worker can't provide, so it
@@ -171,7 +172,7 @@ export function repoAdd(
   doc: { name: string; url: string },
   chunks: string[],
   vectors: number[][],
-  opts: { embedModel?: string; kind?: 'page' | 'folder' | 'mail'; docExtra?: { path?: string; mtime?: number; size?: number } } = {},
+  opts: { embedModel?: string; kind?: RepoKind; docExtra?: { path?: string; mtime?: number; size?: number } } = {},
 ): Promise<RepoResponse> {
   return repoRequest({ target: 'offscreen-repo', op: 'add', repo, doc, chunks, vectors, ...opts });
 }

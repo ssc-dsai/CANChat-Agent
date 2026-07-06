@@ -41,6 +41,12 @@ import {
 } from './offscreenClient';
 import { ingestFile } from './repoIngest';
 import { indexMailbox, resolveOutlookBase, type MailSyncProgress } from './mailIngest';
+import {
+  indexSharePointLibrary,
+  probeSharePointSession,
+  resolveSharePointBase,
+  type SharePointSyncProgress,
+} from './sharepointIngest';
 import { readCanary } from './owaClient';
 import { getMemoryEnabled, getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
 import { probeEnvironment } from './envProbe';
@@ -68,6 +74,7 @@ export interface MailAutoRefreshStatus {
 // Guards manual and auto-triggered indexing from overlapping (both ride the
 // same OWA session and would otherwise double up on requests/embeddings).
 let mailIndexBusy = false;
+let sharePointIndexBusy = false;
 
 async function syncMailAlarm(): Promise<void> {
   const settings = await getSettings();
@@ -92,6 +99,14 @@ function broadcastMailProgress(p: MailSyncProgress, last: { at: number }): void 
   if (p.phase === 'done' || now - last.at >= 250) {
     last.at = now;
     chrome.runtime.sendMessage({ type: 'mailbox_progress', progress: p }).catch(() => {});
+  }
+}
+
+function broadcastSharePointProgress(p: SharePointSyncProgress, last: { at: number }): void {
+  const now = Date.now();
+  if (p.phase === 'done' || now - last.at >= 250) {
+    last.at = now;
+    chrome.runtime.sendMessage({ type: 'sharepoint_progress', progress: p }).catch(() => {});
   }
 }
 
@@ -298,6 +313,35 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
         return { connected: true, base };
       } catch {
         return { connected: false, base };
+      }
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'sharepoint_session') {
+    (async () => {
+      const settings = await getSettings();
+      const base = request.base?.trim().replace(/\/+$/, '') || (settings ? resolveSharePointBase(settings) : undefined);
+      if (!base) return { connected: false, error: 'No SharePoint base URL configured.' };
+      return probeSharePointSession(base);
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'index_sharepoint_library') {
+    (async () => {
+      if (sharePointIndexBusy) return { ok: false, error: 'A SharePoint refresh is already running — try again shortly.' };
+      const settings = await getSettings();
+      if (!settings) return { ok: false, error: 'No model configured. Open Settings first.' };
+      sharePointIndexBusy = true;
+      const last = { at: 0 };
+      try {
+        const result = await indexSharePointLibrary(settings, request.repo, request.libraryUrl, (p) =>
+          broadcastSharePointProgress(p, last),
+        );
+        return { ok: true, result };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      } finally {
+        sharePointIndexBusy = false;
       }
     })().then(sendResponse);
     return true;
