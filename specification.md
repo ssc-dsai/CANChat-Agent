@@ -631,6 +631,17 @@ skip-by-id. The Outlook origin comes from `Settings.outlookBaseUrl` (default
 setup — chosen because the user wanted to reuse their existing sign-in rather than register
 an app.
 
+**Auto-refresh (`chrome.alarms`, opt-in, off by default).** `serviceWorker.ts` maintains an
+hourly `chrome.alarms` job (`syncMailAlarm`, kept in sync with `Settings.mailAutoRefresh` via
+a `chrome.storage.onChanged` listener on `ba_settings`) that re-runs `indexMailbox` in the
+background over the same cookie session — no re-authentication, no user interaction. It only
+ever refreshes a mailbox already indexed at least once (checked via `repoList` for a
+`kind:'mail'` repo with `docs > 0`); it never triggers the initial full index silently. A
+`mailIndexBusy` flag guards manual and auto-triggered runs from overlapping. Each run's
+outcome (added/failed counts, or a session-expiry/network error) is recorded in
+`chrome.storage.local['mailAutoRefreshStatus']` for the Mailbox card to display — a failure
+never surfaces as an intrusive error, since no user is present when the alarm fires.
+
 ---
 
 ## 9. Other subsystems

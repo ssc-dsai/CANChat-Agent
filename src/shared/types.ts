@@ -176,6 +176,15 @@ export interface Settings {
   /** Optional Outlook-on-the-web base URL for microsoft365_search mail; default https://outlook.office.com. */
   outlookBaseUrl?: string;
   /**
+   * Keep the mailbox repo current automatically via an hourly `chrome.alarms`
+   * refresh, riding the same Outlook-on-the-web cookie session as a manual
+   * index. Default **off** (opt-in) — only takes effect once the mailbox has
+   * been indexed at least once; a background refresh never runs the initial
+   * full index. Silently no-ops (recorded, not surfaced as an error banner) if
+   * the Outlook session has expired.
+   */
+  mailAutoRefresh?: boolean;
+  /**
    * URL of a hosted playbook index (JSON listing installable SKILL.md files).
    * Absent = the bundled default (DEFAULT_PLAYBOOK_INDEX_URL). The App playbook
    * library polls this to offer one-click installs of remote skills.

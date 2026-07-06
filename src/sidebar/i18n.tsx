@@ -118,6 +118,11 @@ const EN: Dict = {
   'mail.needSession': 'Sign in to Outlook on the web first, then re-check. This uses your existing session — no Azure app needed.',
   'mail.openOutlook': 'Open Outlook',
   'mail.recheck': 'Re-check',
+  'mail.autoRefresh': 'Auto-refresh hourly',
+  'mail.autoRefreshNote':
+    'Keeps the mailbox current in the background over your existing Outlook session — no need to click Index again. Off by default; only refreshes a mailbox you’ve indexed at least once.',
+  'mail.autoRefreshLast': 'Last auto-refresh: {when} — {added} new message(s).',
+  'mail.autoRefreshLastError': 'Last auto-refresh failed ({when}): {msg}',
   'data.open.asData': 'Open as data (query)',
   'data.open.asKnowledge': 'Add to knowledge base',
   'data.open.done': 'Loaded into the data engine: {tables}. Ask a question to query it.',
@@ -347,6 +352,11 @@ const FR: Dict = {
   'mail.needSession': 'Connectez-vous d’abord à Outlook sur le web, puis revérifiez. Utilise votre session existante — aucune application Azure requise.',
   'mail.openOutlook': 'Ouvrir Outlook',
   'mail.recheck': 'Revérifier',
+  'mail.autoRefresh': 'Actualisation automatique (toutes les heures)',
+  'mail.autoRefreshNote':
+    'Garde la boîte à jour en arrière-plan avec votre session Outlook existante — plus besoin de cliquer sur Indexer. Désactivé par défaut; n’actualise qu’une boîte déjà indexée au moins une fois.',
+  'mail.autoRefreshLast': 'Dernière actualisation automatique : {when} — {added} nouveau(x) message(s).',
+  'mail.autoRefreshLastError': 'Échec de la dernière actualisation automatique ({when}) : {msg}',
   'repos.upload.cancel': 'Annuler',
   'data.open.asData': 'Ouvrir comme données (requête)',
   'data.open.asKnowledge': 'Ajouter à une base de connaissances',

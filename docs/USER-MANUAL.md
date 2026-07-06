@@ -376,6 +376,12 @@ mailbox**. Your mail is read through your current session, and the messages are 
 the first pass.) If the button shows a sign-in prompt instead, open Outlook on the web,
 sign in, and click **Re-check**.
 
+Once you've indexed it at least once, you can turn on **Auto-refresh hourly** to keep the
+mailbox current without clicking Index again — it quietly checks for new mail in the
+background over your existing session. It's off by default and never runs the first full
+index on its own; if your Outlook session expires, the next auto-refresh just records the
+failure (shown under the toggle) instead of interrupting you.
+
 ### 5.8 Documents in and out
 
 - **Read PDFs** — including one open in the current tab ("summarize this PDF").

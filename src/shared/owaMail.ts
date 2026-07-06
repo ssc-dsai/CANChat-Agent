@@ -9,6 +9,9 @@
 // service.svc is undocumented, so parsers are defensive and field names may need
 // adjusting against a captured live response.
 
+/** The single repo that holds the indexed Office 365 mailbox. */
+export const MAIL_REPO = '📧 Mailbox';
+
 const SERVER_VERSION = 'Exchange2013';
 
 function header(): unknown {

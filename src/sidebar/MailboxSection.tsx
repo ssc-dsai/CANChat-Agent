@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
+import { MAIL_REPO } from '../shared/owaMail';
 import { useT } from './i18n';
 
-/** The single repo that holds the indexed Office 365 mailbox. */
-export const MAIL_REPO = '📧 Mailbox';
+export { MAIL_REPO };
+
+const MAILBOX_STATUS_KEY = 'mailAutoRefreshStatus';
 
 interface MailProgress {
   phase: 'fetching' | 'indexing' | 'done';
@@ -10,6 +12,14 @@ interface MailProgress {
   skipped: number;
   failed: number;
   current?: string;
+}
+
+interface MailAutoRefreshStatus {
+  ts: number;
+  ok: boolean;
+  added?: number;
+  failed?: number;
+  error?: string;
 }
 
 /**
@@ -23,6 +33,8 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
   const [base, setBase] = useState('https://outlook.office.com');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [lastAuto, setLastAuto] = useState<MailAutoRefreshStatus | null>(null);
 
   // Probe whether an Outlook web session cookie is present.
   const checkSession = () => {
@@ -35,6 +47,33 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
       .catch(() => setConnected(false));
   };
   useEffect(checkSession, []);
+
+  // Load the auto-refresh toggle + the last background-refresh result, and stay
+  // live if either changes (e.g. the hourly alarm fires while the panel is open).
+  useEffect(() => {
+    chrome.storage.local.get(['ba_settings', MAILBOX_STATUS_KEY]).then((r) => {
+      const s = r.ba_settings as { mailAutoRefresh?: boolean } | undefined;
+      setAutoRefresh(Boolean(s?.mailAutoRefresh));
+      if (r[MAILBOX_STATUS_KEY]) setLastAuto(r[MAILBOX_STATUS_KEY] as MailAutoRefreshStatus);
+    });
+    const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area !== 'local') return;
+      if (changes.ba_settings) {
+        const s = changes.ba_settings.newValue as { mailAutoRefresh?: boolean } | undefined;
+        setAutoRefresh(Boolean(s?.mailAutoRefresh));
+      }
+      if (changes[MAILBOX_STATUS_KEY]) setLastAuto(changes[MAILBOX_STATUS_KEY].newValue as MailAutoRefreshStatus);
+    };
+    chrome.storage.onChanged.addListener(onStorage);
+    return () => chrome.storage.onChanged.removeListener(onStorage);
+  }, []);
+
+  const toggleAutoRefresh = async (checked: boolean) => {
+    setAutoRefresh(checked); // optimistic; the storage.onChanged handler above reconciles
+    const r = await chrome.storage.local.get('ba_settings');
+    const settings = (r.ba_settings as Record<string, unknown>) ?? {};
+    await chrome.storage.local.set({ ba_settings: { ...settings, mailAutoRefresh: checked } });
+  };
 
   // Live progress broadcast by the service worker during a long index.
   useEffect(() => {
@@ -103,6 +142,26 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
         </button>
       </div>
       {status && <p class="settings-note repo-folder-status">{status}</p>}
+
+      <label class="memory-toggle">
+        <input
+          type="checkbox"
+          checked={autoRefresh}
+          onChange={(e) => void toggleAutoRefresh((e.target as HTMLInputElement).checked)}
+        />
+        <span>{t('mail.autoRefresh')}</span>
+      </label>
+      <p class="settings-note">{t('mail.autoRefreshNote')}</p>
+      {lastAuto && (
+        <p class="settings-note repo-folder-status">
+          {lastAuto.ok
+            ? t('mail.autoRefreshLast', {
+                when: new Date(lastAuto.ts).toLocaleString(),
+                added: String(lastAuto.added ?? 0),
+              })
+            : t('mail.autoRefreshLastError', { when: new Date(lastAuto.ts).toLocaleString(), msg: lastAuto.error ?? '' })}
+        </p>
+      )}
     </div>
   );
 }
