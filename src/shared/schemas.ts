@@ -471,7 +471,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           orderBy: {
             type: 'string',
             enum: ['relevance', 'date'],
-              description: "Ranking: 'date' (default, newest files/messages first) or 'relevance'.",
+            description: "Ranking: 'date' (default, newest files/messages first) or 'relevance'.",
           },
           top: { type: 'number', description: 'Max results per source (default 10, max 25).' },
         },

@@ -343,6 +343,39 @@ A turn-based loop over the OpenAI chat API with tool calling.
 6. **Final answer** rendered as Markdown with a `Source tabs:` list of numbered
    full-URL links when the answer draws on pages. Generated files (`.docx`/`.pptx`/CSV)
    are attached as **download cards** (`FileArtifact`).
+7. **Automatic lessons** (`maybeLearnLesson`, fire-and-forget after every settled
+   turn, gated on `getMemoryEnabled()`): only runs for tasks worth learning from —
+   a plan of ≥3 steps, ≥4 tool calls, a reflection/plan-nudge correction, or a
+   recorded tool failure. One cheap LLM call distills the task (request, plan,
+   reflection issues, tool failures, findings, final answer) into **at most one**
+   reusable lesson: `{lesson, triggers[], tools[], origin?, confidence}` — rejected
+   below `confidence 0.7` or with no `triggers` (`loopHelpers.parseLesson`). A new
+   lesson is merged into an existing similar one (`findSimilarLesson`: same
+   origin + overlapping trigger, or ≥half its terms overlap an existing lesson's
+   text/triggers) rather than duplicating — reinforcing `uses` and shortening the
+   stored text if the new phrasing is tighter. Stored as `LessonEntry[]` under
+   `chrome.storage.local['ba_lessons']` (`storage.ts`, cap 50, newest-updated
+   first; included in backup/restore). At the **start** of a task, the top 3
+   lessons relevant to the request (`relevantLessons`/`lessonScore`: same-host
+   bonus + trigger/term overlap with the task text) are injected into the system
+   prompt (`lessonsPromptBlock`, "apply these when relevant, but defer to current
+   user instructions and fresh tool output"). Never stores user facts, secrets, or
+   page content — only agent-behavior instructions.
+8. **Scoped subtask delegation** (`run_subtasks` tool → `runScopedSubtasks`): for
+   "read/compare/summarize N pages/sources" work, the model can spawn up to 12
+   independent mini-loops (`runScopedSubtask`), each a **fresh, tightly-scoped**
+   conversation (its own system prompt, `maxTokens` capped at 800, `temperature 0`)
+   restricted to a small read-only tool allowlist (`SCOPED_SUBTASK_ALLOWED`: tab/
+   content readers, `search_web`/`open_url`, `read_pdf`/`read_office_document`,
+   `get_video_transcript`, repo search, `microsoft365_search`/`calendar_search` —
+   no state-changing tools). Runs up to 3 subtasks concurrently
+   (`mapWithConcurrency`), each capped at `min(8, maxSteps)` iterations; a subtask
+   must reply with `{"conclusion":"...","sources":[...]}` (JSON-only, parsed
+   defensively with a raw-text fallback). Only the compact `{id, conclusion,
+   sources, stepsUsed, error?}` per subtask returns to the parent — the raw page
+   text/tool output each subtask read never enters the parent's context. This is
+   the extension's answer to "how do you keep long multi-source tasks from
+   blowing the context budget": push the bulk reading into disposable child loops.
 
 **Tool classification (exact):**
 
@@ -375,7 +408,14 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
 - `list_tabs` — all tabs (id, title, URL, group).
 - `get_active_tab` — the focused tab.
 - `get_tab_content {tabId?}` — main text + metadata/links/headings; returns an
-  `extractionStatus` (`ok|partial|blocked|auth_required|unsupported`).
+  `extractionStatus` (`ok|partial|blocked|auth_required|unsupported`). A tab
+  showing Chrome's built-in PDF viewer (`chrome-extension://<pdf-viewer-id>/
+  index.html?src=<pdf-url>`) is detected via `shared/url.ts:resolvePdfUrl` and
+  routed straight to `extractPdf` on the unwrapped `src` URL — pdf.js needs the
+  real document URL, not the viewer wrapper — rather than falling through to DOM
+  extraction on the viewer chrome, which found nothing. `resolvePdfUrl` refuses
+  to unwrap a `src` that is itself `chrome:`/`chrome-extension:`/
+  `chrome-untrusted:`, closing off using the viewer to reach internal pages.
 - `read_app_content {tabId?}` — best-effort text from canvas/app surfaces via the
   selection model and copy-event interception (no clipboard permission needed).
 - `get_all_tab_contents` — read every tab (**approval-gated**).
@@ -412,10 +452,18 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
 **Retrieval**
 - `add_to_repo {repo, scope?: 'tab'|'group'}` — ingest into a named OPFS repo.
 - `search_repo {repo, query, k?}` — retrieve passages; answer + cite name/URL.
+  Hybrid (semantic + BM25) by default, with multi-query paraphrase retrieval and
+  an LLM rerank pass over a wider candidate pool — see §8.4.
 - `list_repos` — repos with doc/chunk counts.
+- `run_subtasks {tasks[], maxSteps?}` — isolated, tight-budget mini-loops for
+  page/source-specific work (comparing/summarizing several pages); returns only
+  each subtask's compact conclusion, not its raw reading — see §5 step 8.
 - `sharepoint_search {query?, top?, sortBy?, editedByMe?}` — SharePoint Search REST
   via the signed-in session cookie; returns ranked `{title, url, snippet, createdBy,
-  modifiedBy, modified}`. `sortBy:'modified'` orders by recency; `editedByMe:true`
+  modifiedBy, modified}`. Defaults to `sortBy:'modified'` (most-recent-first) and,
+  without an explicit `fileType`, a curated user-content file type filter (§9's
+  `microsoft365_search` entry) rather than every indexed file; pass
+  `sortBy:'relevance'` when ranking matters more than recency. `editedByMe:true`
   resolves the current user (`/_api/web/currentuser`) and filters `Editor:"<name>"`
   — together they answer "the last N files I edited". `query` optional.
 - `microsoft365_search {source?, query?, from?, fileType?, sitePath?, editedByMe?, since?,
@@ -423,15 +471,30 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
   session** (cookie auth, no setup; *not* the Graph API, which needs OAuth). `source`:
   `mail | files | both` (default both). **Files** reuse the SharePoint/Microsoft Search REST
   path (`fileSearch`, covers SharePoint + OneDrive) with a KQL `querytext` built from
-  `query`/`filetype:`/`path:`/`LastModifiedTime` range/`Editor:` (`editedByMe`).
+  `query`/`filetype:`/`path:`/`LastModifiedTime` range/`Editor:` (`editedByMe`). Without an
+  explicit `fileType`, `buildFileKql` scopes to a curated **user-content file type** filter
+  (Office docs, PDF/txt/md/csv/html, common image/audio/video formats) rather than
+  `IsDocument:1`, so results don't surface executables/components. Both `orderBy` (mail) and
+  `sortBy` (`sharepoint_search`'s equivalent) default to **most-recent-first** (`date` /
+  `modified`); pass `relevance` explicitly when ranking, not recency, is what's wanted.
   **Mail** uses Outlook-on-the-web's own `service.svc?action=FindItem` endpoint
   (`outlookMailSearch`), authenticated by the session cookie + the `X-OWA-CANARY` anti-CSRF
-  token (read via the new `cookies` permission), with an AQS query from `query`/`from:`/
+  token (read via the `cookies` permission), with an AQS query from `query`/`from:`/
   `received:` range. Returns `{files:[…], mail:[…]}` (and `filesError`/`mailError` when a
   source fails). The KQL/AQS builders are pure + unit-tested (`src/shared/microsoftSearch.ts`).
-  The **mail path is best-effort** (undocumented OWA endpoint); on error the model falls back
-  to the `/search-mail` skill that drives the OWA UI. Pure builders live in
-  `microsoftSearch.ts`; the fetches in `browserToolAdapter.ts`.
+  The **mail path is best-effort** (undocumented OWA endpoint); on a session/endpoint error the
+  model asks the user to sign in once and retry, only then falling back to the `/search-mail`
+  skill that drives the OWA UI. Pure builders live in `microsoftSearch.ts`; the fetches in
+  `browserToolAdapter.ts`.
+  **Session bootstrap (`owaClient.readCanary`):** if the `X-OWA-CANARY` cookie isn't present
+  under any of the OWA-hosted paths (`readCanaryCookie` tries the base, `/owa/`, and `/mail/`),
+  `bootstrapOwaSession` quietly fetches Outlook's own `/mail/` and `/owa/` routes with
+  `credentials:'include'` — OWA only issues the canary after the app/session has been
+  "touched" — then re-reads the cookie, so endpoint-backed mail/calendar/draft tools work
+  without the user first manually opening Outlook. Only throws `OwaSessionError` if that also
+  fails. Shared by `microsoft365_search`'s mail path, the mailbox indexer (§8.3), and the
+  calendar/draft tools; the Mailbox card's "Re-check" button surfaces the resulting error text
+  instead of a bare connected/disconnected boolean.
 - `search_known_sites {query}` — match against the user's **Capability Registry**
   (bookmark/mcp entries; formerly "Known Sites/Hints"). An entry may carry an `mcpUrl`.
 
@@ -530,12 +593,19 @@ the microphone page) when a `transcriptionModel` is configured.
 On-device retrieval over pages the user captures. No external service; embeddings
 come from the user's own endpoint.
 
-**Layout:** `/repos/<repo>/` in OPFS, three files:
+**Layout:** `/repos/<repo>/` in OPFS, four files:
 - `meta.json` — `{ name, dim, bits, perDimScale[], docs: DocMeta[], chunkCount }`
   where `DocMeta = { id, name, url, capturedAt, chunkStart, chunkCount }`.
 - `chunks.json` — parallel array `{ docId, name, url, text }[]`.
 - `vectors.bin` — contiguous **int8** quantized vectors, `dim` bytes per chunk,
   row `i` at byte `i*dim`.
+- `keywordIndex.json` — a precomputed BM25 index (`KeywordIndex`: per-chunk term
+  frequencies + document lengths + corpus document frequencies), so search-time
+  BM25 (§8.4) is O(query terms) instead of re-tokenizing the whole repo per query.
+  Maintained incrementally: `add` extends it (`extendKeywordIndex`), `deleteDoc`/
+  `import` rebuild it from the surviving chunks (`rebuildKeywordIndex`). If the
+  file is missing or its `docLen.length` doesn't match the chunk count (an older
+  repo, or corruption), `search` transparently rebuilds it in memory.
 
 **Quantization (turbovec-inspired scalar quantization):** unit-normalize each
 embedding, calibrate a **per-dimension scale** from the first batch
@@ -547,10 +617,12 @@ embedding, calibrate a **per-dimension scale** from the first batch
   dimension mismatch (switching embedding models breaks an existing repo — must
   delete & re-ingest). Normalize → quantize → append to `vectors.bin`, append
   chunks, update meta.
-- `search {repo, queryVector, k}` — normalize+quantize the query, brute-force
-  weighted dot over all vectors (dequant via per-dim scale²), top-k. The hot loop
-  precomputes a single `Float32Array qw[d] = q[d]*scale[d]²` so it's one
-  multiply-add per element.
+- `search {repo, queryVector, k, query?, queryVectors?, queries?, hybrid?}` —
+  normalize+quantize the query, brute-force weighted dot over all vectors (dequant
+  via per-dim scale²), top-k. The hot loop precomputes a single
+  `Float32Array qw[d] = q[d]*scale[d]²` so it's one multiply-add per element. See
+  §8.4 for hybrid (semantic + BM25) fusion and multi-query retrieval, which ride
+  this same op via the optional fields.
 - `list` — repos with doc/chunk counts.
 - `delete {repo}` — remove the repo dir.
 - `docs {repo}` — list documents (for dedup + the Settings UI).
@@ -641,6 +713,43 @@ ever refreshes a mailbox already indexed at least once (checked via `repoList` f
 outcome (added/failed counts, or a session-expiry/network error) is recorded in
 `chrome.storage.local['mailAutoRefreshStatus']` for the Mailbox card to display — a failure
 never surfaces as an intrusive error, since no user is present when the alarm fires.
+
+### 8.4 Retrieval quality: hybrid search, multi-query, and reranking
+
+`search_repo` layers three independent improvements over a single query embedding,
+each falling back cleanly to the layer below on failure:
+
+**Hybrid search (semantic + BM25, RRF-fused; `shared/hybridSearch.ts`).** Default
+**on** (`Settings.hybridSearch`, `!== false`). Dense cosine ranking
+(`scoreVectors`) and a BM25 keyword ranking over the same chunk text
+(`shared/keywordSearch.ts`, ID-preserving tokenizer so codes/identifiers like
+`AB-1234` stay intact) are combined with **Reciprocal Rank Fusion**
+(`fuseRRF`: `score = Σ 1/(rrfK + rank)` across whichever ranked lists a chunk
+appears in, rank-based so it never has to reconcile cosine scores and BM25 scores
+on incompatible scales). Recovers exact-token recall that pure dense retrieval can
+miss. Falls back to pure semantic when the query has no lexical hits or hybrid is
+off.
+
+**Multi-query retrieval.** Before embedding, `AgentRuntime.repoQueryVariants`
+makes one cheap LLM call asking for up to 2 paraphrases of the query (preserving
+names/dates/codes/quoted terms), deduplicated against the original (max 3 total).
+Each variant is embedded and searched; `multiHybridSearch` fuses all the resulting
+semantic + BM25 rankings (one list per query, per side) with the same `fuseRRF`.
+Recovers chunks phrased differently than the user's literal wording. On any LLM
+failure, silently falls back to the single original query.
+
+**LLM reranking.** `search_repo` retrieves a wider candidate pool
+(`max(20, k*3)`) from the fused ranking, then `AgentRuntime.rerankRepoHits` makes
+one more LLM call with the top 20 candidates (truncated to ~1200 chars each) asking
+for the best order by direct usefulness for the query, preferring specific,
+answer-bearing chunks over generic/duplicate ones. Falls back to the fused order
+(first `k`) if the model returns unusable/malformed ids or the call fails. The
+response also returns `queries` (the paraphrases used) and `candidateCount` for
+observability.
+
+Net effect: `search_repo(query, k)` costs up to two extra small LLM calls, in
+exchange for retrieval that isn't limited to the user's exact wording or exact
+cosine-similarity ranking.
 
 ---
 
@@ -797,13 +906,24 @@ token and browser-session auth only).
 
 **Composer mentions.** The composer is a `contenteditable` that rewrites a typed
 token into a **bold** node carrying `data-kind`/`data-value`. Two triggers share one
-menu/insert mechanism: `@` opens a **bookmark** picker (`chrome.bookmarks`) and inserts
-the chosen URL; `#` opens a **repository** picker (`repo_list`) and inserts the chosen
-repo name. Because the bold styling is lost when the message is flattened to text, the
+menu/insert mechanism: `@` opens a **bookmark** picker and inserts the chosen URL;
+`#` opens a **repository** picker (`repo_list`) and inserts the chosen repo name.
+Because the bold styling is lost when the message is flattened to text, the
 mentions are also collected as **structured data** (`user_message.mentions:
 {kind,value}[]`) and the runtime appends an explicit directive to the model-facing text
 — so the agent acts on them directly: `search_repo` that exact repository, or open and
 read that exact bookmarked URL (not a web search).
+
+The `@` picker (`sidebar/bookmarkMentions.ts`, pure + unit-tested) draws from **three**
+sources merged into one ranked, deduplicated list, not just `chrome.bookmarks`:
+`flattenBookmarkTree` walks the full `chrome.bookmarks.getTree()` (carrying each
+bookmark's folder path); `capabilityBookmarkCandidates` adds `kind:'bookmark'` entries
+from the Capability Registry and `SiteEntry`/"Known Sites" (`ba_capabilities`/`ba_sites`
+in storage) — so a Known Site is `@`-mentionable even if it isn't also a browser
+bookmark. `dedupeBookmarkCandidates` merges by normalized URL (keeping the richer
+title/description/tags). `filterBookmarkMentions` then scores by substring match across
+title/URL/description/folder/tags (title-prefix best, then title/URL/description/tags/
+folder in that order) and returns the top 20.
 
 ---
 
@@ -908,11 +1028,15 @@ interface Settings {
   temperature?: number;
   maxTokens?: number;
   repoSearchK?: number;  // default passages per search_repo; absent = 6
+  hybridSearch?: boolean;// fuse semantic + BM25 (RRF) in search_repo, §8.4; absent = on
   maxSteps?: number;     // soft step budget per task; absent = 20 (extension = round/2, ceiling = ×2)
   systemPrompt?: string; // custom instructions, appended to the built-in prompt
   sharepointBaseUrl?: string; // optional, for sharepoint_search / microsoft365_search files
   outlookBaseUrl?: string;    // optional, for microsoft365_search mail; default https://outlook.office.com
+  mailAutoRefresh?: boolean;  // hourly chrome.alarms mailbox re-index, §8.3; absent/off = manual only
   playbookIndexUrl?: string;  // optional, hosted playbook index polled by the App playbook library; absent = bundled default
+  embedder?: 'local' | 'external'; // RAG embedder: on-device transformers.js vs the /embeddings endpoint; absent = local
+  localEmbedModel?: string;   // optional, transformers.js model id for the on-device embedder; absent = bundled default
   embeddingModel?: string;    // optional, for /embeddings (local RAG); defaults to `model`
   embeddingBaseUrl?: string;  // optional, separate embeddings endpoint; blank = baseUrl
   embeddingApiKey?: string;   // optional, separate embeddings key; blank = apiKey
@@ -927,8 +1051,10 @@ interface Settings {
 
 Persisted under `ba_settings` in `chrome.storage.local`. The Settings screen trims
 fields and drops empties on save. Other `chrome.storage.local` keys: `ba_capabilities`
-(Capability Registry; legacy `ba_sites` is migrated into it), skills, memory;
-`ba_conv_index` / `ba_conv_<id>` / `ba_conv_labels` (conversation history). OPFS holds
+(Capability Registry; legacy `ba_sites` is migrated into it), skills, memory, `ba_lessons`
+(automatic lessons, §5 step 7; cap 50), `mailAutoRefreshStatus` (last background mailbox
+refresh outcome); `ba_conv_index` / `ba_conv_<id>` / `ba_conv_labels` (conversation
+history). OPFS holds
 the RAG repos (`/repos/`) and DuckDB datasets (`/datasets/<name>/{meta,data}.json`).
 The UI **language** preference is a separate key
 (`ba_language`: `'auto'|'en'|'fr'`); in-app EN/FR localization lives in
@@ -1182,6 +1308,16 @@ endpoint** for voice; and (4) **explicit agent actions** in the authenticated br
 (navigations, credentialed fetches such as `microsoft365_search` / `sharepoint_search`,
 `open_data_url`). An on-prem/self-hosted model + embeddings endpoint keeps (1)–(3)
 in-boundary; (4) is always the user's own sessions on the open web or their own systems.
+
+Retrieval quality (§8.4) sends stored **chunk text** to (1), the LLM endpoint, even when
+the on-device (`local`) embedder is used: the reranker sends up to 20 candidate chunks
+(~1200 chars each) for reordering, and the query-paraphrase step sends the raw query.
+Choosing the on-device embedder keeps *embedding* fully local, but does not keep RAG
+chunk content off the LLM endpoint once a repo is searched — the same endpoint the rest
+of the conversation already flows through. Automatic lessons (§5 step 7) send a summary
+of a task (request, plan, tool failures, findings, final-answer excerpt) to the LLM
+endpoint to distill; the stored `LessonEntry` text itself lives only in
+`chrome.storage.local`.
 
 ### 16.5 Honest non-claims
 - The browser does **not** sandbox or contain the agent — the extension's permissions are

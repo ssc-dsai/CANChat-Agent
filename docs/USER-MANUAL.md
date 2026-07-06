@@ -221,6 +221,7 @@ Short, plain definitions for the terms used throughout this manual.
 | **Tab group** | The named set of tabs the agent opens for one conversation. | Keeps research tidy; you can refer to it by name. |
 | **Context** | The pages/tabs currently included for the agent to consider. | Controls what the agent "sees" by default. |
 | **Memory** | Durable facts about you the agent may save (opt-in). | Personalizes answers; stored only on your device. |
+| **Lesson** | A behavioral tip the agent saves from a past task (opt-in, shares the Memory toggle) — e.g. "use the Outlook tool before clicking around Outlook.com." | The agent gets better at *how* it works over time, without you teaching it explicitly. |
 
 ---
 
@@ -233,7 +234,10 @@ to send; **Shift+Enter** adds a line.
 
 - **`@` — insert a bookmark.** Type `@` then part of a bookmark's name; pick from
   the menu to drop in that page's URL. The agent will open and read *that exact
-  page*.
+  page*. The menu searches your **entire** bookmark folder tree (not just recent
+  ones) plus your **Known sites**, so a Known Site is mentionable even if it isn't
+  also a browser bookmark; matches on title, URL, folder, and description, with
+  title matches ranked first.
 - **`#` — reference a knowledge base.** Type `#` then a knowledge-base name; the
   agent answers from that saved collection.
 - **`/` — run a skill.** Type `/` to see your skills (and the built-in `/learn`);
@@ -373,14 +377,25 @@ it rides your **existing Outlook-on-the-web session**. Just make sure you're sig
 Outlook on the web in this browser, then in **Knowledge bases** click **Index my Outlook
 mailbox**. Your mail is read through your current session, and the messages are embedded
 **on-device**. Re-run later to add only new messages. (A whole mailbox can take a while on
-the first pass.) If the button shows a sign-in prompt instead, open Outlook on the web,
-sign in, and click **Re-check**.
+the first pass.) The extension first tries to establish the session on its own (quietly
+opening Outlook's own routes in the background) before asking you to sign in — so in most
+cases you won't need to open Outlook manually first. If it still can't connect, click
+**Re-check**; it shows what actually went wrong (e.g. "no session found") rather than just
+connected/not-connected.
 
 Once you've indexed it at least once, you can turn on **Auto-refresh hourly** to keep the
 mailbox current without clicking Index again — it quietly checks for new mail in the
 background over your existing session. It's off by default and never runs the first full
 index on its own; if your Outlook session expires, the next auto-refresh just records the
 failure (shown under the toggle) instead of interrupting you.
+
+**Searching a knowledge base is smarter than plain keyword or plain semantic search.**
+When you ask a question against a knowledge base, the agent combines meaning-based search
+with exact keyword matching (so an exact ID, code, or name still surfaces even if it's
+phrased differently), tries a couple of rephrasings of your question automatically, and
+does a final relevance pass over the top candidates before answering. This costs a little
+extra time per search in exchange for better answers; no setting to configure beyond the
+**Hybrid search** toggle in Settings → Advanced (on by default).
 
 ### 5.8 Documents in and out
 
@@ -476,7 +491,9 @@ Open **Settings** (gear icon). Settings are split into five tabs.
 | **Auto-retry when rate-limited** | **On** | When the endpoint is busy (HTTP **429** or a transient 5xx), automatically wait and retry instead of failing — honoring the server's `Retry-After` hint. A "retrying…" notice shows while it backs off. | Keep **on** for capacity-limited endpoints like Azure OpenAI; turn off only if you want failures surfaced immediately. |
 | **Temperature** | *(unset)* | 0–2 creativity dial; higher = more varied. | Leave empty to use the model's default; 0–0.3 for factual work. |
 | **Max tokens** | *(unset)* | Caps the length of each reply. | Leave empty unless you must bound cost/length. |
-| **Embedding model** | *(unset)* | Model for the `/embeddings` route used by knowledge bases. | Set if you use knowledge bases and your endpoint needs a specific embeddings model. |
+| **Embedder** | On-device | Where knowledge-base text is turned into search vectors: **on-device** (transformers.js, nothing leaves your machine) or your **external `/embeddings` endpoint**. Switching requires re-indexing existing knowledge bases. | Leave on-device unless your endpoint requires a specific embedding model. |
+| **Hybrid search** | **On** | Knowledge-base search blends meaning-based (semantic) matching with exact keyword matching, so identifiers/codes/names surface even when phrased differently. | Keep on; turn off only to test pure semantic search. |
+| **Embedding model** | *(unset)* | Model for the `/embeddings` route used by knowledge bases (external embedder only). | Set if you use the external embedder and your endpoint needs a specific model. |
 | **Embedding endpoint URL / API key** | *(use main)* | Optional separate host/key for embeddings. | Use to split RAG onto a different service. |
 | **Transcription model** | *(unset)* | Speech-to-text model for **voice prompts** (`/audio/transcriptions`). | Set (e.g. a Whisper-style model) to enable the mic. |
 | **Transcription endpoint URL / API key** | *(use main)* | Optional separate host/key for transcription. | Use to split voice onto a different service. |
@@ -518,10 +535,18 @@ Three collapsible sections (collapsed by default — click to expand):
   — your Microsoft 365 name / work email / sign-in (AD) username from the signed-in
   session, the work systems you currently have open, and your locale/timezone. It
   runs entirely on-device and adds only new facts.
+
+  The same toggle also enables **automatic lessons**: after a substantial or
+  corrected task (one with a real plan, several tool calls, or a self-correction),
+  the agent may quietly save one short behavioral tip for next time — e.g. "check
+  the Outlook tool before driving the Outlook web UI." Lessons never contain your
+  personal facts, page content, or secrets — only agent behavior — and are capped
+  at 50, stored on-device, and included in Backup & Restore. There's no separate
+  UI for them yet; turning Memory off stops new lessons from being saved and used.
 - **Backup & Restore** — export everything to one JSON file and restore it later
   or on another machine. Options: **Include API key** (warned — plain text) and
   **Include conversations** (warned). Restore overwrites current settings, hints,
-  skills, and memory, and replaces same-named knowledge bases.
+  skills, memory, and lessons, and replaces same-named knowledge bases.
 
 ---
 
@@ -818,15 +843,18 @@ state-changing step.
 - **Ephemeral background worker (MV3).** The service worker can be evicted when
   idle; the panel sends keepalives during tasks, but extremely long idle gaps may
   reset background state (your data is safe in storage).
-- **Privacy trade-off for knowledge bases.** Making saved pages searchable sends
-  their text to your embeddings endpoint.
+- **Retrieval quality costs LLM calls.** Knowledge-base search sends the stored
+  chunk text (not just the query) to your **LLM endpoint** for reranking, and the
+  query itself for paraphrase generation — this happens even with the on-device
+  embedder, which only keeps *embedding* local, not the reranking pass. Turn off
+  **Hybrid search** in Settings → Advanced only removes the keyword-fusion step,
+  not the rerank/paraphrase calls.
 - **Languages.** Interface localization is English and French only.
 
 ### Future enhancement opportunities
 
 - `aria-live` announcements and dialog focus management (see
   [Accessibility](#9-accessibility-review)).
-- Optional on-device embeddings to avoid sending text off-device for RAG.
 - Per-conversation (not global) agent sessions.
 - OCR for scanned PDFs.
 
@@ -855,18 +883,37 @@ state-changing step.
 - Tool-activity log ✅ (`ToolActivityPanel.tsx`)
 - Approval gate for state-changing tools; auth-pause; site-permission prompt ✅
 - Distill offer after substantial tasks (plan ≥3 or ≥4 tool calls) ✅
+- **Scoped subtask delegation** (`run_subtasks`) — up to 12 isolated mini-loops
+  (own context, tight tool allowlist, 3 at a time) for multi-page comparison/
+  research; only each subtask's compact conclusion returns to the main
+  conversation ✅ (`agentRuntime.ts`)
+- **Automatic lessons** — after a substantial or self-corrected task, the agent
+  may save one reusable behavioral tip (opt-in, shares the Memory toggle), merged
+  with similar existing lessons and surfaced on matching future tasks ✅
+  (`agentRuntime.ts`, `loopHelpers.ts`)
 
 **Browser tools** — full list in [Appendix B](#appendix-b-complete-tool-catalogue).
 
 **Knowledge / integrations**
-- On-device knowledge bases (OPFS) with embedding search ✅ (`repoIngest.ts`,
-  `offscreen/repoStore.ts`)
-- Known-sites directory incl. MCP servers ✅ (`KnownSitesSection.tsx`, `mcpClient.ts`)
+- On-device knowledge bases (OPFS) with embedding search, **on-device by
+  default** (external `/embeddings` optional) ✅ (`repoIngest.ts`,
+  `offscreen/repoStore.ts`, `localEmbed.ts`)
+- **Local folder indexing** via drag-and-drop, with incremental re-sync ✅
+  (`folderIndex.ts`, `RepositoriesSection.tsx`)
+- **Office 365 mailbox indexing** over the existing Outlook-on-the-web session
+  (no app registration), with optional hourly auto-refresh ✅ (`mailIngest.ts`,
+  `owaClient.ts`, `MailboxSection.tsx`)
+- **Hybrid search** (semantic + BM25 keyword fusion), multi-query paraphrase
+  retrieval, and LLM reranking on knowledge-base search ✅ (`hybridSearch.ts`,
+  `keywordSearch.ts`, `agentRuntime.ts`)
+- Capability Registry (bookmarks, MCP servers, known sites) incl. MCP servers ✅
+  (`CapabilitiesSection.tsx`, `mcpClient.ts`)
 - WebMCP bridge (page-exposed tools) ✅ (`webmcpBridge.ts`)
 - SharePoint search via signed-in session ✅ (`schemas.ts`, runtime)
 - Skills, app playbooks, `/learn`, curated playbook library (Outlook OWA/Live,
   Gmail, MarineTraffic, Jira Cloud) ✅ (`SkillsSection.tsx`, `curatedPlaybooks.ts`)
-- Memory (opt-in, ≤100 entries) ✅ (`MemorySection.tsx`, `storage.ts`)
+- Memory (opt-in, ≤100 entries) and automatic lessons (opt-in, ≤50 entries) ✅
+  (`MemorySection.tsx`, `storage.ts`)
 
 **Input/output**
 - Voice prompts via `/audio/transcriptions` ✅ (`ChatPanel.tsx`, `llmProvider.ts`)
@@ -916,7 +963,8 @@ approval each time.** Memory tools appear only when Memory is enabled.
 `submit_form` 🔒, `press_keys` 🔒, `click_at` 🔒, `drag` 🔒, `scroll_wheel`,
 `run_javascript` 🔒.
 
-**Knowledge bases (RAG):** `add_to_repo`, `search_repo`, `list_repos`.
+**Knowledge bases (RAG):** `add_to_repo`, `search_repo`, `list_repos`,
+`run_subtasks` (isolated mini-loops for multi-page research).
 
 **External & in-page tools:** `sharepoint_search`, `list_mcp_tools`,
 `call_mcp_tool` 🔒, `list_webmcp_tools`, `call_webmcp_tool` 🔒.
