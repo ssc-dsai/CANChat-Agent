@@ -49,4 +49,8 @@ describe('tool definitions contract', () => {
       expect(names).toContain(n);
     }
   });
+
+  it('includes scoped subtask delegation', () => {
+    expect(ALL.map((t) => t.function.name)).toContain('run_subtasks');
+  });
 });

@@ -236,6 +236,39 @@ const READ_ONLY_TOOLS = new Set([
   'drop_dataset',
 ]);
 
+const SCOPED_SUBTASK_ALLOWED = new Set([
+  'get_active_tab',
+  'get_tab_content',
+  'read_app_content',
+  'open_url',
+  'search_web',
+  'read_pdf',
+  'read_office_document',
+  'get_video_transcript',
+  'list_repos',
+  'search_repo',
+  'microsoft365_search',
+  'calendar_search',
+]);
+
+const SCOPED_SUBTASK_TOOLS = TOOL_DEFINITIONS.filter((t) => SCOPED_SUBTASK_ALLOWED.has(t.function.name));
+
+interface ScopedSubtaskInput {
+  id: string;
+  objective: string;
+  tabId?: number;
+  url?: string;
+  context?: string;
+}
+
+interface ScopedSubtaskResult {
+  id: string;
+  conclusion: string;
+  sources: string[];
+  stepsUsed: number;
+  error?: string;
+}
+
 /** Turn inserted @bookmark / #repo mentions into an explicit, act-on-it directive. */
 /** Base64-encode bytes in chunks (avoids a huge spread that overflows the stack). */
 function bytesToBase64(bytes: Uint8Array): string {
@@ -298,6 +331,7 @@ Planning multi-step tasks:
 Working method:
 - Use search_web for open-web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
 - Tabs you open (search_web, open_url) are collected into this conversation's named tab group. When you want to gather several pages for comparison or synthesis, open each in its own tab with open_url rather than reusing one tab with navigate. Read every page in the group at once with read_tab_group. Mention the group's name to the user when you first create it (e.g. "I've collected these in the Wolf group"); the user may later refer to the group by that name.
+- For multi-source work shaped like "read/compare/summarize these pages" (roughly 3+ pages/sources), prefer run_subtasks: create one focused subtask per page/source, let each mini-loop inspect only that source, then synthesize from the compact returned conclusions. This keeps the main context clean.
 - NEVER use the "site:" operator (or other search-engine operators) in a search_web query — not under any circumstances. It returns stale, poorly-ranked results. To search WITHIN a specific site, always go to the site itself: (1) if a known site has a search template for that domain, use it; (2) otherwise navigate to the site and use its own search — fill_input its search box and press_keys "Enter", or load its search URL pattern directly. search_web is only for plain open-web keyword queries with no site restriction.
 - Before clicking, filling, or submitting anything, call get_element_map and act on refIds. State-changing actions require user approval; the runtime handles asking.
 - Every action that needs approval (click_element, fill_input, submit_form, run_javascript, get_all_tab_contents, save_app_playbook) takes a required "reason" argument. Always set it to a clear, plain-language explanation, written for the user, of what the action does and why it helps the task — this is what they read to decide. No jargon or refIds.
@@ -1798,6 +1832,117 @@ export class AgentRuntime {
     }
   }
 
+  private async runScopedSubtasks(args: Record<string, unknown>): Promise<string> {
+    const settings = await getSettings();
+    if (!settings) return 'Error: no model configured.';
+    const rawTasks = Array.isArray(args.tasks) ? args.tasks : [];
+    const tasks = rawTasks
+      .slice(0, 12)
+      .map((raw, i): ScopedSubtaskInput | null => {
+        const t = raw as Record<string, unknown> | null;
+        if (!t || typeof t !== 'object') return null;
+        const objective = String(t.objective ?? '').trim();
+        if (!objective) return null;
+        const id = String(t.id ?? `task-${i + 1}`).trim() || `task-${i + 1}`;
+        const tabId = Number(t.tabId);
+        return {
+          id,
+          objective,
+          ...(Number.isFinite(tabId) ? { tabId } : {}),
+          ...(typeof t.url === 'string' && t.url.trim() ? { url: t.url.trim() } : {}),
+          ...(typeof t.context === 'string' && t.context.trim() ? { context: t.context.trim() } : {}),
+        };
+      })
+      .filter((t): t is ScopedSubtaskInput => t !== null);
+    if (tasks.length === 0) return 'Error: run_subtasks needs at least one task with an objective.';
+    const maxSteps = Math.min(8, Math.max(1, Math.floor(Number(args.maxSteps) || 4)));
+    const results = await this.mapWithConcurrency(tasks, 3, (task) => this.runScopedSubtask(settings, task, maxSteps));
+    return JSON.stringify({ results });
+  }
+
+  private async mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const out = new Array<R>(items.length);
+    let next = 0;
+    const workers = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= items.length) return;
+        out[i] = await fn(items[i]);
+      }
+    });
+    await Promise.all(workers);
+    return out;
+  }
+
+  private async runScopedSubtask(settings: Settings, task: ScopedSubtaskInput, maxSteps: number): Promise<ScopedSubtaskResult> {
+    const fallbackSources = [task.url, task.tabId !== undefined ? `tab:${task.tabId}` : undefined].filter((s): s is string => Boolean(s));
+    const messages: LlmMessage[] = [
+      {
+        role: 'system',
+        content:
+          'You are a scoped sub-agent running inside a larger browser task. Solve ONLY the assigned subtask. Keep your context small. Use only the provided tools to inspect the assigned page/source; do not perform state-changing actions. When done, reply ONLY JSON: {"conclusion":"<compact answer with key facts>","sources":["<url or source id>"]}. No prose or code fence.',
+      },
+      {
+        role: 'user',
+        content:
+          `Subtask id: ${task.id}\n` +
+          `Objective: ${task.objective}\n` +
+          (task.tabId !== undefined ? `Existing tabId: ${task.tabId}\nStart by reading this tab with get_tab_content unless another reader is clearly better.\n` : '') +
+          (task.url ? `URL: ${task.url}\nOpen/read this URL if needed. For PDF/Office URLs, use read_pdf/read_office_document directly.\n` : '') +
+          (task.context ? `Parent context:\n${task.context.slice(0, 2000)}\n` : ''),
+      },
+    ];
+    const scopedSettings = { ...settings, maxTokens: Math.min(settings.maxTokens ?? 800, 800), temperature: 0 };
+    let stepsUsed = 0;
+    try {
+      for (; stepsUsed < maxSteps; stepsUsed++) {
+        if (this.stopRequested) return { id: task.id, conclusion: '', sources: fallbackSources, stepsUsed, error: 'Task stopped by user.' };
+        const reply = await complete(scopedSettings, messages, SCOPED_SUBTASK_TOOLS, this.makeSignal());
+        if (!reply.tool_calls || reply.tool_calls.length === 0) {
+          return this.parseScopedSubtaskResult(task.id, reply.content ?? '', stepsUsed, fallbackSources);
+        }
+        messages.push({ role: 'assistant', content: reply.content, tool_calls: reply.tool_calls });
+        for (const call of reply.tool_calls) {
+          const result = await this.executeScopedSubtaskTool(call);
+          messages.push({ role: 'tool', tool_call_id: call.id, content: result });
+        }
+      }
+      messages.push({ role: 'user', content: 'Step budget reached. Return your best final JSON conclusion now with no tool calls.' });
+      const reply = await complete(scopedSettings, messages, undefined, this.makeSignal());
+      return this.parseScopedSubtaskResult(task.id, reply.content ?? '', stepsUsed, fallbackSources);
+    } catch (e) {
+      return { id: task.id, conclusion: '', sources: fallbackSources, stepsUsed, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  private async executeScopedSubtaskTool(call: LlmToolCall): Promise<string> {
+    const name = call.function.name;
+    if (!SCOPED_SUBTASK_ALLOWED.has(name)) return `Error: tool ${name} is not available inside scoped subtasks.`;
+    let args: Record<string, unknown>;
+    try {
+      args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+    } catch {
+      return `Error: could not parse arguments for ${name}.`;
+    }
+    try {
+      return await this.dispatchTool(name, args);
+    } catch (e) {
+      return `Error from ${name}: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
+  private parseScopedSubtaskResult(id: string, text: string, stepsUsed: number, fallbackSources: string[]): ScopedSubtaskResult {
+    const raw = String(text ?? '').trim();
+    try {
+      const obj = extractJsonObject(raw) as { conclusion?: unknown; sources?: unknown };
+      const conclusion = String(obj.conclusion ?? '').trim();
+      const sources = Array.isArray(obj.sources) ? obj.sources.map(String).map((s) => s.trim()).filter(Boolean) : [];
+      return { id, conclusion: conclusion || raw, sources: sources.length ? sources : fallbackSources, stepsUsed };
+    } catch {
+      return { id, conclusion: raw || '(no conclusion)', sources: fallbackSources, stepsUsed };
+    }
+  }
+
   /** Rough char count of a message's content (string or multimodal parts). */
   private static messageLen(m: LlmMessage): number {
     if (typeof m.content === 'string') return m.content.length;
@@ -2160,6 +2305,8 @@ export class AgentRuntime {
       }
       case 'read_tab_group':
         return browser.readTabGroup(args.name ? String(args.name) : undefined, this.groupId);
+      case 'run_subtasks':
+        return this.runScopedSubtasks(args);
       case 'add_to_repo':
         return this.ingestIntoRepo(String(args.repo), args.scope === 'group' ? 'group' : 'tab');
       case 'search_repo': {

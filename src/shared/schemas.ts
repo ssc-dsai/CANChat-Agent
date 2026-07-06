@@ -181,6 +181,36 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'run_subtasks',
+      description:
+        'Run isolated, tight-budget mini-loops for page/source-specific subtasks, returning only compact conclusions to the parent. Use this for comparing or summarizing several pages/sources without pulling all raw text into the main context.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tasks: {
+            type: 'array',
+            description: 'Independent subtasks, usually one per page/source.',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Short stable id for this subtask, e.g. page-1.' },
+                objective: { type: 'string', description: 'Specific question or extraction goal for this source.' },
+                tabId: { type: 'number', description: 'Existing tab id to inspect, when available.' },
+                url: { type: 'string', description: 'Source URL to open/read, when no tabId is available.' },
+                context: { type: 'string', description: 'Optional extra context from the parent task.' },
+              },
+              required: ['id', 'objective'],
+            },
+          },
+          maxSteps: { type: 'number', description: 'Maximum tool/model iterations per subtask. Default 4, max 8.' },
+        },
+        required: ['tasks'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_web',
       description:
         "Search the web using the browser's default search engine. Opens a new tab (collected into this conversation's tab group) with the results; follow up with get_tab_content on the returned tabId to read them.",
