@@ -9,10 +9,12 @@
 // =============================================================================
 
 import { useEffect, useRef, useState } from 'preact/hooks';
+import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import type { SidebarCommand } from '../shared/messages';
-import type { AgentStatus, ChatMessageView, DataExport, FileArtifact, Skill } from '../shared/types';
+import type { AgentStatus, ChatMessageView, DataExport, FileArtifact, SiteEntry, Skill } from '../shared/types';
 import { classifyUpload, UPLOAD_ACCEPT } from '../shared/uploadFile';
 import { classifyDataFile, DATA_ACCEPT } from '../shared/dataFile';
+import { capabilityBookmarkCandidates, dedupeBookmarkCandidates, filterBookmarkMentions, flattenBookmarkTree } from './bookmarkMentions';
 import { openDataFiles } from './dataOpenClient';
 import { DOCS_URL } from './links';
 import { RepoUpload } from './RepoUpload';
@@ -338,31 +340,30 @@ export function ChatPanel({
       setMentionItems([]);
       return;
     }
-    const rank = (n: chrome.bookmarks.BookmarkTreeNode) => {
-      const t = (n.title ?? '').toLowerCase();
-      if (t.startsWith(ql)) return 0;
-      if (t.includes(ql)) return 1;
-      return 2;
-    };
     const timer = setTimeout(async () => {
-      let nodes: chrome.bookmarks.BookmarkTreeNode[] = [];
+      let tree: chrome.bookmarks.BookmarkTreeNode[] = [];
+      let capabilities: CapabilityRegistryEntry[] = [];
+      let sites: SiteEntry[] = [];
       try {
-        nodes = q ? await chrome.bookmarks.search(q) : await chrome.bookmarks.getRecent(8);
+        const [bookmarkTree, stored] = await Promise.all([
+          chrome.bookmarks.getTree(),
+          chrome.storage.local.get(['ba_capabilities', 'ba_sites']),
+        ]);
+        tree = bookmarkTree;
+        capabilities = Array.isArray(stored.ba_capabilities) ? (stored.ba_capabilities as CapabilityRegistryEntry[]) : [];
+        sites = Array.isArray(stored.ba_sites) ? (stored.ba_sites as SiteEntry[]) : [];
       } catch {
-        nodes = [];
+        tree = [];
       }
       if (cancelled) return;
-      const items = nodes
-        .filter((n) => n.url)
-        .filter(
-          (n) =>
-            !q ||
-            (n.title ?? '').toLowerCase().includes(ql) ||
-            (n.url ?? '').toLowerCase().includes(ql),
-        )
-        .sort((a, b) => rank(a) - rank(b))
-        .slice(0, 8)
-        .map((n) => ({ primary: n.title || n.url!, secondary: n.url!, insert: n.url! }));
+      const items = filterBookmarkMentions(
+        dedupeBookmarkCandidates([
+          ...flattenBookmarkTree(tree),
+          ...capabilityBookmarkCandidates(capabilities, sites),
+        ]),
+        q,
+        20,
+      );
       setMentionItems(items);
       setMentionIndex(0);
     }, 120);
