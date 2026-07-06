@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFindFolderBody,
   buildFindItemBody,
+  buildCreateDraftBody,
   buildGetItemBody,
+  draftUrl,
   isMailFolder,
   messageToMailDoc,
   messageUrl,
+  parseCreateDraft,
   parseFindItem,
   parseFolders,
   parseGetItem,
@@ -172,6 +175,57 @@ describe('parseGetItem', () => {
     });
     expect(msgs[0].bodyText).toBe('Hi there');
     expect(msgs[0].subject).toBe('(no subject)');
+  });
+});
+
+describe('buildCreateDraftBody + parseCreateDraft', () => {
+  it('creates a SaveOnly draft in the drafts folder with recipients', () => {
+    const b = body(
+      buildCreateDraftBody({
+        to: ['ada@example.com', ' grace@example.com '],
+        cc: ['cc@example.com'],
+        subject: 'Project update',
+        body: 'Draft body',
+        importance: 'High',
+      }),
+    );
+    expect(b.__type).toBe('CreateItemRequest:#Exchange');
+    expect(b.MessageDisposition).toBe('SaveOnly');
+    expect(b.SavedItemFolderId.DistinguishedFolderId.Id).toBe('drafts');
+    expect(b.Items[0].Subject).toBe('Project update');
+    expect(b.Items[0].Body).toEqual({ BodyType: 'Text', Value: 'Draft body' });
+    expect(b.Items[0].Importance).toBe('High');
+    expect(b.Items[0].ToRecipients.map((r: any) => r.Mailbox.EmailAddress)).toEqual([
+      'ada@example.com',
+      'grace@example.com',
+    ]);
+    expect(b.Items[0].CcRecipients.map((r: any) => r.Mailbox.EmailAddress)).toEqual(['cc@example.com']);
+  });
+
+  it('supports HTML bodies', () => {
+    const b = body(buildCreateDraftBody({ to: ['ada@example.com'], subject: 'HTML', body: '<b>Hello</b>', bodyType: 'HTML' }));
+    expect(b.Items[0].Body.BodyType).toBe('HTML');
+  });
+
+  it('parses the created draft id and builds an Outlook URL', () => {
+    const result = parseCreateDraft(
+      {
+        Body: {
+          ResponseMessages: {
+            Items: [{ Items: [{ ItemId: { Id: 'DRAFT/ID', ChangeKey: 'CK' } }] }],
+          },
+        },
+      },
+      'https://outlook.office.com/',
+    );
+    expect(result.id).toBe('DRAFT/ID');
+    expect(result.changeKey).toBe('CK');
+    expect(result.url).toBe(draftUrl('https://outlook.office.com', 'DRAFT/ID'));
+    expect(result.url).toContain('ItemID=DRAFT%2FID');
+  });
+
+  it('throws when Outlook returns no draft id', () => {
+    expect(() => parseCreateDraft({}, 'https://outlook.office.com')).toThrow(/draft item id/);
   });
 });
 

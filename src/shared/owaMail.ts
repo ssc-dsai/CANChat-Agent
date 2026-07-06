@@ -177,6 +177,22 @@ export interface OwaMessage {
   bodyText: string;
 }
 
+export interface OwaDraftInput {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  body: string;
+  bodyType?: 'Text' | 'HTML';
+  importance?: 'Low' | 'Normal' | 'High';
+}
+
+export interface OwaDraftResult {
+  id: string;
+  changeKey?: string;
+  url: string;
+}
+
 /** `GetItem` for a batch of ids, plain-text body. */
 export function buildGetItemBody(ids: string[]): unknown {
   return {
@@ -260,6 +276,63 @@ export function parseGetItem(json: unknown): OwaMessage[] {
     });
   }
   return out;
+}
+
+// ----- Draft creation (CreateItem, SaveOnly) -----
+
+function recipients(addresses?: string[]): unknown[] | undefined {
+  const out = (addresses ?? [])
+    .map((addr) => addr.trim())
+    .filter(Boolean)
+    .map((addr) => ({ Mailbox: { EmailAddress: addr } }));
+  return out.length ? out : undefined;
+}
+
+/** `CreateItem` for a saved draft. It never sends: MessageDisposition is SaveOnly. */
+export function buildCreateDraftBody(draft: OwaDraftInput): unknown {
+  const msg: Record<string, unknown> = {
+    __type: 'Message:#Exchange',
+    Subject: draft.subject,
+    Body: {
+      BodyType: draft.bodyType === 'HTML' ? 'HTML' : 'Text',
+      Value: draft.body,
+    },
+    Importance: draft.importance ?? 'Normal',
+  };
+  const to = recipients(draft.to);
+  const cc = recipients(draft.cc);
+  const bcc = recipients(draft.bcc);
+  if (to) msg.ToRecipients = to;
+  if (cc) msg.CcRecipients = cc;
+  if (bcc) msg.BccRecipients = bcc;
+
+  return {
+    __type: 'CreateItemJsonRequest:#Exchange',
+    Header: header(),
+    Body: {
+      __type: 'CreateItemRequest:#Exchange',
+      MessageDisposition: 'SaveOnly',
+      SavedItemFolderId: { __type: 'TargetFolderId:#Exchange', DistinguishedFolderId: { Id: 'drafts' } },
+      Items: [msg],
+    },
+  };
+}
+
+export function draftUrl(base: string, id: string): string {
+  const b = base.replace(/\/+$/, '');
+  return `${b}/?ItemID=${encodeURIComponent(id)}&exvsurl=1&viewmodel=ReadMessageItem`;
+}
+
+export function parseCreateDraft(json: unknown, base: string): OwaDraftResult {
+  const responseItems = (json as { Body?: { ResponseMessages?: { Items?: unknown[] } } })?.Body?.ResponseMessages?.Items;
+  const item = (Array.isArray(responseItems) ? responseItems : [])
+    .flatMap((rm) => ((rm as { Items?: unknown[] })?.Items ?? []))
+    .find((raw) => (raw as { ItemId?: { Id?: string } })?.ItemId?.Id) as
+    | { ItemId?: { Id?: string; ChangeKey?: string } }
+    | undefined;
+  const id = item?.ItemId?.Id ?? '';
+  if (!id) throw new Error('Outlook did not return a draft item id.');
+  return { id, changeKey: item?.ItemId?.ChangeKey, url: draftUrl(base, id) };
 }
 
 // ----- Projection into a RAG document -----

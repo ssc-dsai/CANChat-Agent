@@ -452,6 +452,47 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'calendar_search',
+      description:
+        "Read the user's Outlook calendar using the signed-in Outlook-on-the-web session (no setup or token). Use this for schedule, meeting, and Teams-link questions. Returns events with subject, time, location, organizer, attendees, body/preview, Teams URL when found, and an Outlook URL. For meeting prep, call this first, then use list_repos/search_repo separately to pull relevant documents.",
+      parameters: {
+        type: 'object',
+        properties: {
+          since: { type: 'string', description: 'Inclusive start date/time. ISO date or datetime; default is today.' },
+          until: { type: 'string', description: 'Exclusive end date/time. ISO date or datetime; default is 7 days after since.' },
+          query: { type: 'string', description: 'Optional filter over subject, body, location, organizer, and attendees.' },
+          top: { type: 'number', description: 'Max events to return (default 25, max 100).' },
+          includeBody: { type: 'boolean', description: 'Include event body text when available (default true).' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'draft_email',
+      description:
+        "Create a saved Outlook email draft using the signed-in Outlook-on-the-web session. This does NOT send the email; it only saves a draft for the user to review and send manually. State-changing: requires user approval.",
+      parameters: {
+        type: 'object',
+        properties: {
+          to: { type: 'array', items: { type: 'string' }, description: 'Recipient email addresses.' },
+          cc: { type: 'array', items: { type: 'string' }, description: 'Optional CC recipient email addresses.' },
+          bcc: { type: 'array', items: { type: 'string' }, description: 'Optional BCC recipient email addresses.' },
+          subject: { type: 'string', description: 'Draft email subject.' },
+          body: { type: 'string', description: 'Draft email body.' },
+          bodyType: { type: 'string', enum: ['Text', 'HTML'], description: "Body format. Default is 'Text'." },
+          importance: { type: 'string', enum: ['Low', 'Normal', 'High'], description: "Message importance. Default is 'Normal'." },
+          ...reasonParam,
+        },
+        required: ['to', 'subject', 'body', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_known_sites',
       description:
         "Search the user's curated directory of known sites (names, URLs, descriptions, optional search-URL templates) for sites likely to contain the data a task needs. Check this before falling back to a generic web search. Some entries are MCP servers (they have an mcpUrl) — for those, use list_mcp_tools/call_mcp_tool instead of opening a URL.",

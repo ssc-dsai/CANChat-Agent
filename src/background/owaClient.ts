@@ -11,14 +11,19 @@
 import {
   buildFindFolderBody,
   buildFindItemBody,
+  buildCreateDraftBody,
   buildGetItemBody,
+  parseCreateDraft,
   parseFindItem,
   parseFolders,
   parseGetItem,
   type FindItemPage,
+  type OwaDraftInput,
+  type OwaDraftResult,
   type OwaFolder,
   type OwaMessage,
 } from '../shared/owaMail';
+import { buildGetCalendarViewBody, parseCalendarView, type OwaCalendarEvent } from '../shared/owaCalendar';
 
 /** How many message ids a single FindItem page requests. */
 export const FIND_PAGE_SIZE = 100;
@@ -49,8 +54,14 @@ export async function readCanary(base: string): Promise<string> {
  * POST one EWS-over-JSON action to `service.svc` with the session cookies and
  * canary, retrying 429/5xx with backoff (EWS throttling). Returns parsed JSON.
  */
-async function owaPost(base: string, action: string, canary: string, requestBody: unknown): Promise<unknown> {
-  const url = `${base.replace(/\/+$/, '')}/owa/service.svc?action=${action}&app=Mail`;
+async function owaPost(
+  base: string,
+  action: string,
+  canary: string,
+  requestBody: unknown,
+  app: 'Mail' | 'Calendar' = 'Mail',
+): Promise<unknown> {
+  const url = `${base.replace(/\/+$/, '')}/owa/service.svc?action=${action}&app=${app}`;
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
@@ -108,4 +119,27 @@ export async function owaFindItemsPage(
 export async function owaGetItems(base: string, canary: string, ids: string[]): Promise<OwaMessage[]> {
   if (ids.length === 0) return [];
   return parseGetItem(await owaPost(base, 'GetItem', canary, buildGetItemBody(ids)));
+}
+
+/** Create a saved Outlook draft. This does not send the message. */
+export async function owaCreateDraft(
+  base: string,
+  canary: string,
+  draft: OwaDraftInput,
+): Promise<OwaDraftResult> {
+  return parseCreateDraft(await owaPost(base, 'CreateItem', canary, buildCreateDraftBody(draft)), base);
+}
+
+/** Fetch calendar events in a time window from the default calendar. */
+export async function owaGetCalendarView(
+  base: string,
+  canary: string,
+  start: string,
+  end: string,
+  includeBody = true,
+): Promise<OwaCalendarEvent[]> {
+  return parseCalendarView(
+    await owaPost(base, 'GetCalendarView', canary, buildGetCalendarViewBody(start, end, includeBody), 'Calendar'),
+    base,
+  );
 }

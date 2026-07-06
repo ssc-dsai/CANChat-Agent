@@ -45,6 +45,7 @@ import type {
   Skill,
 } from '../shared/types';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
+import { eventMatchesQuery } from '../shared/owaCalendar';
 import * as browser from './browserToolAdapter';
 import type { M365SearchFilters } from '../shared/microsoftSearch';
 import { captureFullPage } from './fullPageCapture';
@@ -55,6 +56,8 @@ import { deriveStepBudget, parseReflectionVerdict, parseSummaryArray, repairTool
 import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
 import { ingestTab } from './repoIngest';
+import { resolveOutlookBase } from './mailIngest';
+import { owaCreateDraft, owaGetCalendarView, readCanary } from './owaClient';
 import { normalizeUrl } from '../shared/repoChunk';
 import {
   addSessionApproval,
@@ -88,6 +91,46 @@ const SITES_PROMPT_LIMIT = 25;
 const SINGLE_TAB_CHARS = 12000;
 const MULTI_TAB_CHARS = 5000;
 const CONVERSATION_CHAR_BUDGET = 90000; // compact older tool output beyond this
+
+function startOfTodayIso(): string {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(iso);
+  d.setDate(d.getDate() + days);
+  return d.toISOString();
+}
+
+function normalizeCalendarDate(value: unknown, fallback: string): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return fallback;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? fallback : d.toISOString();
+}
+
+function clampCalendarTop(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 25;
+  return Math.min(100, Math.max(1, Math.floor(n)));
+}
+
+function stringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).map((s) => s.trim()).filter(Boolean);
+  const s = String(value ?? '').trim();
+  return s ? [s] : [];
+}
+
+function emailBodyType(value: unknown): 'Text' | 'HTML' {
+  return value === 'HTML' ? 'HTML' : 'Text';
+}
+
+function emailImportance(value: unknown): 'Low' | 'Normal' | 'High' {
+  return value === 'Low' || value === 'High' ? value : 'Normal';
+}
 const FINDINGS_SHOWN = 20;
 
 // Single-word animal names for each conversation's tab group — a bilingual mix
@@ -118,6 +161,7 @@ const APPROVAL_REQUIRED = new Set([
   'get_all_tab_contents', // reading all tabs needs explicit approval per spec
   'call_mcp_tool', // invokes an external MCP method — gated like any outbound action
   'call_webmcp_tool', // invokes an in-page tool with the user's session — gated
+  'draft_email', // creates a server-side Outlook draft — confirm first
 ]);
 
 /** Read-only / local tools that are safe to run concurrently within one turn. */
@@ -133,6 +177,7 @@ const READ_ONLY_TOOLS = new Set([
   'list_webmcp_tools',
   'sharepoint_search',
   'microsoft365_search',
+  'calendar_search',
   'read_tab_group',
   'search_repo',
   'list_repos',
@@ -238,6 +283,8 @@ Working method:
 - Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
 - The user can reference a repository (typing #) or a bookmarked page (typing @) in their message; when they do, an explicit instruction is attached — act on it directly: search_repo that exact repository, or open and read that exact URL rather than web-searching for it.
 - For questions about the user's own Microsoft 365 email AND/OR files, prefer microsoft365_search — one call over the signed-in session covering Outlook mail and SharePoint/OneDrive files, with filters: source ('mail'|'files'|'both'), from (sender), fileType, sitePath, editedByMe, since/until (YYYY-MM-DD), orderBy ('relevance'|'date'), top. E.g. "last five emails from Brian Ray" → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; "last Word file I edited on my SharePoint site" → {source:'files', fileType:'docx', editedByMe:true, orderBy:'date', top:1}. Cite each result's url. If the response has a mailError, fall back to the /search-mail skill (which drives the Outlook web UI). To read a file's full contents beyond its snippet, pass its url to read_office_document (Office) or read_pdf (PDFs) — do not navigate to it (that downloads it).
+- For Outlook calendar/schedule/Teams meeting questions, use calendar_search over the signed-in Outlook web session. For meeting prep ("pull docs I need", "prep me for meetings"), first call calendar_search, then call list_repos/search_repo separately with each meeting's subject, organizer, attendees, and agenda terms; cite both meeting URLs and repository source URLs.
+- When the user asks you to draft an email, use draft_email. It creates a saved Outlook draft only — it does NOT send. Never claim an email was sent. For requests to send an email, create a draft and tell the user to review/send it manually unless a future send tool exists. Always provide a clear approval reason naming the recipients and subject.
 - For files-only retrieval you can also use sharepoint_search (the simpler SharePoint-only tool): pass sortBy:'modified' + editedByMe:true for "recent files"/"files I edited"; cite the URLs.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
 - Map workspace: when the user wants to see or work with a map, use the map_* tools. They all act on ONE persistent map that opens automatically in its own tab and is reused across requests — never assume a new map each time; build on the current state (call map_get_state to see what's there). map_set_view/map_fly_to move it, map_set_basemap switches tiles, map_add_marker/map_add_geojson/map_add_shape add elements, map_animate moves a marker along a path, map_fit_bounds frames things, map_clear removes overlays. These act on the extension's own map page, so they don't need approval.
@@ -2054,6 +2101,51 @@ export class AgentRuntime {
           editedByMe: Boolean(args.editedByMe),
         });
       }
+      case 'calendar_search': {
+        const settings = await getSettings();
+        if (!settings) return 'Error: no model configured.';
+        const since = normalizeCalendarDate(args.since, startOfTodayIso());
+        const until = normalizeCalendarDate(args.until, addDaysIso(since, 7));
+        const base = resolveOutlookBase(settings);
+        try {
+          const canary = await readCanary(base);
+          const events = (await owaGetCalendarView(base, canary, since, until, args.includeBody !== false))
+            .filter((event) => eventMatchesQuery(event, args.query ? String(args.query) : undefined))
+            .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))
+            .slice(0, clampCalendarTop(args.top));
+          return JSON.stringify({ base, since, until, count: events.length, events });
+        } catch (e) {
+          return `Error reading Outlook calendar: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      }
+      case 'draft_email': {
+        const settings = await getSettings();
+        if (!settings) return 'Error: no model configured.';
+        const to = stringArray(args.to);
+        const cc = stringArray(args.cc);
+        const bcc = stringArray(args.bcc);
+        const subject = String(args.subject ?? '').trim();
+        const body = String(args.body ?? '').trim();
+        if (to.length === 0) return 'Error: draft_email needs at least one recipient.';
+        if (!subject) return 'Error: draft_email needs a subject.';
+        if (!body) return 'Error: draft_email needs a body.';
+        const base = resolveOutlookBase(settings);
+        try {
+          const canary = await readCanary(base);
+          const draft = await owaCreateDraft(base, canary, {
+            to,
+            cc,
+            bcc,
+            subject,
+            body,
+            bodyType: emailBodyType(args.bodyType),
+            importance: emailImportance(args.importance),
+          });
+          return JSON.stringify({ ok: true, draft, to, cc, bcc, subject, sent: false });
+        } catch (e) {
+          return `Error creating Outlook draft: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      }
       case 'microsoft365_search': {
         const settings = await getSettings();
         const source =
@@ -2713,6 +2805,8 @@ export class AgentRuntime {
         return `Call MCP method "${args.name}" on server "${args.server}" with ${JSON.stringify(args.arguments ?? {}).slice(0, 200)}`;
       case 'call_webmcp_tool':
         return `Call the page's in-page tool "${args.name}" with ${JSON.stringify(args.arguments ?? {}).slice(0, 200)}`;
+      case 'draft_email':
+        return `Create an Outlook draft to ${stringArray(args.to).join(', ')} with subject "${String(args.subject ?? '').slice(0, 120)}". This will not send the email.`;
       default:
         return `${name} ${JSON.stringify(args).slice(0, 120)}`;
     }
