@@ -46,7 +46,8 @@ import type {
   Skill,
 } from '../shared/types';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
-import { eventMatchesQuery } from '../shared/owaCalendar';
+import { eventMatchesQuery, parseCalendarView, buildCalendarViewUrl } from '../shared/graphCalendar';
+import { buildGraphDraftMessage, createMessageUrl, parseGraphDraftResponse } from '../shared/graphMail';
 import type { ScheduledTaskRecurrence } from '../shared/scheduledTasks';
 import * as browser from './browserToolAdapter';
 import type { M365SearchFilters } from '../shared/microsoftSearch';
@@ -59,8 +60,8 @@ import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duc
 import { normalizeSlides } from '../shared/slides';
 import type { SearchHit } from '../shared/vectorSearch';
 import { ingestTab } from './repoIngest';
-import { resolveOutlookBase } from './mailIngest';
-import { owaCreateDraft, owaGetCalendarView, readCanary } from './owaClient';
+import { getAccessToken } from './graphAuth';
+import { graphGet, graphPostJson } from './graphClient';
 import { normalizeUrl } from '../shared/repoChunk';
 import {
   addSessionApproval,
@@ -350,10 +351,10 @@ Working method:
 - Some web pages expose their own in-page tools via WebMCP (navigator.modelContext). On the active tab, call list_webmcp_tools to discover them; when one matches the task, prefer call_webmcp_tool over hand-driving the page UI.
 - Local repositories: the user can save pages into named on-device repositories (OPFS). Use add_to_repo to capture the current page or this conversation's tab group into a repo, and search_repo to retrieve relevant passages from a repo and answer from them — cite each passage's page name and URL. Prefer search_repo for questions about pages the user has saved; list_repos shows what exists.
 - The user can reference a repository (typing #) or a bookmarked page (typing @) in their message; when they do, an explicit instruction is attached — act on it directly: search_repo that exact repository, or open and read that exact URL rather than web-searching for it.
-- Endpoint-first Microsoft 365 rule: for Outlook mail, Outlook calendar, Teams meeting, SharePoint, and OneDrive retrieval, ALWAYS use the dedicated endpoint-backed tools before browser/page automation. Do not use search_web, open_url, get_tab_content, Outlook/Office web UI playbooks, or DOM automation for these data sources unless the endpoint tool returns an explicit endpoint/session error.
-- For questions about the user's own Microsoft 365 email AND/OR files, call microsoft365_search first — one endpoint-backed call over the signed-in session covering Outlook mail and SharePoint/OneDrive files, with filters: source ('mail'|'files'|'both'), from (sender), fileType, sitePath, editedByMe, since/until (YYYY-MM-DD), orderBy ('relevance'|'date'), top. For mail-only questions, set source:'mail'. For SharePoint/OneDrive file questions, assume the user wants the most recently modified content files unless they explicitly ask otherwise: omit orderBy or use orderBy:'date', and do not search for executables/components (the tool defaults to Office docs, PDFs, text/html, images, audio, and video unless a fileType is supplied). E.g. "last five emails from Brian Ray" → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; "the last Word file I edited on my SharePoint site" → {source:'files', fileType:'docx', editedByMe:true, top:1}. Cite each result's url. If the response has a mailError/session error, explain that the endpoint could not establish an Outlook/Microsoft 365 session and ask the user to sign in once, then retry; only then may you fall back to the /search-mail skill or Outlook web UI. To read a file's full contents beyond its snippet, pass its url to read_office_document (Office) or read_pdf (PDFs) — do not navigate to it (that downloads it).
-- For Outlook calendar/schedule/Teams meeting questions, call calendar_search first. It is the direct endpoint-backed calendar tool. Do not navigate to Outlook or use page automation for calendar reads unless calendar_search returns an endpoint/session error. If it does, explain that the endpoint could not establish an Outlook/Microsoft 365 session and ask the user to sign in once, then retry; only then may you fall back to page automation. For meeting prep ("pull docs I need", "prep me for meetings"), first call calendar_search, then call list_repos/search_repo separately with each meeting's subject, organizer, attendees, and agenda terms; cite both meeting URLs and repository source URLs.
-- When the user asks you to draft an email, use draft_email. It creates a saved Outlook draft only — it does NOT send. Never claim an email was sent. For requests to send an email, create a draft and tell the user to review/send it manually unless a future send tool exists. Always provide a clear approval reason naming the recipients and subject.
+- Endpoint-first Microsoft 365 rule: for Outlook mail, Outlook calendar, Teams meeting, SharePoint, and OneDrive retrieval, ALWAYS use the dedicated endpoint-backed tools before browser/page automation. Do not use search_web, open_url, get_tab_content, Outlook/Office web UI playbooks, or DOM automation for these data sources unless the endpoint tool returns an explicit endpoint/auth error. Mail, calendar, and draft creation are backed by Microsoft Graph (OAuth) and need a one-time Connect in Settings → Knowledge bases → Mailbox; SharePoint/OneDrive files remain a direct cookie-session call needing no separate connect step.
+- For questions about the user's own Microsoft 365 email AND/OR files, call microsoft365_search first — source ('mail'|'files'|'both'), from (sender), fileType, sitePath, editedByMe, since/until (YYYY-MM-DD), orderBy ('relevance'|'date'), top. For mail-only questions, set source:'mail'. Mail search matches on subject and sender substrings plus a date range — it does not search the message body, so a body-only phrase may miss; prefer read_office_document/read_pdf-style narrowing (recipient, subject keyword, date window) over a vague free-text query. For SharePoint/OneDrive file questions, assume the user wants the most recently modified content files unless they explicitly ask otherwise: omit orderBy or use orderBy:'date', and do not search for executables/components (the tool defaults to Office docs, PDFs, text/html, images, audio, and video unless a fileType is supplied). E.g. "last five emails from Brian Ray" → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; "the last Word file I edited on my SharePoint site" → {source:'files', fileType:'docx', editedByMe:true, top:1}. Cite each result's url. If the response has a mailError, explain that the mailbox isn't connected (or the connection expired) and ask the user to open Settings → Mailbox → Connect, then retry; only then may you fall back to the /search-mail skill or Outlook web UI. To read a file's full contents beyond its snippet, pass its url to read_office_document (Office) or read_pdf (PDFs) — do not navigate to it (that downloads it).
+- For Outlook calendar/schedule/Teams meeting questions, call calendar_search first. It is the direct endpoint-backed calendar tool. Do not navigate to Outlook or use page automation for calendar reads unless calendar_search returns an explicit error. If it does (mailbox not connected or the connection expired), explain that and ask the user to open Settings → Mailbox → Connect, then retry; only then may you fall back to page automation. For meeting prep ("pull docs I need", "prep me for meetings"), first call calendar_search, then call list_repos/search_repo separately with each meeting's subject, organizer, attendees, and agenda terms; cite both meeting URLs and repository source URLs.
+- When the user asks you to draft an email, use draft_email. It creates a saved Outlook draft only — it does NOT send. Never claim an email was sent. For requests to send an email, create a draft and tell the user to review/send it manually unless a future send tool exists. If it errors because the mailbox isn't connected, ask the user to open Settings → Mailbox → Connect, then retry. Always provide a clear approval reason naming the recipients and subject.
 - When the user asks to schedule a future or recurring task/workflow, call schedule_task with a concrete future runAt or recurrence. Scheduled tasks run unattended in the background; they may use read-only tools, but approval-gated tools will not run unattended and will be recorded as needing approval. Use list_scheduled_tasks/cancel_scheduled_task for management.
 - For files-only retrieval you can also use sharepoint_search (the simpler SharePoint-only tool): pass sortBy:'modified' + editedByMe:true for "recent files"/"files I edited"; cite the URLs.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
@@ -2420,14 +2421,14 @@ export class AgentRuntime {
         if (!settings) return 'Error: no model configured.';
         const since = normalizeCalendarDate(args.since, startOfTodayIso());
         const until = normalizeCalendarDate(args.until, addDaysIso(since, 7));
-        const base = resolveOutlookBase(settings);
         try {
-          const canary = await readCanary(base);
-          const events = (await owaGetCalendarView(base, canary, since, until, args.includeBody !== false))
+          const token = await getAccessToken(settings.graphClientId ?? '', settings.graphTenant || 'organizations');
+          const data = await graphGet(buildCalendarViewUrl(since, until, args.includeBody !== false), token);
+          const events = parseCalendarView(data)
             .filter((event) => eventMatchesQuery(event, args.query ? String(args.query) : undefined))
             .sort((a, b) => Date.parse(a.start) - Date.parse(b.start))
             .slice(0, clampCalendarTop(args.top));
-          return JSON.stringify({ base, since, until, count: events.length, events });
+          return JSON.stringify({ since, until, count: events.length, events });
         } catch (e) {
           return `Error reading Outlook calendar: ${e instanceof Error ? e.message : String(e)}`;
         }
@@ -2475,10 +2476,9 @@ export class AgentRuntime {
         if (to.length === 0) return 'Error: draft_email needs at least one recipient.';
         if (!subject) return 'Error: draft_email needs a subject.';
         if (!body) return 'Error: draft_email needs a body.';
-        const base = resolveOutlookBase(settings);
         try {
-          const canary = await readCanary(base);
-          const draft = await owaCreateDraft(base, canary, {
+          const token = await getAccessToken(settings.graphClientId ?? '', settings.graphTenant || 'organizations');
+          const message = buildGraphDraftMessage({
             to,
             cc,
             bcc,
@@ -2487,6 +2487,8 @@ export class AgentRuntime {
             bodyType: emailBodyType(args.bodyType),
             importance: emailImportance(args.importance),
           });
+          const data = await graphPostJson(createMessageUrl(), token, message);
+          const draft = parseGraphDraftResponse(data);
           return JSON.stringify({ ok: true, draft, to, cc, bcc, subject, sent: false });
         } catch (e) {
           return `Error creating Outlook draft: ${e instanceof Error ? e.message : String(e)}`;
@@ -2520,18 +2522,6 @@ export class AgentRuntime {
           }
           return base;
         };
-        const resolveOutlookBase = async (): Promise<string> => {
-          let base = settings?.outlookBaseUrl?.trim();
-          if (!base) {
-            try {
-              const u = new URL((await browser.getActiveTab()).url);
-              if (/outlook\.office(365)?\.com$/i.test(u.hostname)) base = u.origin;
-            } catch {
-              // no usable active tab
-            }
-          }
-          return base || 'https://outlook.office.com';
-        };
 
         const wantFiles = source === 'files' || source === 'both';
         const wantMail = source === 'mail' || source === 'both';
@@ -2549,7 +2539,7 @@ export class AgentRuntime {
               })()
             : Promise.resolve(null),
           wantMail
-            ? browser.outlookMailSearch(await resolveOutlookBase(), filters)
+            ? browser.graphMailSearch(settings?.graphClientId ?? '', settings?.graphTenant || 'organizations', filters)
             : Promise.resolve(null),
         ]);
 

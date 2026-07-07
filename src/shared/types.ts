@@ -190,15 +190,25 @@ export interface Settings {
   systemPrompt?: string;
   /** Optional SharePoint base URL for the cookie-auth search tool. */
   sharepointBaseUrl?: string;
-  /** Optional Outlook-on-the-web base URL for microsoft365_search mail; default https://outlook.office.com. */
-  outlookBaseUrl?: string;
+  /**
+   * Azure AD app **client ID** for mail/calendar/draft — Microsoft Graph OAuth
+   * (auth-code + PKCE via chrome.identity). The app needs the delegated scopes
+   * `Mail.Read`, `Mail.ReadWrite` (required even just to create a draft — Graph
+   * has no narrower "draft only" scope), and `Calendars.Read`; in most
+   * enterprise tenants this needs admin consent. Absent = mail/calendar/draft
+   * and mailbox indexing are all disconnected (SharePoint/OneDrive file search
+   * is unaffected — it stays on the cookie session).
+   */
+  graphClientId?: string;
+  /** Graph OAuth tenant: `organizations` (default) or a specific tenant id. */
+  graphTenant?: string;
   /**
    * Keep the mailbox repo current automatically via an hourly `chrome.alarms`
-   * refresh, riding the same Outlook-on-the-web cookie session as a manual
-   * index. Default **off** (opt-in) — only takes effect once the mailbox has
-   * been indexed at least once; a background refresh never runs the initial
-   * full index. Silently no-ops (recorded, not surfaced as an error banner) if
-   * the Outlook session has expired.
+   * refresh, riding the same Graph connection as a manual index. Default
+   * **off** (opt-in) — only takes effect once the mailbox has been indexed at
+   * least once; a background refresh never runs the initial full index.
+   * Silently no-ops (recorded, not surfaced as an error banner) if the Graph
+   * connection has expired past silent refresh.
    */
   mailAutoRefresh?: boolean;
   /**

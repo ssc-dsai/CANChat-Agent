@@ -89,7 +89,8 @@ export function SettingsScreen({ onClose }: Props) {
       apiVersion: settings.apiVersion?.trim() || undefined,
       systemPrompt: settings.systemPrompt?.trim() || undefined,
       sharepointBaseUrl: settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined,
-      outlookBaseUrl: settings.outlookBaseUrl?.trim().replace(/\/+$/, '') || undefined,
+      graphClientId: settings.graphClientId?.trim() || undefined,
+      graphTenant: settings.graphTenant?.trim() || undefined,
       embedder: settings.embedder === 'external' ? 'external' : 'local',
       localEmbedModel: settings.localEmbedModel?.trim() || undefined,
       embeddingModel: settings.embeddingModel?.trim() || undefined,
@@ -383,15 +384,27 @@ export function SettingsScreen({ onClose }: Props) {
           />
         </label>
 
-        <label class="field">
-          <span>{t('settings.outlookUrl')}</span>
-          <input
-            type="url"
-            placeholder="https://outlook.office.com"
-            value={settings.outlookBaseUrl ?? ''}
-            onInput={(e) => update({ outlookBaseUrl: (e.target as HTMLInputElement).value })}
-          />
-        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>{t('settings.graphClientId')}</span>
+            <input
+              type="text"
+              placeholder="00000000-0000-0000-0000-000000000000"
+              value={settings.graphClientId ?? ''}
+              onInput={(e) => update({ graphClientId: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+          <label class="field">
+            <span>{t('settings.graphTenant')}</span>
+            <input
+              type="text"
+              placeholder="organizations"
+              value={settings.graphTenant ?? ''}
+              onInput={(e) => update({ graphTenant: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+        </div>
+        <p class="settings-note">{t('settings.graphNote')}</p>
 
         <label class="field">
           <span>{t('settings.customInstructions')}</span>

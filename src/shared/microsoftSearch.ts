@@ -1,8 +1,9 @@
 // Pure helpers for the unified `microsoft365_search` tool: turn the model's
-// structured filters into the query strings the cookie-authenticated Microsoft 365
-// web APIs expect — KQL for SharePoint/Microsoft Search (files, incl. OneDrive) and
-// AQS for the Outlook-on-the-web FindItem endpoint (mail). No chrome.*/network here
-// so the construction is unit-testable; the fetches live in browserToolAdapter.ts.
+// structured filters into the KQL query string the cookie-authenticated
+// SharePoint/Microsoft Search REST API expects (files, incl. OneDrive). The
+// mail half of microsoft365_search uses Graph's OData $filter instead — see
+// shared/graphMail.ts. No chrome.*/network here so the construction is
+// unit-testable; the fetches live in browserToolAdapter.ts.
 
 export type SearchSource = 'mail' | 'files' | 'both';
 export type SearchOrder = 'relevance' | 'date';
@@ -85,26 +86,6 @@ export function buildFileKql(f: M365SearchFilters, editorName?: string): string 
   const until = isoDate(f.until);
   if (since) clauses.push(`LastModifiedTime>=${since}`);
   if (until) clauses.push(`LastModifiedTime<=${until}`);
-
-  return clauses.join(' ');
-}
-
-/**
- * Build the Outlook (OWA) AQS query string for a mail search. An empty result
- * means "no filter" — list recent mail (sorted newest-first by the caller).
- */
-export function buildMailQuery(f: M365SearchFilters): string {
-  const clauses: string[] = [];
-  const terms = kqlSafe(f.query ?? '');
-  if (terms) clauses.push(terms);
-
-  const from = (f.from ?? '').trim().replace(/"/g, '');
-  if (from) clauses.push(from.includes(' ') ? `from:"${from}"` : `from:${from}`);
-
-  const since = isoDate(f.since);
-  const until = isoDate(f.until);
-  if (since) clauses.push(`received>=${since}`);
-  if (until) clauses.push(`received<=${until}`);
 
   return clauses.join(' ');
 }

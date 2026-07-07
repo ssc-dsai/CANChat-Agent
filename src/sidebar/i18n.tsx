@@ -108,18 +108,16 @@ const EN: Dict = {
   'repos.folder.denied': 'Folder access was denied. Click Refresh and allow access.',
   'repos.folder.error': 'Folder indexing failed: {msg}',
   'mail.title': '📧 Index my Office 365 mailbox',
-  'mail.hint': 'Indexes your mail on-device using your existing Outlook sign-in — no app registration. Re-run to add only new messages.',
+  'mail.hint': 'Indexes your mail on-device over a Microsoft Graph connection. Re-run to add only new messages.',
   'mail.index': 'Index my Outlook mailbox',
+  'mail.connect': 'Connect & index',
+  'mail.disconnect': 'Disconnect',
   'mail.working': '📧 Indexing mailbox…',
   'mail.starting': 'Reading your mailbox…',
   'mail.indexing': 'Indexing ({n}): {subject}…',
   'mail.done': 'Mailbox indexed: {added} added, {skipped} unchanged, {failed} failed.',
   'mail.error': 'Mailbox indexing failed: {msg}',
-  'mail.needSession': 'Sign in to Outlook on the web first, then re-check. This uses your existing session — no Azure app needed.',
-  'mail.openOutlook': 'Open Outlook',
-  'mail.recheck': 'Re-check',
-  'mail.checking': 'Checking Outlook session…',
-  'mail.sessionError': 'Outlook session check failed: {msg}',
+  'mail.needClientId': 'Set your Azure app Client ID in Settings → Advanced first (see the note there for required scopes).',
   'mail.autoRefresh': 'Auto-refresh hourly',
   'mail.autoRefreshNote':
     'Keeps the mailbox current in the background over your existing Outlook session — no need to click Index again. Off by default; only refreshes a mailbox you’ve indexed at least once.',
@@ -225,8 +223,10 @@ const EN: Dict = {
   'settings.transcriptionKey': 'Transcription API key (optional) — blank uses the main key',
   'settings.sharepointUrl':
     'SharePoint base URL (optional) — enables search over your SharePoint via the signed-in session; blank = auto-detect from an open SharePoint tab',
-  'settings.outlookUrl':
-    'Outlook web base URL (optional) — for microsoft365_search mail via the signed-in session; blank = https://outlook.office.com',
+  'settings.graphClientId': 'Azure app Client ID (for mail, calendar, and drafts)',
+  'settings.graphTenant': 'Azure tenant (optional — default: organizations)',
+  'settings.graphNote':
+    'Mail search, calendar_search, draft_email, and mailbox indexing all use Microsoft Graph (OAuth). Register an Azure AD app with redirect URI matching this extension\'s chrome.identity redirect, requesting delegated scopes Mail.Read, Mail.ReadWrite (needed even just to create a draft), Calendars.Read, offline_access, openid — most enterprise tenants require admin consent for these. SharePoint/OneDrive file search does not need this; it uses your existing browser session.',
   'settings.customInstructions':
     "Custom instructions (optional) — appended to the agent's built-in instructions; applies from your next message",
   'settings.customInstructionsPlaceholder':
@@ -356,18 +356,16 @@ const FR: Dict = {
   'repos.folder.denied': 'Accès au dossier refusé. Cliquez sur Actualiser et autorisez l’accès.',
   'repos.folder.error': 'Échec de l’indexation du dossier : {msg}',
   'mail.title': '📧 Indexer ma boîte Office 365',
-  'mail.hint': 'Indexe vos courriels sur l’appareil avec votre session Outlook existante — aucune inscription d’application. Relancez pour n’ajouter que les nouveaux messages.',
+  'mail.hint': 'Indexe vos courriels sur l’appareil via une connexion Microsoft Graph. Relancez pour n’ajouter que les nouveaux messages.',
   'mail.index': 'Indexer ma boîte Outlook',
+  'mail.connect': 'Connecter et indexer',
+  'mail.disconnect': 'Déconnecter',
   'mail.working': '📧 Indexation de la boîte…',
   'mail.starting': 'Lecture de votre boîte…',
   'mail.indexing': 'Indexation ({n}) : {subject}…',
   'mail.done': 'Boîte indexée : {added} ajoutés, {skipped} inchangés, {failed} échoués.',
   'mail.error': 'Échec de l’indexation de la boîte : {msg}',
-  'mail.needSession': 'Connectez-vous d’abord à Outlook sur le web, puis revérifiez. Utilise votre session existante — aucune application Azure requise.',
-  'mail.openOutlook': 'Ouvrir Outlook',
-  'mail.recheck': 'Revérifier',
-  'mail.checking': 'Vérification de la session Outlook…',
-  'mail.sessionError': 'Échec de la vérification de la session Outlook : {msg}',
+  'mail.needClientId': 'Configurez d’abord le Client ID de votre application Azure dans Paramètres → Avancé (voir la note pour les autorisations requises).',
   'mail.autoRefresh': 'Actualisation automatique (toutes les heures)',
   'mail.autoRefreshNote':
     'Garde la boîte à jour en arrière-plan avec votre session Outlook existante — plus besoin de cliquer sur Indexer. Désactivé par défaut; n’actualise qu’une boîte déjà indexée au moins une fois.',
@@ -475,8 +473,10 @@ const FR: Dict = {
   'settings.transcriptionKey': 'Clé d’API de transcription (facultatif) — vide = clé principale',
   'settings.sharepointUrl':
     'URL de base SharePoint (facultatif) — active la recherche dans votre SharePoint via la session ouverte; vide = détection automatique à partir d’un onglet SharePoint ouvert',
-  'settings.outlookUrl':
-    'URL de base Outlook web (facultatif) — pour la recherche de courriels microsoft365_search via la session ouverte; vide = https://outlook.office.com',
+  'settings.graphClientId': 'Client ID de l’application Azure (courriels, calendrier et brouillons)',
+  'settings.graphTenant': 'Locataire Azure (facultatif — défaut : organizations)',
+  'settings.graphNote':
+    'La recherche de courriels, calendar_search, draft_email et l’indexation de la boîte utilisent tous Microsoft Graph (OAuth). Inscrivez une application Azure AD avec un URI de redirection correspondant à celui de chrome.identity pour cette extension, en demandant les autorisations déléguées Mail.Read, Mail.ReadWrite (requis même pour créer un brouillon), Calendars.Read, offline_access, openid — la plupart des locataires d’entreprise exigent le consentement de l’administrateur. La recherche SharePoint/OneDrive n’en a pas besoin; elle utilise votre session de navigateur existante.',
   'settings.customInstructions':
     'Instructions personnalisées (facultatif) — ajoutées aux instructions intégrées de l’agent; s’appliquent dès votre prochain message',
   'settings.customInstructionsPlaceholder':

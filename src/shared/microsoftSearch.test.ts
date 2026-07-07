@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFileKql, buildMailQuery, clampTop, normalizeFileType } from './microsoftSearch';
+import { buildFileKql, clampTop, normalizeFileType } from './microsoftSearch';
 
 describe('clampTop', () => {
   it('defaults to 10 and clamps to [1, 25]', () => {
@@ -57,25 +57,5 @@ describe('buildFileKql', () => {
 
   it('uses an explicit fileType instead of the default content-file filter', () => {
     expect(buildFileKql({ fileType: 'docx' })).toBe('filetype:docx');
-  });
-});
-
-describe('buildMailQuery', () => {
-  it('is empty with no filters (list recent)', () => {
-    expect(buildMailQuery({})).toBe('');
-  });
-
-  it('quotes a multi-word sender and adds a received range', () => {
-    expect(buildMailQuery({ from: 'Brian Ray', since: '2024-03-01' })).toBe(
-      'from:"Brian Ray" received>=2024-03-01',
-    );
-  });
-
-  it('does not quote a single-token sender (email)', () => {
-    expect(buildMailQuery({ from: 'brian@contoso.com' })).toBe('from:brian@contoso.com');
-  });
-
-  it('combines free text with a sender', () => {
-    expect(buildMailQuery({ query: 'invoice', from: 'Ray' })).toBe('invoice from:Ray');
   });
 });
