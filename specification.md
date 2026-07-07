@@ -421,11 +421,15 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
   `chrome-untrusted:`, closing off using the viewer to reach internal pages. The same
   branch handles Office files (see below) via `shared/url.ts:resolveOfficeUrl` — a tab
   showing a SharePoint/OneDrive-for-Business Office-Online viewer or editor
-  (`.../_layouts/15/Doc.aspx?sourcedoc={guid}&…` or the `WopiFrame.aspx` equivalent)
-  doesn't serve the file at that URL; `resolveOfficeUrl` derives the site's
-  `_api/web/GetFileById('{guid}')/$value` REST URL from the `sourcedoc` GUID (stripped of
-  its `{}`) and the path preceding `/_layouts/15/`, fetched with the same signed-in
-  session cookie as `sharepoint_search`. Both `get_tab_content` (an already-open tab) and
+  doesn't serve the file at that URL; `resolveOfficeUrl` unwraps three wrapper shapes:
+  sharing links (`/:w:/r/<path>.docx?web=1…`, also `:x:`/`:p:` — prefix and query stripped
+  to recover the server-relative file path), the classic viewer
+  (`.../_layouts/15/Doc.aspx?sourcedoc={guid}&…` or the `WopiFrame.aspx` equivalent —
+  derives the site's `_api/web/GetFileById('{guid}')/$value` REST URL from the `sourcedoc`
+  GUID and the path preceding `/_layouts/15/`), and the new unified
+  `word|excel|powerpoint.cloud.microsoft` editors (the `wopisrc`/`WOPISrc` query param
+  carries `…/_vti_bin/wopi.ashx/files/<guid>`, resolved to the same `GetFileById` URL).
+  All are fetched with the same signed-in session cookie as `sharepoint_search`. Both `get_tab_content` (an already-open tab) and
   `read_office_document`/`ingestTab` (an explicit URL, or `add_to_repo`) resolve through
   it, so an Office 365 document already open in the browser — whether a direct file link
   or the Office-Online viewer/editor — reads and indexes with no extra step and no

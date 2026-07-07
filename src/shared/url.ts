@@ -68,16 +68,27 @@ export function resolvePdfUrl(url: string): string | null {
 }
 
 const OFFICE_EXTENSION = /\.(docx?|docm|pptx?|pptm|xlsx?|xlsm)$/;
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// SharePoint sharing-link prefix: /:w:/r/<path>, /:x:/…, /:p:/… (Word/Excel/PowerPoint).
+const SHARING_PREFIX = /^\/:[wxp]:\/[a-z]\//i;
+
+function getFileByIdUrl(siteUrl: string, guid: string): string {
+  return `${siteUrl}/_api/web/GetFileById('${guid}')/$value`;
+}
 
 /**
- * Return the real, directly-fetchable file URL for a direct Office file URL, or
- * for SharePoint/OneDrive-for-Business's Office-Online viewer wrapper
- * (`.../_layouts/15/Doc.aspx?sourcedoc={guid}&file=...` or the equivalent
- * `WopiFrame.aspx`). The open tab shows the viewer/editor page, not the file —
- * `extractOffice` needs the underlying bytes, which the viewer URL doesn't
- * directly serve. The `sourcedoc` GUID identifies the file within its site
- * collection; SharePoint's REST API resolves it directly via `GetFileById`,
- * authenticated by the same signed-in session as `sharepoint_search`.
+ * Return the real, directly-fetchable file URL for an Office document tab. The
+ * open tab usually shows a viewer/editor wrapper, not the file — `extractOffice`
+ * needs the underlying bytes. Handles, in order:
+ *  - SharePoint sharing links (`/:w:/r/<path>.docx?web=1…`) — strip the prefix
+ *    and query to recover the server-relative file path;
+ *  - direct file URLs (path ends in an Office extension) — returned unchanged;
+ *  - the classic viewer wrapper (`/_layouts/15/Doc.aspx?sourcedoc={guid}` or
+ *    `WopiFrame.aspx`) — the GUID resolves via SharePoint REST `GetFileById`;
+ *  - the new `word/excel/powerpoint.cloud.microsoft` editors, whose `wopisrc`
+ *    param carries `…/_vti_bin/wopi.ashx/files/<guid>` — same `GetFileById`.
+ * All resolved URLs are fetched with the browser's own signed-in SharePoint
+ * session (same as `sharepoint_search`).
  */
 export function resolveOfficeUrl(url: string): string | null {
   let parsed: URL;
@@ -86,15 +97,37 @@ export function resolveOfficeUrl(url: string): string | null {
   } catch {
     return null;
   }
+
+  // Sharing-link wrapper: the remainder after /:w:/r/ is the real server-relative
+  // path; the query (?d=…&csf=1&web=1) only drives the viewer and must be dropped.
+  const sharing = parsed.pathname.match(SHARING_PREFIX);
+  if (sharing) {
+    const path = parsed.pathname.slice(sharing[0].length - 1); // keep leading '/'
+    if (OFFICE_EXTENSION.test(path.toLowerCase())) return parsed.origin + path;
+  }
+
   if (OFFICE_EXTENSION.test(parsed.pathname.toLowerCase())) return url;
+
+  // New unified Office editors (word|excel|powerpoint.cloud.microsoft, *.officeapps.live.com):
+  // the WOPI source URL identifies the file GUID within its SharePoint site.
+  const wopiSrc = parsed.searchParams.get('wopisrc') ?? parsed.searchParams.get('WOPISrc') ?? parsed.searchParams.get('WopiSrc');
+  if (wopiSrc) {
+    try {
+      const w = new URL(wopiSrc);
+      const m = w.pathname.match(/^(.*)\/_vti_bin\/wopi\.ashx\/files\/([0-9a-f-]{36})$/i);
+      if (m && GUID.test(m[2])) return getFileByIdUrl(w.origin + m[1], m[2]);
+    } catch {
+      // fall through to the Doc.aspx test
+    }
+  }
 
   if (!/\/_layouts\/15\/(doc|wopiframe)\.aspx$/i.test(parsed.pathname)) return null;
   const rawGuid = parsed.searchParams.get('sourcedoc');
   if (!rawGuid) return null;
   const guid = rawGuid.replace(/[{}]/g, '');
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(guid)) return null;
+  if (!GUID.test(guid)) return null;
   const siteUrl = parsed.origin + parsed.pathname.replace(/\/_layouts\/15\/(doc|wopiframe)\.aspx$/i, '');
-  return `${siteUrl}/_api/web/GetFileById('${guid}')/$value`;
+  return getFileByIdUrl(siteUrl, guid);
 }
 
 /**
