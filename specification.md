@@ -418,13 +418,26 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
   real document URL, not the viewer wrapper — rather than falling through to DOM
   extraction on the viewer chrome, which found nothing. `resolvePdfUrl` refuses
   to unwrap a `src` that is itself `chrome:`/`chrome-extension:`/
-  `chrome-untrusted:`, closing off using the viewer to reach internal pages.
+  `chrome-untrusted:`, closing off using the viewer to reach internal pages. The same
+  branch handles Office files (see below) via `shared/url.ts:resolveOfficeUrl` — a tab
+  showing a SharePoint/OneDrive-for-Business Office-Online viewer or editor
+  (`.../_layouts/15/Doc.aspx?sourcedoc={guid}&…` or the `WopiFrame.aspx` equivalent)
+  doesn't serve the file at that URL; `resolveOfficeUrl` derives the site's
+  `_api/web/GetFileById('{guid}')/$value` REST URL from the `sourcedoc` GUID (stripped of
+  its `{}`) and the path preceding `/_layouts/15/`, fetched with the same signed-in
+  session cookie as `sharepoint_search`. Both `get_tab_content` (an already-open tab) and
+  `read_office_document`/`ingestTab` (an explicit URL, or `add_to_repo`) resolve through
+  it, so an Office 365 document already open in the browser — whether a direct file link
+  or the Office-Online viewer/editor — reads and indexes with no extra step and no
+  approval (reading was already ungated; the gap was that the viewer URL didn't resolve
+  to fetchable bytes at all, so it silently fell through to near-empty DOM extraction).
 - `read_app_content {tabId?}` — best-effort text from canvas/app surfaces via the
   selection model and copy-event interception (no clipboard permission needed).
 - `get_all_tab_contents` — read every tab (**approval-gated**).
 - `read_office_document {url?, tabId?}` — extract text from a `.docx`/`.pptx`/`.xlsx`
-  via the offscreen `extractOffice` (fflate unzip + DOMParser); 60k context cap like
-  `read_pdf`. For Office files the browser downloads instead of displaying. OOXML only.
+  (or a SharePoint Office-Online viewer URL, unwrapped via `resolveOfficeUrl`) via the
+  offscreen `extractOffice` (fflate unzip + DOMParser); 60k context cap like `read_pdf`.
+  OOXML only (legacy `.doc`/`.ppt`/`.xls` aren't zips and fail with a clear message).
 - `read_pdf {url?, tabId?}` — extract PDF text via pdf.js; returns up to ~60k chars
   to context with `pageCount`/`charCount`/`truncated` and a note pointing to
   `add_to_repo` for the full document.

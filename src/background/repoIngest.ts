@@ -11,16 +11,11 @@
 import { chunkText } from '../shared/repoChunk';
 import type { RepoKind } from '../shared/messages';
 import type { Settings } from '../shared/types';
-import { resolvePdfUrl } from '../shared/url';
+import { resolveOfficeUrl, resolvePdfUrl } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
 import { complete, embedChunks, embedderId, type ContentPart } from './llmProvider';
 import { extractOffice, extractPdf, repoAdd } from './offscreenClient';
-
-/** Heuristic: does this URL point at an OOXML Office file we can extract? */
-function looksLikeOffice(url: string): boolean {
-  return /\.(docx|pptx|xlsx)(\?|#|$)/i.test(url);
-}
 
 // OCR fallback: screenshot the whole (active) tab and have the vision model
 // transcribe it. Only works for the active tab (captureVisibleTab limitation).
@@ -69,10 +64,12 @@ export async function ingestTab(
       // fall through to the page-content ladder
     }
   }
-  // Office files (.docx/.pptx/.xlsx): extract the whole document before the ladder.
-  if (!text && looksLikeOffice(url)) {
+  // Office files (.docx/.pptx/.xlsx, incl. the SharePoint Office-Online viewer
+  // wrapper): extract the whole document before the ladder.
+  const officeUrl = resolveOfficeUrl(url);
+  if (!text && officeUrl) {
     try {
-      const office = await extractOffice(url);
+      const office = await extractOffice(officeUrl);
       if (office.ok && office.text && office.text.trim().length > 30) text = office.text;
     } catch {
       // fall through to the page-content ladder

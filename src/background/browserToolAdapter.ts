@@ -27,7 +27,7 @@ import type {
   PageStateResult,
   TabSummary,
 } from '../shared/types';
-import { resolvePdfUrl } from '../shared/url';
+import { resolveOfficeUrl, resolvePdfUrl } from '../shared/url';
 import { normalizeUrl } from '../shared/repoChunk';
 import { buildFileKql, clampTop, type M365SearchFilters } from '../shared/microsoftSearch';
 import { buildGraphMailSearchUrl, parseGraphMailSearch } from '../shared/graphMail';
@@ -39,6 +39,7 @@ import { hasAllUrlsAccess } from './permissions';
 
 const PAGE_LOAD_TIMEOUT_MS = 20000;
 const READ_PDF_CONTEXT_CHARS = 60_000;
+const READ_DOC_CONTEXT_CHARS = 60_000;
 // Cap a video transcript put into the model's context (mirrors read_pdf).
 const VIDEO_TRANSCRIPT_CONTEXT_CHARS = 60_000;
 
@@ -164,6 +165,29 @@ export async function getTabContent(tabId: number): Promise<PageContent> {
       links: [],
       headings: [],
       extractionStatus: result.truncated || !text.trim() ? 'partial' : 'ok',
+      capturedAt: new Date().toISOString(),
+    };
+  }
+  const officeUrl = resolveOfficeUrl(url);
+  if (officeUrl) {
+    const result = await extractOffice(officeUrl, READ_DOC_CONTEXT_CHARS);
+    if (!result.ok) {
+      return emptyContent(tabId, url, title, 'unsupported', `Office document extraction failed: ${result.error ?? 'unknown error'}`);
+    }
+    const text = result.text ?? '';
+    return {
+      tabId,
+      url,
+      title,
+      text,
+      metadata: {
+        'ba:sourceType': 'office',
+        'ba:officeUrl': officeUrl,
+        ...(result.truncated ? { 'ba:note': `Document text truncated to ~${READ_DOC_CONTEXT_CHARS.toLocaleString()} characters.` } : {}),
+      },
+      links: [],
+      headings: [],
+      extractionStatus: result.truncated ? 'partial' : 'ok',
       capturedAt: new Date().toISOString(),
     };
   }
@@ -656,21 +680,30 @@ export async function readOfficeDocument(
   url: string | undefined,
 ): Promise<string> {
   let target = url;
+  let visibleUrl = url;
   if (!target) {
     try {
       const tab = tabId ? await chrome.tabs.get(tabId) : await queryActiveTab();
       target = tab?.url;
+      visibleUrl = tab?.url;
     } catch {
       // fall through
     }
   }
   if (!target) return JSON.stringify({ error: 'No URL or tab provided to read an Office file from.' });
+  const resolved = resolveOfficeUrl(target);
+  if (!resolved) {
+    return JSON.stringify({
+      url: target,
+      error: 'The target tab/URL is not a direct Office file or a SharePoint/OneDrive Office-Online viewer URL.',
+    });
+  }
   // Cap context like read_pdf; ingestion (add_to_repo) reads the whole document.
-  const READ_DOC_CONTEXT_CHARS = 60_000;
-  const result = await extractOffice(target, READ_DOC_CONTEXT_CHARS);
-  if (!result.ok) return JSON.stringify({ url: target, error: result.error });
+  const result = await extractOffice(resolved, READ_DOC_CONTEXT_CHARS);
+  if (!result.ok) return JSON.stringify({ url: visibleUrl ?? target, officeUrl: resolved, error: result.error });
   return JSON.stringify({
-    url: target,
+    url: visibleUrl ?? target,
+    officeUrl: resolved,
     format: result.format,
     charCount: result.charCount,
     truncated: result.truncated,
