@@ -118,6 +118,53 @@ describe('documentKindForUrl', () => {
     );
   });
 
+  it('unwraps a SharePoint sharing link to the underlying file path', () => {
+    const sharing =
+      'https://contoso.sharepoint.com/:w:/r/sites/Finance/Shared%20Documents/Report.docx?d=w12345678123412341234567890abcdef&csf=1&web=1&e=Ab3xYz';
+    expect(resolveOfficeUrl(sharing)).toBe(
+      'https://contoso.sharepoint.com/sites/Finance/Shared%20Documents/Report.docx',
+    );
+    expect(documentKindForUrl(sharing)).toBe('office');
+  });
+
+  it('unwraps Excel and PowerPoint sharing links too', () => {
+    expect(
+      resolveOfficeUrl('https://contoso.sharepoint.com/:x:/r/sites/T/Docs/Budget.xlsx?web=1'),
+    ).toBe('https://contoso.sharepoint.com/sites/T/Docs/Budget.xlsx');
+    expect(
+      resolveOfficeUrl('https://contoso-my.sharepoint.com/:p:/r/personal/jane_contoso_com/Documents/Deck.pptx?e=x'),
+    ).toBe('https://contoso-my.sharepoint.com/personal/jane_contoso_com/Documents/Deck.pptx');
+  });
+
+  it('rejects an opaque sharing token with no file path', () => {
+    expect(resolveOfficeUrl('https://contoso.sharepoint.com/:w:/s/Finance/EY3gabcdef')).toBeNull();
+  });
+
+  it('unwraps the new cloud.microsoft editor via its wopisrc param', () => {
+    const wopi = encodeURIComponent(
+      'https://contoso.sharepoint.com/sites/Finance/_vti_bin/wopi.ashx/files/12345678-1234-1234-1234-1234567890ab',
+    );
+    const viewer = `https://word.cloud.microsoft/we/wordeditorframe.aspx?ui=en-US&rs=en-US&wopisrc=${wopi}`;
+    expect(resolveOfficeUrl(viewer)).toBe(
+      "https://contoso.sharepoint.com/sites/Finance/_api/web/GetFileById('12345678-1234-1234-1234-1234567890ab')/$value",
+    );
+    expect(documentKindForUrl(viewer)).toBe('office');
+  });
+
+  it('accepts the WOPISrc casing variant and rejects a non-WOPI wopisrc', () => {
+    const wopi = encodeURIComponent(
+      'https://contoso-my.sharepoint.com/personal/jane_contoso_com/_vti_bin/wopi.ashx/files/abcdef12-abcd-abcd-abcd-abcdef123456',
+    );
+    expect(
+      resolveOfficeUrl(`https://excel.cloud.microsoft/x/xlviewerinternal.aspx?WOPISrc=${wopi}`),
+    ).toBe(
+      "https://contoso-my.sharepoint.com/personal/jane_contoso_com/_api/web/GetFileById('abcdef12-abcd-abcd-abcd-abcdef123456')/$value",
+    );
+    expect(
+      resolveOfficeUrl('https://word.cloud.microsoft/we/frame.aspx?wopisrc=https%3A%2F%2Fevil.com%2Fnot-wopi'),
+    ).toBeNull();
+  });
+
   it('returns the URL unchanged for a direct Office file URL', () => {
     const direct = 'https://contoso.sharepoint.com/sites/T/Shared%20Documents/Report.docx';
     expect(resolveOfficeUrl(direct)).toBe(direct);
