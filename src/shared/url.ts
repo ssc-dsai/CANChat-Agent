@@ -67,21 +67,52 @@ export function resolvePdfUrl(url: string): string | null {
   }
 }
 
+const OFFICE_EXTENSION = /\.(docx?|docm|pptx?|pptm|xlsx?|xlsm)$/;
+
+/**
+ * Return the real, directly-fetchable file URL for a direct Office file URL, or
+ * for SharePoint/OneDrive-for-Business's Office-Online viewer wrapper
+ * (`.../_layouts/15/Doc.aspx?sourcedoc={guid}&file=...` or the equivalent
+ * `WopiFrame.aspx`). The open tab shows the viewer/editor page, not the file —
+ * `extractOffice` needs the underlying bytes, which the viewer URL doesn't
+ * directly serve. The `sourcedoc` GUID identifies the file within its site
+ * collection; SharePoint's REST API resolves it directly via `GetFileById`,
+ * authenticated by the same signed-in session as `sharepoint_search`.
+ */
+export function resolveOfficeUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (OFFICE_EXTENSION.test(parsed.pathname.toLowerCase())) return url;
+
+  if (!/\/_layouts\/15\/(doc|wopiframe)\.aspx$/i.test(parsed.pathname)) return null;
+  const rawGuid = parsed.searchParams.get('sourcedoc');
+  if (!rawGuid) return null;
+  const guid = rawGuid.replace(/[{}]/g, '');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(guid)) return null;
+  const siteUrl = parsed.origin + parsed.pathname.replace(/\/_layouts\/15\/(doc|wopiframe)\.aspx$/i, '');
+  return `${siteUrl}/_api/web/GetFileById('${guid}')/$value`;
+}
+
 /**
  * Classify a URL by file type so the agent reads documents instead of navigating
  * to them (the browser downloads Office/PDF files rather than rendering, leaving
- * nothing to process). Tests the path extension only, ignoring any query string
- * (e.g. SharePoint's `…/Report.pptx?web=1`). Returns null for normal web pages.
+ * nothing to process). Tests the path extension (ignoring any query string, e.g.
+ * SharePoint's `…/Report.pptx?web=1`) plus the SharePoint Office-Online viewer
+ * pattern (`resolveOfficeUrl`). Returns null for normal web pages.
  */
 export function documentKindForUrl(url: string): 'office' | 'pdf' | null {
   if (resolvePdfUrl(url)) return 'pdf';
+  if (resolveOfficeUrl(url)) return 'office';
   let pathname: string;
   try {
     pathname = new URL(url).pathname.toLowerCase();
   } catch {
     return null;
   }
-  if (/\.(docx?|docm|pptx?|pptm|xlsx?|xlsm)$/.test(pathname)) return 'office';
   if (/\.pdf$/.test(pathname)) return 'pdf';
   return null;
 }

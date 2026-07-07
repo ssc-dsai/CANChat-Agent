@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost, resolvePdfUrl } from './url';
+import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost, resolveOfficeUrl, resolvePdfUrl } from './url';
 
 describe('collectGroupUrls', () => {
   it('keeps http(s) tabs and carries titles', () => {
@@ -101,9 +101,41 @@ describe('documentKindForUrl', () => {
     expect(documentKindForUrl(viewer)).toBe('pdf');
   });
 
+  it('unwraps a SharePoint Office-Online viewer URL via resolveOfficeUrl', () => {
+    const viewer =
+      'https://contoso.sharepoint.com/sites/Finance/_layouts/15/Doc.aspx?sourcedoc=%7B12345678-1234-1234-1234-1234567890AB%7D&file=Report.docx&action=default';
+    expect(resolveOfficeUrl(viewer)).toBe(
+      "https://contoso.sharepoint.com/sites/Finance/_api/web/GetFileById('12345678-1234-1234-1234-1234567890AB')/$value",
+    );
+    expect(documentKindForUrl(viewer)).toBe('office');
+  });
+
+  it('unwraps the WopiFrame variant, incl. a OneDrive-for-Business personal site', () => {
+    const viewer =
+      'https://contoso-my.sharepoint.com/personal/jane_contoso_com/_layouts/15/WopiFrame.aspx?sourcedoc={abcdef12-abcd-abcd-abcd-abcdef123456}&file=Plan.xlsx';
+    expect(resolveOfficeUrl(viewer)).toBe(
+      "https://contoso-my.sharepoint.com/personal/jane_contoso_com/_api/web/GetFileById('abcdef12-abcd-abcd-abcd-abcdef123456')/$value",
+    );
+  });
+
+  it('returns the URL unchanged for a direct Office file URL', () => {
+    const direct = 'https://contoso.sharepoint.com/sites/T/Shared%20Documents/Report.docx';
+    expect(resolveOfficeUrl(direct)).toBe(direct);
+  });
+
+  it('rejects a Doc.aspx URL with no sourcedoc or a malformed GUID', () => {
+    expect(
+      resolveOfficeUrl('https://contoso.sharepoint.com/sites/Finance/_layouts/15/Doc.aspx?file=Report.docx'),
+    ).toBeNull();
+    expect(
+      resolveOfficeUrl('https://contoso.sharepoint.com/sites/Finance/_layouts/15/Doc.aspx?sourcedoc=not-a-guid'),
+    ).toBeNull();
+  });
+
   it('returns null for normal web pages', () => {
     expect(documentKindForUrl('https://example.com/articles/intro')).toBeNull();
     expect(documentKindForUrl('https://example.com/Doc.aspx?sourcedoc=%7B123%7D')).toBeNull();
+    expect(resolveOfficeUrl('https://example.com/Doc.aspx?sourcedoc=%7B123%7D')).toBeNull();
   });
 
   it('returns null for malformed input', () => {
