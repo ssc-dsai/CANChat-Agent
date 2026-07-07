@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { MAIL_REPO } from '../shared/owaMail';
+import { MAIL_REPO } from '../shared/graphMail';
 import { useT } from './i18n';
 
 export { MAIL_REPO };
@@ -23,45 +23,42 @@ interface MailAutoRefreshStatus {
 }
 
 /**
- * "📧 Mailbox" card — index the mailbox into the RAG store over the user's
- * EXISTING Outlook-on-the-web session (cookie auth; no Azure app, no OAuth). If
- * there's no signed-in Outlook session, prompt the user to open Outlook first.
+ * "📧 Mailbox" card — index the mailbox into the RAG store via Microsoft Graph
+ * (OAuth). Needs a one-time Azure app Client ID in Settings → Advanced, then a
+ * "Connect & index" click launches the interactive sign-in.
  */
 export function MailboxSection({ onChanged }: { onChanged: () => void }) {
   const t = useT();
+  const [clientId, setClientId] = useState('');
   const [connected, setConnected] = useState<boolean | null>(null);
-  const [base, setBase] = useState('https://outlook.office.com');
   const [busy, setBusy] = useState(false);
-  const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastAuto, setLastAuto] = useState<MailAutoRefreshStatus | null>(null);
 
-  // Probe whether an Outlook web session cookie is present.
-  const checkSession = async (showStatus = false) => {
-    if (showStatus) {
-      setChecking(true);
-      setStatus(t('mail.checking'));
-    }
-    try {
-      const r = (await chrome.runtime.sendMessage({ type: 'mailbox_session' })) as {
-        connected?: boolean;
-        base?: string;
-        error?: string;
-      };
-      setConnected(Boolean(r?.connected));
-      if (r?.base) setBase(r.base);
-      if (showStatus) setStatus(r?.connected ? null : t('mail.sessionError', { msg: r?.error ?? 'unknown error' }));
-    } catch (e) {
-      setConnected(false);
-      if (showStatus) setStatus(t('mail.sessionError', { msg: e instanceof Error ? e.message : String(e) }));
-    } finally {
-      if (showStatus) setChecking(false);
-    }
+  const checkConnected = () => {
+    chrome.runtime
+      .sendMessage({ type: 'mailbox_connected' })
+      .then((r: { connected?: boolean }) => setConnected(Boolean(r?.connected)))
+      .catch(() => setConnected(false));
   };
+
+  // Read the configured Client ID and stay live if Settings changes it.
   useEffect(() => {
-    void checkSession();
+    chrome.storage.local.get('ba_settings').then((r) => {
+      const s = r.ba_settings as { graphClientId?: string } | undefined;
+      setClientId(s?.graphClientId?.trim() ?? '');
+    });
+    const onStorage = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area !== 'local' || !changes.ba_settings) return;
+      const s = changes.ba_settings.newValue as { graphClientId?: string } | undefined;
+      setClientId(s?.graphClientId?.trim() ?? '');
+    };
+    chrome.storage.onChanged.addListener(onStorage);
+    return () => chrome.storage.onChanged.removeListener(onStorage);
   }, []);
+
+  useEffect(checkConnected, []);
 
   // Load the auto-refresh toggle + the last background-refresh result, and stay
   // live if either changes (e.g. the hourly alarm fires while the panel is open).
@@ -109,6 +106,8 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
   const summarize = (p: MailProgress): string =>
     t('mail.done', { added: String(p.added), skipped: String(p.skipped), failed: String(p.failed) });
 
+  // Also handles first-time connect: the service worker launches the interactive
+  // OAuth flow if not already connected, since this only ever runs from a click.
   const index = async () => {
     setBusy(true);
     setStatus(t('mail.starting'));
@@ -121,6 +120,7 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
       if (!res?.ok) setStatus(t('mail.error', { msg: res?.error ?? 'unknown error' }));
       else {
         setStatus(res.result ? summarize(res.result) : t('mail.done', { added: '?', skipped: '?', failed: '?' }));
+        checkConnected();
         onChanged();
       }
     } catch (e) {
@@ -129,21 +129,17 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
     setBusy(false);
   };
 
-  // Not signed into Outlook on the web → prompt to open it, then re-check.
-  if (connected === false) {
+  const disconnect = async () => {
+    await chrome.runtime.sendMessage({ type: 'mailbox_disconnect' });
+    setConnected(false);
+    setStatus(null);
+  };
+
+  if (!clientId) {
     return (
       <div class="repo-folder-drop">
         <strong>{t('mail.title')}</strong>
-        <span class="settings-note">{t('mail.needSession')}</span>
-        <div class="repo-folder-row">
-          <a class="btn" href={`${base}/mail/`} target="_blank" rel="noreferrer">
-            {t('mail.openOutlook')}
-          </a>
-          <button class="btn" disabled={checking} onClick={() => void checkSession(true)}>
-            {t('mail.recheck')}
-          </button>
-        </div>
-        {status && <p class="settings-note repo-folder-status">{status}</p>}
+        <span class="settings-note">{t('mail.needClientId')}</span>
       </div>
     );
   }
@@ -153,30 +149,39 @@ export function MailboxSection({ onChanged }: { onChanged: () => void }) {
       <strong>{busy ? t('mail.working') : t('mail.title')}</strong>
       <span class="settings-note">{t('mail.hint')}</span>
       <div class="repo-folder-row">
-        <button class="btn" disabled={busy || connected === null} onClick={() => void index()}>
-          {t('mail.index')}
+        <button class="btn" disabled={busy} onClick={() => void index()}>
+          {connected ? t('mail.index') : t('mail.connect')}
         </button>
+        {connected && (
+          <button class="btn" disabled={busy} onClick={() => void disconnect()}>
+            {t('mail.disconnect')}
+          </button>
+        )}
       </div>
       {status && <p class="settings-note repo-folder-status">{status}</p>}
 
-      <label class="memory-toggle">
-        <input
-          type="checkbox"
-          checked={autoRefresh}
-          onChange={(e) => void toggleAutoRefresh((e.target as HTMLInputElement).checked)}
-        />
-        <span>{t('mail.autoRefresh')}</span>
-      </label>
-      <p class="settings-note">{t('mail.autoRefreshNote')}</p>
-      {lastAuto && (
-        <p class="settings-note repo-folder-status">
-          {lastAuto.ok
-            ? t('mail.autoRefreshLast', {
-                when: new Date(lastAuto.ts).toLocaleString(),
-                added: String(lastAuto.added ?? 0),
-              })
-            : t('mail.autoRefreshLastError', { when: new Date(lastAuto.ts).toLocaleString(), msg: lastAuto.error ?? '' })}
-        </p>
+      {connected && (
+        <>
+          <label class="memory-toggle">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => void toggleAutoRefresh((e.target as HTMLInputElement).checked)}
+            />
+            <span>{t('mail.autoRefresh')}</span>
+          </label>
+          <p class="settings-note">{t('mail.autoRefreshNote')}</p>
+          {lastAuto && (
+            <p class="settings-note repo-folder-status">
+              {lastAuto.ok
+                ? t('mail.autoRefreshLast', {
+                    when: new Date(lastAuto.ts).toLocaleString(),
+                    added: String(lastAuto.added ?? 0),
+                  })
+                : t('mail.autoRefreshLastError', { when: new Date(lastAuto.ts).toLocaleString(), msg: lastAuto.error ?? '' })}
+            </p>
+          )}
+        </>
       )}
     </div>
   );

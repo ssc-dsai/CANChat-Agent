@@ -19,7 +19,7 @@
 // =============================================================================
 
 import type { BackgroundEvent, RepoInfo, RuntimeRequest, SidebarCommand, TestConnectionResponse } from '../shared/messages';
-import { MAIL_REPO } from '../shared/owaMail';
+import { MAIL_REPO } from '../shared/graphMail';
 import { AgentRuntime } from './agentRuntime';
 import { LlmError, testConnection, transcribe } from './llmProvider';
 import {
@@ -40,24 +40,24 @@ import {
   repoList,
 } from './offscreenClient';
 import { ingestFile } from './repoIngest';
-import { indexMailbox, resolveOutlookBase, type MailSyncProgress } from './mailIngest';
+import { indexMailbox, type MailSyncProgress } from './mailIngest';
 import {
   indexSharePointLibrary,
   probeSharePointSession,
   resolveSharePointBase,
   type SharePointSyncProgress,
 } from './sharepointIngest';
-import { readCanary } from './owaClient';
+import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAuth';
 import { reconcileScheduledAlarms, runScheduledTaskById, taskIdFromAlarm } from './scheduler';
 import { getMemoryEnabled, getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
 import { probeEnvironment } from './envProbe';
 
 // ----- Mailbox auto-refresh (chrome.alarms, opt-in) -----
 //
-// Rides the same cookie-session OWA path as a manual "Index my Outlook
-// mailbox" click. Only ever refreshes a mailbox already indexed at least
-// once — never runs the (potentially large) initial full index silently in
-// the background. A session-expiry or network failure is recorded for the
+// Rides the same Graph connection as a manual "Index my Outlook mailbox"
+// click. Only ever refreshes a mailbox already indexed at least once — never
+// runs the (potentially large) initial full index silently in the
+// background. A connection-expiry or network failure is recorded for the
 // Mailbox card to display, not surfaced as an intrusive error (no user is
 // present when the alarm fires).
 
@@ -309,17 +309,12 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
     })().then(sendResponse);
     return true;
   }
-  if (request.type === 'mailbox_session') {
-    (async () => {
-      const settings = await getSettings();
-      const base = resolveOutlookBase(settings ?? ({} as NonNullable<typeof settings>));
-      try {
-        await readCanary(base);
-        return { connected: true, base };
-      } catch (e) {
-        return { connected: false, base, error: e instanceof Error ? e.message : String(e) };
-      }
-    })().then(sendResponse);
+  if (request.type === 'mailbox_connected') {
+    isMailboxConnected().then((connected) => sendResponse({ connected }));
+    return true;
+  }
+  if (request.type === 'mailbox_disconnect') {
+    disconnectMailbox().then(() => sendResponse({ ok: true }));
     return true;
   }
   if (request.type === 'sharepoint_session') {
@@ -359,6 +354,12 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
       mailIndexBusy = true;
       const last = { at: 0 };
       try {
+        // This handler only ever runs from a user click (the "Index"/"Connect &
+        // index" button), so launching the interactive OAuth flow here satisfies
+        // chrome.identity's user-gesture requirement.
+        if (!(await isMailboxConnected())) {
+          await connectMailbox(settings.graphClientId ?? '', settings.graphTenant || 'organizations');
+        }
         const result = await indexMailbox(settings, request.repo, (p) => broadcastMailProgress(p, last));
         await chrome.storage.local.set({
           [MAILBOX_STATUS_KEY]: { ts: Date.now(), ok: true, added: result.added, failed: result.failed } satisfies MailAutoRefreshStatus,

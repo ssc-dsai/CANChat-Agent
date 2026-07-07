@@ -29,10 +29,12 @@ import type {
 } from '../shared/types';
 import { resolvePdfUrl } from '../shared/url';
 import { normalizeUrl } from '../shared/repoChunk';
-import { buildFileKql, buildMailQuery, clampTop, type M365SearchFilters } from '../shared/microsoftSearch';
+import { buildFileKql, clampTop, type M365SearchFilters } from '../shared/microsoftSearch';
+import { buildGraphMailSearchUrl, parseGraphMailSearch } from '../shared/graphMail';
 import { analyzeAuthState } from './authDetector';
+import { getAccessToken } from './graphAuth';
+import { graphGet } from './graphClient';
 import { extractOffice, extractPdf } from './offscreenClient';
-import { readCanary } from './owaClient';
 import { hasAllUrlsAccess } from './permissions';
 
 const PAGE_LOAD_TIMEOUT_MS = 20000;
@@ -964,111 +966,31 @@ export async function sharepointSearch(base: string, opts: SharepointSearchOptio
 }
 
 /**
- * Mail search over Outlook-on-the-web's own FindItem endpoint, authenticated by the
- * session cookie + the `X-OWA-CANARY` anti-CSRF token. Undocumented and
- * best-effort; the canary helper first tries to bootstrap the OWA web session so
- * users don't have to manually open Outlook before endpoint-backed search.
+ * Mail search over Microsoft Graph's `/me/messages`, authenticated by an
+ * OAuth (PKCE) bearer token — no cookie session, works regardless of which web
+ * frontend Microsoft serves the mailbox on. Structured `$filter` search
+ * (subject/sender substring + date range), not OWA's old full-text-across-
+ * message AQS search — a real (if minor) recall reduction, noted in the tool
+ * description.
  */
-export async function outlookMailSearch(
-  outlookBase: string,
+export async function graphMailSearch(
+  clientId: string,
+  tenant: string,
   f: M365SearchFilters,
 ): Promise<{ results: MailResult[] } | { error: string }> {
-  const base = outlookBase.replace(/\/+$/, '');
-  let canary: string;
+  let token: string;
   try {
-    canary = await readCanary(base);
+    token = await getAccessToken(clientId, tenant);
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
-
-  const max = clampTop(f.top);
-  const queryString = buildMailQuery(f);
-  const body = {
-    __type: 'FindItemJsonRequest:#Exchange',
-    Header: { __type: 'JsonRequestHeaders:#Exchange', RequestServerVersion: 'Exchange2013' },
-    Body: {
-      __type: 'FindItemRequest:#Exchange',
-      ItemShape: {
-        __type: 'ItemResponseShape:#Exchange',
-        BaseShape: 'IdOnly',
-        AdditionalProperties: [
-          { __type: 'PropertyUri:#Exchange', FieldURI: 'Subject' },
-          { __type: 'PropertyUri:#Exchange', FieldURI: 'DateTimeReceived' },
-          { __type: 'PropertyUri:#Exchange', FieldURI: 'From' },
-          { __type: 'PropertyUri:#Exchange', FieldURI: 'Preview' },
-        ],
-      },
-      ParentFolderIds: [{ __type: 'DistinguishedFolderId:#Exchange', Id: 'inbox' }],
-      Traversal: 'Shallow',
-      Paging: {
-        __type: 'IndexedPageView:#Exchange',
-        BasePoint: 'Beginning',
-        Offset: 0,
-        MaxEntriesReturned: max,
-      },
-      SortOrder: [
-        {
-          __type: 'SortResults:#Exchange',
-          Order: 'Descending',
-          Path: { __type: 'PropertyUri:#Exchange', FieldURI: 'DateTimeReceived' },
-        },
-      ],
-      ...(queryString ? { QueryString: queryString } : {}),
-    },
-  };
-
-  let res: Response;
-  try {
-    res = await fetch(`${base}/owa/service.svc?action=FindItem&app=Mail`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        Accept: 'application/json',
-        Action: 'FindItem',
-        'X-OWA-CANARY': canary,
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    return { error: `Could not reach Outlook endpoint at ${base}: ${String(err)}` };
-  }
-  if (!res.ok) {
-    return {
-      error: `Outlook endpoint mail search failed (HTTP ${res.status}).`,
-    };
-  }
   let data: unknown;
   try {
-    data = await res.json();
-  } catch {
-    return { error: 'Outlook endpoint returned a non-JSON response.' };
+    data = await graphGet(buildGraphMailSearchUrl(f), token);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
   }
-
-  // Defensive: the OWA response shape is undocumented and may vary.
-  const items =
-    (data as { Body?: { ResponseMessages?: { Items?: Array<{ RootFolder?: { Items?: unknown[] } }> } } })
-      ?.Body?.ResponseMessages?.Items?.[0]?.RootFolder?.Items ?? [];
-  const results: MailResult[] = (Array.isArray(items) ? items : []).map((raw): MailResult => {
-    const it = raw as {
-      Subject?: string;
-      DateTimeReceived?: string;
-      Preview?: string;
-      From?: { Mailbox?: { Name?: string; EmailAddress?: string } };
-      ItemId?: { Id?: string };
-    };
-    return {
-      source: 'mail',
-      subject: it.Subject || '(no subject)',
-      from: it.From?.Mailbox?.Name || it.From?.Mailbox?.EmailAddress || undefined,
-      received: it.DateTimeReceived || undefined,
-      preview: typeof it.Preview === 'string' ? it.Preview.trim() : undefined,
-      url: it.ItemId?.Id
-        ? `${base}/?ItemID=${encodeURIComponent(it.ItemId.Id)}&exvsurl=1&viewmodel=ReadMessageItem`
-        : `${base}/mail/`,
-    };
-  });
+  const results: MailResult[] = parseGraphMailSearch(data).map((hit) => ({ source: 'mail', ...hit }));
   return { results };
 }
 

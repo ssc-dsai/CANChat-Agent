@@ -110,7 +110,8 @@ export type RuntimeRequest =
   // Connect (if needed) and index the user's Office 365 mailbox into a repo via
   // Microsoft Graph; incremental on repeat. Handled in the service worker.
   | { type: 'index_mailbox'; repo: string }
-  | { type: 'mailbox_session' }
+  | { type: 'mailbox_connected' }
+  | { type: 'mailbox_disconnect' }
   | { type: 'index_sharepoint_library'; repo: string; libraryUrl: string }
   | { type: 'sharepoint_session'; base?: string }
   | { type: 'open_data_files'; files: DataFileUpload[] }

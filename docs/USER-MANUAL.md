@@ -372,22 +372,30 @@ Drag the same folder again later to re-index only what changed. (Folder indexing
 drag-and-drop on purpose — the OS "choose folder" dialog crashes on some Chrome/macOS
 builds.)
 
-**Index your Office 365 mailbox.** No app registration, no Azure admin, no extra sign-in —
-it rides your **existing Outlook-on-the-web session**. Just make sure you're signed into
-Outlook on the web in this browser, then in **Knowledge bases** click **Index my Outlook
-mailbox**. Your mail is read through your current session, and the messages are embedded
-**on-device**. Re-run later to add only new messages. (A whole mailbox can take a while on
-the first pass.) The extension first tries to establish the session on its own (quietly
-opening Outlook's own routes in the background) before asking you to sign in — so in most
-cases you won't need to open Outlook manually first. If it still can't connect, click
-**Re-check**; it shows what actually went wrong (e.g. "no session found") rather than just
-connected/not-connected.
+**Index your Office 365 mailbox.** This uses **Microsoft Graph** (Microsoft's official mail
+API) via a one-time sign-in — it needs a small **Azure AD app registration** first (your IT
+admin can set this up in a few minutes; see below), because it works reliably regardless of
+which Outlook web experience your organization uses. Once a **Client ID** is set in
+**Settings → Advanced**, go to **Knowledge bases** and click **Connect & index** — this opens
+a normal Microsoft sign-in/consent window once, then indexes your mailbox. Messages are
+embedded **on your device**. Re-run later (the button becomes **Index my Outlook mailbox**)
+to add only new messages. (A whole mailbox can take a while on the first pass.) **Disconnect**
+revokes the local connection at any time.
+
+*Setting up the Azure app (one-time, your IT admin may need to do this):* register an app in
+Azure AD, add a redirect URI matching this extension's `chrome.identity` redirect (shown in
+the app's docs/repo), and request the delegated permissions **Mail.Read**, **Mail.ReadWrite**
+(needed even just to create a draft — there's no narrower scope for that), and
+**Calendars.Read**, plus **offline_access** and **openid**. Most organizations require an
+admin to grant consent for this combination. Paste the resulting **Client ID** into
+Settings → Advanced (Tenant is optional — leave blank unless your organization needs a
+specific tenant id).
 
 Once you've indexed it at least once, you can turn on **Auto-refresh hourly** to keep the
 mailbox current without clicking Index again — it quietly checks for new mail in the
-background over your existing session. It's off by default and never runs the first full
-index on its own; if your Outlook session expires, the next auto-refresh just records the
-failure (shown under the toggle) instead of interrupting you.
+background over your existing connection. It's off by default and never runs the first full
+index (or the first sign-in) on its own; if the connection expires, the next auto-refresh
+just records the failure (shown under the toggle) instead of interrupting you.
 
 **Searching a knowledge base is smarter than plain keyword or plain semantic search.**
 When you ask a question against a knowledge base, the agent combines meaning-based search
@@ -498,7 +506,8 @@ Open **Settings** (gear icon). Settings are split into five tabs.
 | **Transcription model** | *(unset)* | Speech-to-text model for **voice prompts** (`/audio/transcriptions`). | Set (e.g. a Whisper-style model) to enable the mic. |
 | **Transcription endpoint URL / API key** | *(use main)* | Optional separate host/key for transcription. | Use to split voice onto a different service. |
 | **SharePoint base URL** | *(empty)* | Your SharePoint root (e.g. `https://contoso.sharepoint.com`) for searching SharePoint/OneDrive files. | Set if you want the agent to search your files using your signed-in session. |
-| **Outlook web base URL** | *(empty → `https://outlook.office.com`)* | Outlook-on-the-web root for searching your **mail** in `microsoft365_search`. | Set only if your Outlook web address differs (e.g. `outlook.office365.com`). |
+| **Azure app Client ID** | *(empty)* | Enables mail search, calendar, drafting, and mailbox indexing via Microsoft Graph. Needs a one-time Azure AD app registration by your IT admin (see [§5.7](#57-knowledge-bases-save-pages-and-ask-later)). | Required for any mail/calendar/draft feature; not needed for SharePoint/OneDrive. |
+| **Azure tenant** | *(empty → `organizations`)* | Graph OAuth tenant id. | Leave blank unless your organization requires a specific tenant. |
 | **Custom instructions** | *(empty)* | Extra guidance appended to the agent's built-in instructions (tone, defaults, house style). | Optional. Keep it short and general. |
 
 **Test connection** and **Save** appear on the Model and Advanced tabs. Settings
@@ -900,9 +909,10 @@ state-changing step.
   `offscreen/repoStore.ts`, `localEmbed.ts`)
 - **Local folder indexing** via drag-and-drop, with incremental re-sync ✅
   (`folderIndex.ts`, `RepositoriesSection.tsx`)
-- **Office 365 mailbox indexing** over the existing Outlook-on-the-web session
-  (no app registration), with optional hourly auto-refresh ✅ (`mailIngest.ts`,
-  `owaClient.ts`, `MailboxSection.tsx`)
+- **Office 365 mailbox indexing, mail search, calendar, and drafting** via
+  Microsoft Graph (OAuth/PKCE; needs a one-time Azure app registration), with
+  optional hourly mailbox auto-refresh ✅ (`mailIngest.ts`, `graphAuth.ts`,
+  `graphClient.ts`, `MailboxSection.tsx`)
 - **Hybrid search** (semantic + BM25 keyword fusion), multi-query paraphrase
   retrieval, and LLM reranking on knowledge-base search ✅ (`hybridSearch.ts`,
   `keywordSearch.ts`, `agentRuntime.ts`)

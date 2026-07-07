@@ -80,7 +80,8 @@ Dependencies: `preact`, `marked`, `dompurify`, `pdfjs-dist`, `fflate`, `docx`,
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel", "tabs", "activeTab", "scripting", "storage",
-    "search", "bookmarks", "offscreen", "tabGroups", "unlimitedStorage", "downloads", "cookies"
+    "search", "bookmarks", "offscreen", "tabGroups", "unlimitedStorage", "downloads",
+    "cookies", "alarms", "identity"
   ],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "serviceWorker.js", "type": "module" },
@@ -107,8 +108,10 @@ Permission roles: `sidePanel` (UI surface) · `tabs`/`activeTab`/`scripting`
 picker) · `storage` (settings/skills/memory) · `offscreen` (pdf.js + RAG engine) ·
 `tabGroups` (per-conversation groups) · `unlimitedStorage` (OPFS vector store not
 evicted) · `downloads` (deliver generated `.docx`/`.pptx`/CSV artifacts) ·
-`<all_urls>` (read any page, credentialed fetch for PDFs/SharePoint) · `cookies` (read the
-Outlook `X-OWA-CANARY` anti-CSRF token for `microsoft365_search` mail).
+`<all_urls>` (read any page, credentialed fetch for PDFs/SharePoint) · `cookies`
+(SharePoint/OneDrive file search over the signed-in session) · `identity`
+(`chrome.identity.launchWebAuthFlow` for the Microsoft Graph OAuth/PKCE flow behind
+mail, calendar, and draft creation) · `alarms` (hourly mailbox auto-refresh).
 
 ---
 
@@ -477,24 +480,19 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
   `IsDocument:1`, so results don't surface executables/components. Both `orderBy` (mail) and
   `sortBy` (`sharepoint_search`'s equivalent) default to **most-recent-first** (`date` /
   `modified`); pass `relevance` explicitly when ranking, not recency, is what's wanted.
-  **Mail** uses Outlook-on-the-web's own `service.svc?action=FindItem` endpoint
-  (`outlookMailSearch`), authenticated by the session cookie + the `X-OWA-CANARY` anti-CSRF
-  token (read via the `cookies` permission), with an AQS query from `query`/`from:`/
-  `received:` range. Returns `{files:[…], mail:[…]}` (and `filesError`/`mailError` when a
-  source fails). The KQL/AQS builders are pure + unit-tested (`src/shared/microsoftSearch.ts`).
-  The **mail path is best-effort** (undocumented OWA endpoint); on a session/endpoint error the
-  model asks the user to sign in once and retry, only then falling back to the `/search-mail`
-  skill that drives the OWA UI. Pure builders live in `microsoftSearch.ts`; the fetches in
-  `browserToolAdapter.ts`.
-  **Session bootstrap (`owaClient.readCanary`):** if the `X-OWA-CANARY` cookie isn't present
-  under any of the OWA-hosted paths (`readCanaryCookie` tries the base, `/owa/`, and `/mail/`),
-  `bootstrapOwaSession` quietly fetches Outlook's own `/mail/` and `/owa/` routes with
-  `credentials:'include'` — OWA only issues the canary after the app/session has been
-  "touched" — then re-reads the cookie, so endpoint-backed mail/calendar/draft tools work
-  without the user first manually opening Outlook. Only throws `OwaSessionError` if that also
-  fails. Shared by `microsoft365_search`'s mail path, the mailbox indexer (§8.3), and the
-  calendar/draft tools; the Mailbox card's "Re-check" button surfaces the resulting error text
-  instead of a bare connected/disconnected boolean.
+  **Mail** goes over **Microsoft Graph** (`GET /me/messages`, OAuth bearer token —
+  `graphMailSearch` in `browserToolAdapter.ts`), not the SharePoint cookie session. Filters
+  become an OData `$filter`: `contains(subject,'…')` for the free-text query, a
+  name-or-address `contains()` pair for `from`, and a `receivedDateTime` range for
+  `since`/`until` (`shared/graphMail.ts:buildGraphMailFilter`). This is **substring matching
+  on subject and sender, not full-text-across-the-message search** — a real (if minor) recall
+  reduction versus a mailbox-wide keyword search; the system prompt tells the model to narrow
+  by sender/subject/date rather than expect body-text hits. Returns `{files:[…], mail:[…]}`
+  (and `filesError`/`mailError` when a source fails). The KQL/OData builders are pure +
+  unit-tested (`shared/microsoftSearch.ts`, `shared/graphMail.ts`); the fetches in
+  `browserToolAdapter.ts`/`graphClient.ts`. On a `mailError` (mailbox not connected, or the
+  Graph connection expired past silent refresh), the model asks the user to connect in
+  Settings → Mailbox and retry, only then falling back to the `/search-mail` skill.
 - `search_known_sites {query}` — match against the user's **Capability Registry**
   (bookmark/mcp entries; formerly "Known Sites/Hints"). An entry may carry an `mcpUrl`.
 
@@ -683,36 +681,76 @@ existing upload classifier, read, and sent through `add_files_to_repo` (`kind:'f
 `ingestFile` → `storeText`. Re-dropping the same folder is an idempotent incremental refresh
 keyed by relative path + mtime + size.
 
-### 8.3 Mailbox indexing (cookie-session OWA, no app registration)
+### 8.3 Mailbox indexing (Microsoft Graph OAuth)
 
-`background/mailIngest.ts` indexes the user's whole Office 365 mailbox over their **existing
-Outlook-on-the-web session** — **no Microsoft Graph, no OAuth, no Azure app registration**.
-It rides the same cookie-auth path as `microsoft365_search`: POSTs to OWA's internal
-`service.svc` EWS-over-JSON endpoint with `credentials:'include'` and the `X-OWA-CANARY`
-anti-CSRF cookie (`background/owaClient.ts`). The flow: `FindFolder` (deep, from
-`msgfolderroot`) enumerates folders → filter to `IPF.Note` mail folders → `FindItem` pages
-message ids per folder (newest-first, stops early past the high-water-mark) → `GetItem`
-fetches full plain-text bodies in batches → `messageToMailDoc` → `storeText` (`kind:'mail'`,
-keyed by EWS ItemId). 429/5xx are retried with `Retry-After`; a missing/expired session
-(no canary, or HTTP 401/440) surfaces as an `OwaSessionError` prompting re-sign-in. The pure
-request/response builders/parsers live in `shared/owaMail.ts` (unit-tested without
+`background/mailIngest.ts` indexes the user's whole Office 365 mailbox via **Microsoft
+Graph** — auth-code + PKCE OAuth through `chrome.identity.launchWebAuthFlow`
+(`shared/graphAuth.ts` for the pure URL/PKCE/token-body construction,
+`background/graphAuth.ts` for the interactive flow + token storage/refresh in
+`chrome.storage.local['graphTokens']`; no client secret, a public PKCE client). Requires a
+one-time **Azure AD app registration** the user supplies a client ID for (`Settings.
+graphClientId`/`graphTenant`, default tenant `organizations`), with delegated scopes
+`Mail.Read Mail.ReadWrite Calendars.Read offline_access openid` — `Mail.ReadWrite` is
+needed even just to create a draft (§8.5), Graph has no narrower scope for that — so most
+enterprise tenants require admin consent for this combined scope set.
+
+The flow: `GET /me/messages` (`$select`, `$top` clamped to 100, `$orderby=receivedDateTime
+desc`, an incremental `$filter=receivedDateTime gt <high-water-mark>`), paged via
+`@odata.nextLink`, each message → `messageToDoc` → `storeText` (`kind:'mail'`, keyed by the
+Graph message id). 429/5xx are retried with `Retry-After` (`background/graphClient.ts:
+graphRequest`, mirroring the same backoff shape used elsewhere); a 401 throws
+`GraphSessionError` (token rejected — reconnect needed) rather than retrying. The pure
+request/response builders/parsers live in `shared/graphMail.ts` (unit-tested without
 `chrome.*`/network). **Incremental** via a high-water-mark on `receivedDateTime` plus
-skip-by-id. The Outlook origin comes from `Settings.outlookBaseUrl` (default
-`https://outlook.office.com`). Trade-off: `service.svc` is OWA's undocumented internal API
-(EWS is on a long-term deprecation path), so it's more fragile than Graph but needs zero IT
-setup — chosen because the user wanted to reuse their existing sign-in rather than register
-an app.
+skip-by-id, same shape as before.
+
+**Why Graph over the earlier cookie-session approach:** an OWA `service.svc` cookie-session
+mailbox indexer (avoiding app registration entirely) was tried first, but broke for tenants
+migrated to Microsoft's newer unified Outlook web client (`outlook.cloud.microsoft`), which
+doesn't expose the classic `X-OWA-CANARY` session cookie that approach depended on. Graph is
+a stable, versioned, Microsoft-supported API independent of which web frontend a tenant is
+on, at the cost of the app-registration/admin-consent setup the user originally wanted to
+avoid. SharePoint/OneDrive file search (`sharepoint_search`, the files half of
+`microsoft365_search`) is unaffected by any of this — it stays on the cookie session, needing
+no Graph connection.
 
 **Auto-refresh (`chrome.alarms`, opt-in, off by default).** `serviceWorker.ts` maintains an
 hourly `chrome.alarms` job (`syncMailAlarm`, kept in sync with `Settings.mailAutoRefresh` via
 a `chrome.storage.onChanged` listener on `ba_settings`) that re-runs `indexMailbox` in the
-background over the same cookie session — no re-authentication, no user interaction. It only
-ever refreshes a mailbox already indexed at least once (checked via `repoList` for a
-`kind:'mail'` repo with `docs > 0`); it never triggers the initial full index silently. A
-`mailIndexBusy` flag guards manual and auto-triggered runs from overlapping. Each run's
-outcome (added/failed counts, or a session-expiry/network error) is recorded in
-`chrome.storage.local['mailAutoRefreshStatus']` for the Mailbox card to display — a failure
-never surfaces as an intrusive error, since no user is present when the alarm fires.
+background over the same Graph connection — no re-authentication, no user interaction (the
+access token refreshes silently via the stored refresh token). It only ever refreshes a
+mailbox already indexed at least once (checked via `repoList` for a `kind:'mail'` repo with
+`docs > 0`); it never triggers the initial full index (or the initial interactive OAuth
+consent) silently. A `mailIndexBusy` flag guards manual and auto-triggered runs from
+overlapping. Each run's outcome (added/failed counts, or a connection-expiry/network error)
+is recorded in `chrome.storage.local['mailAutoRefreshStatus']` for the Mailbox card to
+display — a failure never surfaces as an intrusive error, since no user is present when the
+alarm fires.
+
+### 8.5 Calendar and draft creation (also Microsoft Graph)
+
+Two more tools ride the same Graph connection as mailbox indexing (§8.3), reusing
+`graphAuth.getAccessToken` and `graphClient.graphRequest`/`graphPostJson`:
+
+- **`calendar_search`** — `GET /me/calendarView` (`shared/graphCalendar.ts:
+  buildCalendarViewUrl`; a single generously-sized page, no server-side `$top`, matching how
+  a calendar window is small enough that pagination isn't needed) with
+  `Prefer: outlook.timezone="UTC"` so `start`/`end` come back UTC-normalized (Graph's
+  `dateTime` field carries no offset of its own). Client-side: `eventMatchesQuery` (subject/
+  location/organizer/attendees/body substring match, all query terms required), sort by
+  start time, slice to the requested count. Same output shape (`id, subject, start, end,
+  location, organizer, requiredAttendees, optionalAttendees, bodyPreview, bodyText, teamsUrl,
+  url`) regardless of backend — `teamsUrl` prefers Graph's `onlineMeeting.joinUrl`, falling
+  back to scanning body text for a `teams.microsoft.com` link.
+- **`draft_email`** — `POST /me/messages` (`shared/graphMail.ts:buildGraphDraftMessage`/
+  `parseGraphDraftResponse`) creates — **never sends** — a draft; Graph's `importance` enum
+  is lowercase (`low`/`normal`/`high`), mapped from the tool-facing `Low`/`Normal`/`High` kept
+  for schema stability. Graph returns the created Message resource directly (`id`,
+  `changeKey`, `webLink`) with no envelope.
+
+Both throw a plain error (mailbox not connected, or `GraphSessionError` if the connection
+expired) that the system prompt maps to "ask the user to connect in Settings → Mailbox, then
+retry" before any page-automation fallback.
 
 ### 8.4 Retrieval quality: hybrid search, multi-query, and reranking
 
@@ -1032,7 +1070,8 @@ interface Settings {
   maxSteps?: number;     // soft step budget per task; absent = 20 (extension = round/2, ceiling = ×2)
   systemPrompt?: string; // custom instructions, appended to the built-in prompt
   sharepointBaseUrl?: string; // optional, for sharepoint_search / microsoft365_search files
-  outlookBaseUrl?: string;    // optional, for microsoft365_search mail; default https://outlook.office.com
+  graphClientId?: string;     // Azure AD app client ID — mail/calendar/draft/mailbox indexing (Graph OAuth), §8.3/8.5
+  graphTenant?: string;       // Graph OAuth tenant; absent = 'organizations'
   mailAutoRefresh?: boolean;  // hourly chrome.alarms mailbox re-index, §8.3; absent/off = manual only
   playbookIndexUrl?: string;  // optional, hosted playbook index polled by the App playbook library; absent = bundled default
   embedder?: 'local' | 'external'; // RAG embedder: on-device transformers.js vs the /embeddings endpoint; absent = local
@@ -1322,9 +1361,11 @@ endpoint to distill; the stored `LessonEntry` text itself lives only in
 ### 16.5 Honest non-claims
 - The browser does **not** sandbox or contain the agent — the extension's permissions are
   exactly the bypass of the per-site sandbox.
-- There is **no Microsoft Graph bearer-token integration**; `microsoft365_search`,
-  `sharepoint_search`, and the **mailbox indexer** (OWA `service.svc`) are all cookie-session
-  REST, bounded by what the signed-in user can see.
+- **Mail, calendar, and draft creation use Microsoft Graph** (OAuth, auth-code + PKCE) — an
+  Azure AD app registration and admin consent are required for most enterprise tenants; this
+  is **not** the zero-setup cookie-session approach used elsewhere. `sharepoint_search` and
+  the files half of `microsoft365_search` remain cookie-session REST, bounded by what the
+  signed-in user can see, with no Graph/app-registration involvement at all.
 - Prompt-injection defense is **mitigation, not a guarantee**: the instruction-source
   boundary plus the approval gate reduce but do not eliminate the risk inherent in giving a
   language model privileged tools.
