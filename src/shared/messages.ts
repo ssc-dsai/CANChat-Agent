@@ -215,7 +215,7 @@ export interface RepoInfo {
   embedModel?: string;
 }
 
-export type RepoKind = 'page' | 'folder' | 'mail' | 'sharepoint';
+export type RepoKind = 'page' | 'folder' | 'mail' | 'sharepoint' | 'memory';
 
 export interface RepoDoc {
   id: string;
@@ -343,6 +343,8 @@ export type RepoRequest =
       embedModel?: string;
       kind?: RepoKind;
       docExtra?: { path?: string; mtime?: number; size?: number };
+      /** Explicit doc id (instead of an auto-generated one) — lets a caller upsert by a stable external id. */
+      docId?: string;
     }
   | {
       target: 'offscreen-repo';

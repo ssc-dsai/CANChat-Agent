@@ -56,6 +56,27 @@ export interface MemoryGraph {
   version: number;
 }
 
+/** Reserved OPFS repo name for the memory embedding index (never shown as a user repo). */
+export const MEMORY_REPO_NAME = '__memory__';
+
+/** Prefix for a memory-index chunk's `url` field, so a search hit maps back to its node id. */
+const MEMORY_URL_PREFIX = 'memory:';
+
+/** The embeddable text for one node: label + summary — one node is one chunk. */
+export function memoryNodeChunkText(node: Pick<MemoryNode, 'label' | 'summary'>): string {
+  return `${node.label}: ${node.summary}`;
+}
+
+/** The memory-index doc `url` for a node — encodes the node id for search-result lookup. */
+export function memoryNodeUrl(nodeId: string): string {
+  return `${MEMORY_URL_PREFIX}${nodeId}`;
+}
+
+/** Recover a node id from a memory-index search hit's `url`, or null if not one of ours. */
+export function nodeIdFromMemoryUrl(url: string): string | null {
+  return url.startsWith(MEMORY_URL_PREFIX) ? url.slice(MEMORY_URL_PREFIX.length) : null;
+}
+
 export const MEMORY_GRAPH_VERSION = 1;
 export const MEMORY_NODE_CAP = 500;
 export const MEMORY_EDGE_CAP = 1000;
