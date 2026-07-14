@@ -8,6 +8,7 @@
 import { pruneIndex } from '../shared/conversationMeta';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import { migrateSitesToCapabilities } from '../shared/capabilities';
+import { emptyMemoryGraph, migrateFlatEntries, pruneGraph, type MemoryGraph } from '../shared/memoryGraph';
 import type {
   ChatMessageView,
   ConversationLabel,
@@ -27,6 +28,7 @@ const CAPABILITIES_KEY = 'ba_capabilities';
 const SKILLS_KEY = 'ba_skills';
 const MEMORY_KEY = 'ba_memory';
 const MEMORY_ENABLED_KEY = 'ba_memory_enabled';
+const MEMORY_GRAPH_KEY = 'ba_memory_graph';
 const LESSONS_KEY = 'ba_lessons';
 
 export const MEMORY_MAX_ENTRIES = 100;
@@ -199,6 +201,29 @@ export async function getMemories(): Promise<MemoryEntry[]> {
 
 export async function saveMemories(entries: MemoryEntry[]): Promise<void> {
   await chrome.storage.local.set({ [MEMORY_KEY]: entries });
+}
+
+/**
+ * Load the graph memory store, lazily migrating the legacy flat `MemoryEntry[]`
+ * (`ba_memory`) into graph nodes the first time this is called. `ba_memory`
+ * itself is left untouched (read-only fallback for Backup/Restore compat with
+ * older exports) — only `ba_memory_graph` is written going forward.
+ */
+export async function getMemoryGraph(): Promise<MemoryGraph> {
+  const result = await chrome.storage.local.get([MEMORY_GRAPH_KEY, MEMORY_KEY]);
+  const existing = result[MEMORY_GRAPH_KEY] as MemoryGraph | undefined;
+  if (existing && Array.isArray(existing.nodes) && Array.isArray(existing.edges)) return existing;
+
+  const flat = result[MEMORY_KEY];
+  const graph: MemoryGraph = Array.isArray(flat) && flat.length > 0
+    ? pruneGraph({ nodes: migrateFlatEntries(flat as MemoryEntry[]), edges: [], version: 1 })
+    : emptyMemoryGraph();
+  await chrome.storage.local.set({ [MEMORY_GRAPH_KEY]: graph });
+  return graph;
+}
+
+export async function saveMemoryGraph(graph: MemoryGraph): Promise<void> {
+  await chrome.storage.local.set({ [MEMORY_GRAPH_KEY]: pruneGraph(graph) });
 }
 
 export async function getLessons(): Promise<LessonEntry[]> {
