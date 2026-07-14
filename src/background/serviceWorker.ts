@@ -49,7 +49,18 @@ import {
 } from './sharepointIngest';
 import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAuth';
 import { reconcileScheduledAlarms, runScheduledTaskById, taskIdFromAlarm } from './scheduler';
-import { getMemoryEnabled, getMemoryGraph, getSettings, migrateLegacySites, saveMemoryGraph, seedSkillsIfEmpty } from './storage';
+import {
+  getActiveProjectId,
+  getMemoryEnabled,
+  getMemoryGraph,
+  getProjects,
+  getSettings,
+  migrateLegacySites,
+  saveMemoryGraph,
+  saveProjects,
+  seedSkillsIfEmpty,
+  setActiveProjectId,
+} from './storage';
 import { probeEnvironment } from './envProbe';
 import { applyDecay, MEMORY_NODE_CAP, pruneGraph } from '../shared/memoryGraph';
 import { memoryIndexRemove, memoryIndexUpsert } from './memoryIndex';
@@ -505,6 +516,60 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
       await memoryIndexRemove([request.id]);
       return { ok: true };
     })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_list') {
+    getProjects().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_get_active') {
+    getActiveProjectId().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_create') {
+    (async () => {
+      const name = request.name.trim();
+      if (!name) return { ok: false, error: 'Project name is required.' };
+      const projects = await getProjects();
+      const project = {
+        id: `proj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        color: request.color,
+        createdAt: new Date().toISOString(),
+      };
+      await saveProjects([...projects, project]);
+      return { ok: true, project };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_update') {
+    (async () => {
+      const projects = await getProjects();
+      if (!projects.some((p) => p.id === request.id)) return { ok: false, error: `No project with id ${request.id}.` };
+      const next = projects.map((p) =>
+        p.id === request.id
+          ? { ...p, name: request.name?.trim() || p.name, color: request.color ?? p.color }
+          : p,
+      );
+      await saveProjects(next);
+      return { ok: true };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_delete') {
+    (async () => {
+      const projects = await getProjects();
+      await saveProjects(projects.filter((p) => p.id !== request.id));
+      // Deleting the active project falls back to "no project" — scoped records
+      // (conversations, memory, capabilities, skills) simply become invisible
+      // under the new active scope rather than being deleted themselves.
+      if ((await getActiveProjectId()) === request.id) await setActiveProjectId(null);
+      return { ok: true };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_set_active') {
+    setActiveProjectId(request.id).then(() => sendResponse({ ok: true }));
     return true;
   }
   if (request.type === 'duckdb') {

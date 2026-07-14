@@ -20,6 +20,7 @@ import {
   slugifyTitle,
 } from '../shared/conversationMeta';
 import { labelColorClass } from '../shared/labelColors';
+import { visibleToProject } from '../shared/memoryGraph';
 import type { SidebarCommand } from '../shared/messages';
 import type { ChatMessageView, ConversationLabel, ConversationSummary } from '../shared/types';
 import { downloadBlob, exportConversationHtml } from './conversationExport';
@@ -84,19 +85,23 @@ export function ConversationsScreen({ send, onClose }: Props) {
   const [assignFor, setAssignFor] = useState<string | null>(null); // conversation id
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'recent' | 'oldest'>('recent');
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
-  // Read the index + label registry now and re-read whenever the runtime (or this
-  // screen) rewrites either, so the list and chips stay live.
+  // Read the index + label registry + active project now and re-read whenever the
+  // runtime (or this screen, or the Workspace Projects page) rewrites any of them,
+  // so the list and chips stay live.
   useEffect(() => {
     const load = () =>
-      chrome.storage.local.get([INDEX_KEY, LABELS_KEY]).then((r) => {
+      chrome.storage.local.get([INDEX_KEY, LABELS_KEY, 'ba_active_project']).then((r) => {
         const index = Array.isArray(r[INDEX_KEY]) ? (r[INDEX_KEY] as ConversationSummary[]) : [];
         setItems([...index].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
         setLabels(Array.isArray(r[LABELS_KEY]) ? (r[LABELS_KEY] as ConversationLabel[]) : []);
+        const active = r.ba_active_project;
+        setActiveProjectId(typeof active === 'string' && active ? active : null);
       });
     void load();
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area === 'local' && (changes[INDEX_KEY] || changes[LABELS_KEY])) void load();
+      if (area === 'local' && (changes[INDEX_KEY] || changes[LABELS_KEY] || changes.ba_active_project)) void load();
     };
     chrome.storage.onChanged.addListener(onChange);
     return () => chrome.storage.onChanged.removeListener(onChange);
@@ -114,12 +119,13 @@ export function ConversationsScreen({ send, onClose }: Props) {
     const want = new Set(filter);
     const q = query.trim().toLowerCase();
     const filtered = items.filter((c) => {
+      if (!visibleToProject(c.projectId, activeProjectId)) return false;
       if (filter.length > 0 && !(c.labels ?? []).some((id) => want.has(id))) return false;
       if (q && !`${c.title} ${c.summary ?? ''} ${c.preview}`.toLowerCase().includes(q)) return false;
       return true;
     });
     return sort === 'oldest' ? [...filtered].reverse() : filtered;
-  }, [items, filter, query, sort]);
+  }, [items, filter, query, sort, activeProjectId]);
 
   // --- label registry mutations (direct storage writes) ----------------------
   const persistLabels = (next: ConversationLabel[]) => {

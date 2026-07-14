@@ -277,8 +277,9 @@ via `getUserMedia` and returns the audio for `/audio/transcriptions`.
 which imports both `../sidebar/styles.css` and `workspace.css` so pages built from
 reused sidebar sections render styled): `Workspace.tsx` (shell + nav, mirrors the
 conversation state over the `Port`). Nav pages: **Chat** (composer, same as the side
-panel), **Knowledge** (`RepositoriesSection`, reused from the sidebar), **Memory**
-(`MemoryPage.tsx` — see §9), **Skills** (`SkillsSection`, reused), **Tools**
+panel), **Projects** (`ProjectsPage.tsx` — full CRUD + active-project switch;
+see §9 *Projects*), **Knowledge** (`RepositoriesSection`, reused from the
+sidebar), **Memory** (`MemoryPage.tsx` — see §9), **Skills** (`SkillsSection`, reused), **Tools**
 (`CapabilitiesSection`, reused, opened with `defaultOpen` so the console isn't a
 collapsed accordion on load), **Models** (`ModelSection.tsx` — a self-contained
 endpoint/key/model/temperature/max-tokens editor, independent of `SettingsScreen` so
@@ -301,7 +302,8 @@ capture), `ConversationsScreen.tsx` (the **History** list with title+summary, la
 load/delete/import/export), `OnboardingScreen.tsx` (first-run setup), `SettingsScreen.tsx`,
 the Settings sub-sections `CapabilitiesSection.tsx` (the Capability Registry editor;
 supersedes `KnownSitesSection.tsx`), `SkillsSection.tsx`,
-`MemorySection.tsx`, `RepositoriesSection.tsx`, `BackupRestoreSection.tsx`, the shared
+`MemorySection.tsx`, `RepositoriesSection.tsx`, `BackupRestoreSection.tsx`,
+`ProjectSwitcher.tsx` (compact active-project dropdown in the header), the shared
 `RepoUpload.tsx` + `UploadBanner.tsx` uploader and `LabelPicker.tsx`; helpers
 `repoUploadClient.ts`, `conversationExport.ts`, `download.ts`, `links.ts`,
 `i18n.tsx` (EN/FR); `styles.css`.
@@ -939,6 +941,37 @@ Backup/Restore fallback for one release.
   `serviceWorker.ts`) that operate on the graph store directly — the same
   one-shot-message pattern already used for repo/mailbox/SharePoint
   management.
+
+**Projects** (`shared/types.ts` `Project`, `chrome.storage.local` keys
+`ba_projects` + `ba_active_project`): a named workspace that scopes
+conversations, durable memory, skills, and capabilities. Scoping is a **filter,
+not a partition** — a record's `projectId` is optional; unset means global and
+stays visible under every project, so introducing Projects required no
+migration anywhere. `AgentRuntime` reads the active project once per user turn
+(`this.activeProjectId`, set at the top of `handleUserMessage`) and:
+- filters what's *read* — `scopedCapabilities`/`scopedSkills` wrap every
+  `getCapabilities()`/`getSkills()` call site (systemBase assembly,
+  `search_known_sites`, `list_mcp_tools`/`call_mcp_tool`, `use_skill`,
+  `/learn`), and `visibleToProject` (`shared/memoryGraph.ts`) gates both memory
+  tiers (`rankCoreMemoryNodes`/`renderCoreMemoryBlock` and the relevant-subgraph
+  tier's hits and one-hop edge expansion in `computeRelevantMemoryBlock`);
+- stamps what's *written* — `save_memory`, reflection-created/merged memory
+  nodes, `save_app_playbook`, `distillSkill`, and a newly-created conversation
+  (stamped once at creation via `currentConversationProjectId`, preserved
+  verbatim by `saveConversation` the same way labels are) all inherit the
+  active project id. Same-origin/name "replace existing" lookups (app
+  playbook re-learning, skill distillation) only ever match a record already
+  visible under the active project, so project A can never silently overwrite
+  project B's same-named skill or playbook.
+Project CRUD and the active-project pointer go through dedicated
+`RuntimeRequest`s (`project_list/create/update/delete/set_active/get_active`,
+`serviceWorker.ts`) mirroring the memory-graph request pattern; deleting a
+project just clears the active pointer if it was active — scoped records are
+never deleted, only hidden from view until the project is switched back to.
+UI: a compact `ProjectSwitcher` dropdown in the sidebar header, a full CRUD
+`src/workspace/ProjectsPage.tsx`, and an optional project selector added to the
+`CapabilitiesSection`/`SkillsSection` forms (shown only once at least one
+project exists).
 
 **Auth auto-pause.** When page extraction detects a login wall, the task pauses,
 the panel shows a sign-in notice, and resuming re-fetches the page.

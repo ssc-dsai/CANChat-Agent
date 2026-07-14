@@ -222,6 +222,7 @@ Short, plain definitions for the terms used throughout this manual.
 | **Context** | The pages/tabs currently included for the agent to consider. | Controls what the agent "sees" by default. |
 | **Memory** | Durable facts about you the agent may save (opt-in). | Personalizes answers; stored only on your device. |
 | **Lesson** | A behavioral tip the agent saves from a past task (opt-in, shares the Memory toggle) — e.g. "use the Outlook tool before clicking around Outlook.com." | The agent gets better at *how* it works over time, without you teaching it explicitly. |
+| **Project** | A named workspace that scopes conversations, memory, skills, and known sites. | Switch between client work, personal use, etc. without them mixing — nothing not assigned to a project is ever hidden. |
 
 ---
 
@@ -567,14 +568,38 @@ Three collapsible sections (collapsed by default — click to expand):
 
 For more room than the side panel offers, click **Open workspace** to open a full
 browser tab with the same conversation plus a dedicated page per management area:
-**Chat**, **Knowledge**, **Memory**, **Skills**, **Tools**, **Models**, **Datasets**,
-and **Settings** (language + Backup & Restore), alongside result viewers for data
-tables and images. Knowledge, Skills, and Tools are the same editors described above,
-just given a full page instead of a collapsible section; **Models** is a focused
-connection editor (endpoint, key, model, API version, temperature, max tokens) for
-when you just need to swap or test a model without opening the rest of Settings.
-Changes made in the workspace and the side panel share the same on-device storage,
-so either surface always reflects the latest state.
+**Chat**, **Projects**, **Knowledge**, **Memory**, **Skills**, **Tools**, **Models**,
+**Datasets**, and **Settings** (language + Backup & Restore), alongside result
+viewers for data tables and images. Knowledge, Skills, and Tools are the same
+editors described above, just given a full page instead of a collapsible section;
+**Models** is a focused connection editor (endpoint, key, model, API version,
+temperature, max tokens) for when you just need to swap or test a model without
+opening the rest of Settings. Changes made in the workspace and the side panel
+share the same on-device storage, so either surface always reflects the latest
+state.
+
+### Projects
+
+Projects let you keep separate lines of work from mixing — client A's saved facts
+never leak into client B's answers, and vice versa. Create one from the
+**Projects** page in the Workspace, then switch between them from the small
+dropdown in the sidebar header (or the Projects page itself). Whichever project
+is active governs:
+
+- **Conversations** — a new chat is tagged with the active project when you send
+  its first message; the History list only shows conversations for the active
+  project (plus any never assigned to one).
+- **Memory** — facts you (or the agent) save while a project is active are tagged
+  to it, and stay invisible while a different project is active.
+- **Skills and known sites/capabilities** — anything you explicitly assign to a
+  project (an optional field on the add/edit form, shown once you have at least
+  one project) behaves the same way.
+
+Nothing outside a project is ever hidden — records you never assign to a project
+stay visible everywhere, and switching projects only ever *filters* what's shown,
+it never deletes anything. Deleting a project does not delete its conversations,
+memory, skills, or capabilities; they simply become invisible until you either
+switch back or reassign them.
 
 ---
 

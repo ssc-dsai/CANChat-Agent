@@ -19,6 +19,7 @@ import {
   renderCoreMemoryBlock,
   renderRelevantMemoryBlock,
   shouldAdjudicate,
+  visibleToProject,
   type MemoryEdge,
   type MemoryGraph,
   type MemoryNode,
@@ -261,7 +262,7 @@ describe('renderCoreMemoryBlock', () => {
       edges: [],
       version: 1,
     };
-    const block = renderCoreMemoryBlock(graph, 15, now);
+    const block = renderCoreMemoryBlock(graph, null, 15, now);
     expect(block).toContain('Top fact');
     expect(block.indexOf('Top fact')).toBeLessThan(block.indexOf('Low fact'));
     expect(block).toContain('Low fact — Low durability, old. (stale)');
@@ -327,13 +328,40 @@ describe('rankCoreMemoryNodes', () => {
       edges: [],
       version: 1,
     };
-    const ranked = rankCoreMemoryNodes(graph, 15, now);
+    const ranked = rankCoreMemoryNodes(graph, null, 15, now);
     expect(ranked.map((n) => n.id)).toEqual(['top', 'low']);
   });
 
   it('respects the limit', () => {
     const nodes = Array.from({ length: 20 }, (_, i) => node({ id: `n${i}` }));
-    expect(rankCoreMemoryNodes({ nodes, edges: [], version: 1 }, 5).length).toBe(5);
+    expect(rankCoreMemoryNodes({ nodes, edges: [], version: 1 }, null, 5).length).toBe(5);
+  });
+
+  it('excludes nodes scoped to a different project but keeps global and same-project ones', () => {
+    const graph: MemoryGraph = {
+      nodes: [
+        node({ id: 'global', durability: 0.5 }),
+        node({ id: 'proj-a', durability: 0.9, projectId: 'a' }),
+        node({ id: 'proj-b', durability: 0.9, projectId: 'b' }),
+      ],
+      edges: [],
+      version: 1,
+    };
+    expect(rankCoreMemoryNodes(graph, 'a').map((n) => n.id).sort()).toEqual(['global', 'proj-a']);
+    expect(rankCoreMemoryNodes(graph, null).map((n) => n.id)).toEqual(['global']);
+  });
+});
+
+describe('visibleToProject', () => {
+  it('a global record (no projectId) is visible under any active project', () => {
+    expect(visibleToProject(undefined, 'a')).toBe(true);
+    expect(visibleToProject(undefined, null)).toBe(true);
+  });
+
+  it('a scoped record is visible only under its own project', () => {
+    expect(visibleToProject('a', 'a')).toBe(true);
+    expect(visibleToProject('a', 'b')).toBe(false);
+    expect(visibleToProject('a', null)).toBe(false);
   });
 });
 

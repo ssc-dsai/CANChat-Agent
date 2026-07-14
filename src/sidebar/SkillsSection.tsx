@@ -6,8 +6,13 @@ import {
   type RemotePlaybook,
 } from '../shared/playbookIndex';
 import { detectIncompatibility, parseSkillFrontmatter, rawGithubUrl, slugifySkillName } from '../shared/skillImport';
-import type { Skill } from '../shared/types';
+import type { Project, Skill } from '../shared/types';
 import { normalizeHost } from '../shared/url';
+
+async function loadProjects(): Promise<Project[]> {
+  const r = await chrome.storage.local.get('ba_projects');
+  return Array.isArray(r.ba_projects) ? (r.ba_projects as Project[]) : [];
+}
 
 async function loadIndexUrl(): Promise<string> {
   const r = await chrome.storage.local.get('ba_settings');
@@ -51,6 +56,8 @@ async function persistSkills(skills: Skill[]): Promise<void> {
 export function SkillsSection() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [formProjectId, setFormProjectId] = useState('');
+  const [projects, setProjects] = useState<Project[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showJson, setShowJson] = useState(false);
@@ -68,6 +75,7 @@ export function SkillsSection() {
   useEffect(() => {
     loadSkills().then(setSkills);
     loadIndexUrl().then(setIndexUrl);
+    loadProjects().then(setProjects);
   }, []);
 
   // Poll the hosted playbook index for installable skills.
@@ -168,10 +176,12 @@ export function SkillsSection() {
       origin: form.origin?.trim() ? normalizeHost(form.origin) : undefined,
       showButton: form.showButton || undefined,
       buttonLabel: form.buttonLabel?.trim() || undefined,
+      projectId: formProjectId || undefined,
     };
     const next = editingId ? skills.map((s) => (s.id === editingId ? entry : s)) : [...skills, entry];
     await save(next);
     setForm(EMPTY_FORM);
+    setFormProjectId('');
     setEditingId(null);
     setShowForm(false);
   };
@@ -199,6 +209,7 @@ export function SkillsSection() {
       buttonLabel: skill.buttonLabel ?? '',
       showButton: skill.showButton ?? false,
     });
+    setFormProjectId(skill.projectId ?? '');
     setEditingId(skill.id);
     setShowForm(true);
   };
@@ -208,6 +219,7 @@ export function SkillsSection() {
     if (editingId === id) {
       setEditingId(null);
       setForm(EMPTY_FORM);
+      setFormProjectId('');
       setShowForm(false);
     }
   };
@@ -406,6 +418,17 @@ export function SkillsSection() {
             />
             Show as a button in the toolbar
           </label>
+          {projects.length > 0 && (
+            <label class="field">
+              <span>Project (optional) — visible only under this project, plus global</span>
+              <select value={formProjectId} onChange={(e) => setFormProjectId((e.target as HTMLSelectElement).value)}>
+                <option value="">Global (all projects)</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label class="field">
             <span>Instructions (markdown)</span>
             <textarea
@@ -425,6 +448,7 @@ export function SkillsSection() {
                 setShowForm(false);
                 setEditingId(null);
                 setForm(EMPTY_FORM);
+                setFormProjectId('');
               }}
             >
               Cancel

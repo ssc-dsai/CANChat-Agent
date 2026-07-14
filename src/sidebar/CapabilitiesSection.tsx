@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { CapabilityRegistryEntry, CapabilityKind, AuthMethod, TrustLevel } from '../shared/capabilities';
+import type { Project } from '../shared/types';
 
 function newId(): string {
   return `cap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -14,6 +15,11 @@ async function persistCapabilities(entries: CapabilityRegistryEntry[]): Promise<
   await chrome.storage.local.set({ ba_capabilities: entries });
 }
 
+async function loadProjects(): Promise<Project[]> {
+  const r = await chrome.storage.local.get('ba_projects');
+  return Array.isArray(r.ba_projects) ? (r.ba_projects as Project[]) : [];
+}
+
 const EMPTY_FORM: Omit<CapabilityRegistryEntry, 'id'> = {
   kind: 'bookmark',
   name: '',
@@ -26,6 +32,7 @@ const EMPTY_FORM: Omit<CapabilityRegistryEntry, 'id'> = {
   searchUrlTemplate: '',
   mcpUrl: '',
   mcpToken: '',
+  projectId: undefined,
 };
 
 export function CapabilitiesSection({ defaultOpen = false }: { defaultOpen?: boolean } = {}) {
@@ -34,9 +41,11 @@ export function CapabilitiesSection({ defaultOpen = false }: { defaultOpen?: boo
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [feedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
 
   useEffect(() => {
     loadCapabilities().then(setEntries);
+    loadProjects().then(setProjects);
   }, []);
 
   const save = async (next: CapabilityRegistryEntry[]) => {
@@ -67,6 +76,7 @@ export function CapabilitiesSection({ defaultOpen = false }: { defaultOpen?: boo
       mcpUrl: form.mcpUrl?.trim() || undefined,
       mcpToken: form.mcpToken?.trim() || undefined,
       searchUrlTemplate: form.searchUrlTemplate?.trim() || undefined,
+      projectId: form.projectId || undefined,
     };
     const next = editingId
       ? entries.map((e) => (e.id === editingId ? entry : e))
@@ -90,6 +100,7 @@ export function CapabilitiesSection({ defaultOpen = false }: { defaultOpen?: boo
       searchUrlTemplate: entry.searchUrlTemplate ?? '',
       mcpUrl: entry.mcpUrl ?? '',
       mcpToken: entry.mcpToken ?? '',
+      projectId: entry.projectId,
     });
     setEditingId(entry.id);
     setShowForm(true);
@@ -205,6 +216,17 @@ export function CapabilitiesSection({ defaultOpen = false }: { defaultOpen?: boo
             <span>MCP token (legacy)</span>
             <input type="password" placeholder="token" value={form.mcpToken ?? ''} onInput={(e) => setForm({ ...form, mcpToken: (e.target as HTMLInputElement).value })} />
           </label>
+          {projects.length > 0 && (
+            <label class="field">
+              <span>Project (optional) — visible only under this project, plus global</span>
+              <select value={form.projectId ?? ''} onChange={(e) => setForm({ ...form, projectId: (e.target as HTMLSelectElement).value || undefined })}>
+                <option value="">Global (all projects)</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <div class="settings-actions">
             <button class="btn" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); }}>Cancel</button>
             <button class="btn btn-primary" onClick={submitForm} disabled={!formValid}>{editingId ? 'Update' : 'Add'}</button>

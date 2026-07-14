@@ -33,6 +33,9 @@ const EN: Dict = {
   'common.edit': 'Edit',
   'common.add': 'Add',
   'common.dismiss': 'Dismiss',
+  // projects
+  'projects.switcher': 'Active project',
+  'projects.none': 'No project',
   // header
   'header.history': 'Conversation history',
   'header.saveConversation': 'Save conversation as HTML',
@@ -181,6 +184,7 @@ const EN: Dict = {
   'settings.help': 'Help & docs',
   // workspace console — nav
   'workspace.nav.chat': 'Chat',
+  'workspace.nav.projects': 'Projects',
   'workspace.nav.knowledge': 'Knowledge',
   'workspace.nav.memory': 'Memory',
   'workspace.nav.skills': 'Skills',
@@ -297,6 +301,9 @@ const FR: Dict = {
   'common.edit': 'Modifier',
   'common.add': 'Ajouter',
   'common.dismiss': 'Ignorer',
+  // projects
+  'projects.switcher': 'Projet actif',
+  'projects.none': 'Aucun projet',
   // header
   'header.history': 'Historique des conversations',
   'header.saveConversation': 'Enregistrer la conversation en HTML',
@@ -446,6 +453,7 @@ const FR: Dict = {
   'settings.help': 'Aide et docs',
   // workspace console — nav
   'workspace.nav.chat': 'Discussion',
+  'workspace.nav.projects': 'Projets',
   'workspace.nav.knowledge': 'Connaissances',
   'workspace.nav.memory': 'Mémoire',
   'workspace.nav.skills': 'Compétences',

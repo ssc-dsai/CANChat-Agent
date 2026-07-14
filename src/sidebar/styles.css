@@ -185,6 +185,18 @@ body {
   transition: background 0.12s ease, color 0.12s ease;
 }
 
+/* Active-project switcher — a compact select matching the icon-button height. */
+.project-switcher {
+  max-width: 96px;
+  height: 30px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 11px;
+}
+
 /* Text-size control — a single segmented pill */
 .scale-ctl {
   display: flex;

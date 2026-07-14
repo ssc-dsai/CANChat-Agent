@@ -56,6 +56,7 @@ import {
   renderCoreMemoryBlock,
   renderRelevantMemoryBlock,
   shouldAdjudicate,
+  visibleToProject,
   type MemoryGraph,
   type MemoryNode,
   type MemoryNodeKind,
@@ -83,6 +84,7 @@ import {
   addSessionApproval,
   clearAllConversations,
   deleteConversation as deleteStoredConversation,
+  getActiveProjectId,
   getCapabilities,
   getConversation,
   getConversationLabels,
@@ -572,6 +574,11 @@ export class AgentRuntime {
   private lastTaskUrl = '';
   private systemBase = '';
   private knownSiteNames: string[] = [];
+  // The active project (if any), read once per user turn (see handleUserMessage).
+  // Scopes which capabilities/skills/memory nodes are visible and which project
+  // a newly-created conversation/memory/skill gets stamped with. A filter, not a
+  // partition — see shared/memoryGraph.ts visibleToProject.
+  private activeProjectId: string | null = null;
   // Graph memory loaded for the current task (mirrors systemBase's lifecycle:
   // loaded once per task, mutated in place by save/update/delete_memory and by
   // reflection, and persisted back to storage after each mutation).
@@ -587,6 +594,9 @@ export class AgentRuntime {
   // user message after a clear/load, reused across turns so autosave updates one
   // record. Null means "the next message starts a fresh history entry".
   private currentConversationId: string | null = null;
+  // Stamped once at conversation creation from the then-active project; never
+  // changed on later turns, even if the user switches projects mid-thread.
+  private currentConversationProjectId: string | undefined = undefined;
   private conversationCreatedAt = '';
   // Conversation title state. `titleIsAuto` flips true once an LLM topic title
   // has been generated, locking it; until then autosave uses the heuristic and
@@ -697,12 +707,13 @@ export class AgentRuntime {
       });
       return;
     }
+    this.activeProjectId = await getActiveProjectId();
 
     // Slash-command skill invocation: /name [args] forces a skill.
     let taskText = text;
     const slash = /^\/([a-z0-9-]+)\s*([\s\S]*)$/i.exec(text.trim());
     if (slash) {
-      const skills = await getSkills();
+      const skills = this.scopedSkills(await getSkills());
       const name = slash[1].toLowerCase();
       // Built-in /learn: explore the current app and save an origin-scoped playbook.
       if (name === 'learn' && !skills.some((s) => s.name.toLowerCase() === 'learn')) {
@@ -748,6 +759,7 @@ export class AgentRuntime {
     // turns reuse the same id so autosave updates one growing record.
     if (!this.currentConversationId) {
       this.currentConversationId = crypto.randomUUID();
+      this.currentConversationProjectId = this.activeProjectId ?? undefined;
       this.conversationCreatedAt = new Date().toISOString();
       this.currentConversationTitle = null;
       this.titleIsAuto = false;
@@ -891,6 +903,7 @@ export class AgentRuntime {
       summary: this.currentConversationSummary ?? undefined,
       groupName: groupUrls.length > 0 ? this.groupName ?? undefined : undefined,
       groupUrls: groupUrls.length > 0 ? groupUrls : undefined,
+      projectId: this.currentConversationProjectId,
     };
     try {
       await saveConversation(record, {
@@ -1110,10 +1123,16 @@ export class AgentRuntime {
       for (const cand of candidates) {
         if (this.taskEpoch !== epoch) return; // aborted mid-reflection (new task started)
         const prov = { conversationId, excerpt: cand.evidence || cand.summary.slice(0, 200), at: now };
-        let target = graph.nodes.find((n) => n.status === 'active' && nodeSimilarity(n, cand) >= 0.5);
+        // Only merge into a node visible under the active project — reflection in
+        // project A must never silently absorb project B's similarly-worded node.
+        let target = graph.nodes.find(
+          (n) => n.status === 'active' && visibleToProject(n.projectId, this.activeProjectId) && nodeSimilarity(n, cand) >= 0.5,
+        );
         if (!target) {
           const hits = await memoryIndexSearch(settings, `${cand.label}: ${cand.summary}`, 3);
-          target = hits?.map((h) => graph.nodes.find((n) => n.id === h.nodeId)).find((n) => n?.status === 'active');
+          target = hits
+            ?.map((h) => graph.nodes.find((n) => n.id === h.nodeId))
+            .find((n) => n?.status === 'active' && visibleToProject(n.projectId, this.activeProjectId));
         }
         if (target && shouldAdjudicate(target, cand)) {
           const supersedes = await this.adjudicateSupersede(settings, target, cand, epoch);
@@ -1127,6 +1146,7 @@ export class AgentRuntime {
               confidence: cand.confidence,
               durability: cand.durability,
               status: 'active',
+              projectId: this.activeProjectId ?? undefined,
               createdAt: now,
               updatedAt: now,
               lastConfirmedAt: now,
@@ -1158,6 +1178,7 @@ export class AgentRuntime {
             confidence: cand.confidence,
             durability: cand.durability,
             status: 'active',
+            projectId: this.activeProjectId ?? undefined,
             createdAt: now,
             updatedAt: now,
             lastConfirmedAt: now,
@@ -1218,6 +1239,7 @@ export class AgentRuntime {
     this.findings = record.findings ?? [];
     this.lastTaskUrl = record.lastTaskUrl ?? '';
     this.currentConversationId = record.id;
+    this.currentConversationProjectId = record.projectId;
     this.conversationCreatedAt = record.createdAt;
     this.currentConversationLabels = record.labels ?? [];
     // Keep the saved title; only re-title if it was never auto-generated.
@@ -1301,6 +1323,7 @@ export class AgentRuntime {
     await deleteStoredConversation(id);
     if (this.currentConversationId === id) {
       this.currentConversationId = null;
+      this.currentConversationProjectId = undefined;
       this.conversationCreatedAt = '';
       this.currentConversationTitle = null;
       this.titleIsAuto = false;
@@ -1476,6 +1499,7 @@ export class AgentRuntime {
     // Detach from the saved record: the next message opens a new history entry.
     // The previous conversation stays in storage (Clear = "new chat", not delete).
     this.currentConversationId = null;
+    this.currentConversationProjectId = undefined;
     this.conversationCreatedAt = '';
     this.currentConversationTitle = null;
     this.titleIsAuto = false;
@@ -1531,12 +1555,17 @@ export class AgentRuntime {
       }
       const name = parsed.name.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
       const skills = await getSkills();
-      const idx = skills.findIndex((s) => s.name.toLowerCase() === name && !s.origin);
+      // Only overwrite an existing skill of this name if it's visible under the
+      // active project — otherwise distilling from project A could silently
+      // clobber project B's same-named skill.
+      const existing = this.scopedSkills(skills).find((s) => s.name.toLowerCase() === name && !s.origin);
+      const idx = existing ? skills.findIndex((s) => s.id === existing.id) : -1;
       const skill: Skill = {
         id: idx >= 0 ? skills[idx].id : `skill-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         name,
         description: parsed.description.trim(),
         body: parsed.body.trim(),
+        projectId: this.activeProjectId ?? undefined,
       };
       if (idx >= 0) skills[idx] = skill;
       else skills.push(skill);
@@ -1625,6 +1654,16 @@ export class AgentRuntime {
     return this.stopRequested || this.taskEpoch !== epoch;
   }
 
+  /** Capabilities visible under the active project: global ones plus that project's own. */
+  private scopedCapabilities(all: CapabilityRegistryEntry[]): CapabilityRegistryEntry[] {
+    return all.filter((c) => visibleToProject(c.projectId, this.activeProjectId));
+  }
+
+  /** Skills visible under the active project: global ones plus that project's own. */
+  private scopedSkills(all: Skill[]): Skill[] {
+    return all.filter((s) => visibleToProject(s.projectId, this.activeProjectId));
+  }
+
   private async runLoop(
     userText: string,
     snapshots: Array<{ dataUrl: string; title: string; url: string }> = [],
@@ -1662,7 +1701,7 @@ export class AgentRuntime {
     }
     // The base system prompt is fixed for the task; the live state block is
     // appended as a trailing message each turn (see withWorkingState).
-    const capabilities = await getCapabilities();
+    const capabilities = this.scopedCapabilities(await getCapabilities());
     this.knownSiteNames = capabilities.map((c) => c.name);
     this.memoryGraph = memoryEnabled ? await getMemoryGraph() : emptyMemoryGraph();
     this.relevantMemoryBlock = memoryEnabled ? await this.computeRelevantMemoryBlock(settings, userText) : '';
@@ -1671,8 +1710,8 @@ export class AgentRuntime {
       SYSTEM_PROMPT +
       capabilitiesPromptBlock(capabilities) +
       mcpPromptBlock(capabilities) +
-      skillsPromptBlock(await getSkills(), this.activeHost) +
-      (memoryEnabled ? renderCoreMemoryBlock(this.memoryGraph) + lessonsPromptBlock(lessonEntries) : '') +
+      skillsPromptBlock(this.scopedSkills(await getSkills()), this.activeHost) +
+      (memoryEnabled ? renderCoreMemoryBlock(this.memoryGraph, this.activeProjectId) + lessonsPromptBlock(lessonEntries) : '') +
       customInstructions;
     // Keep conversation[0] = the byte-stable system base (no volatile state).
     // The live working-state is appended as a trailing message at call time (see
@@ -2316,7 +2355,7 @@ export class AgentRuntime {
 
     // Resolve capability context for tools sourced from registered capabilities.
     let approvalContext: ApprovalContext | undefined;
-    const capabilities = await getCapabilities();
+    const capabilities = this.scopedCapabilities(await getCapabilities());
     if (name === 'call_mcp_tool' || name === 'list_mcp_tools') {
       const serverName = String(args.server ?? '');
       const capability = capabilities.find((c) =>
@@ -2484,9 +2523,9 @@ export class AgentRuntime {
         return res.ok ? JSON.stringify(res.result) : `Error: ${res.error}`;
       }
       case 'search_known_sites':
-        return searchKnownSites(await getCapabilities(), String(args.query));
+        return searchKnownSites(this.scopedCapabilities(await getCapabilities()), String(args.query));
       case 'list_mcp_tools': {
-        const caps = await getCapabilities();
+        const caps = this.scopedCapabilities(await getCapabilities());
         const resolved = resolveMcpServer(caps, String(args.server));
         if (!resolved) {
           return `Error: no MCP server hint named "${String(args.server)}". Add one in Settings → Hints (set an MCP endpoint URL), or pass the full MCP URL.`;
@@ -2516,7 +2555,7 @@ export class AgentRuntime {
         }
       }
       case 'call_mcp_tool': {
-        const caps = await getCapabilities();
+        const caps = this.scopedCapabilities(await getCapabilities());
         const resolved = resolveMcpServer(caps, String(args.server));
         if (!resolved) return `Error: no MCP server "${String(args.server)}".`;
         const mcpCap = caps.find((c) => c.mcpUrl === resolved.endpoint || c.name.toLowerCase() === String(args.server).toLowerCase());
@@ -2833,6 +2872,7 @@ export class AgentRuntime {
           confidence: 1,
           durability: 0.7,
           status: 'active',
+          projectId: this.activeProjectId ?? undefined,
           createdAt: now,
           updatedAt: now,
           lastConfirmedAt: now,
@@ -2880,10 +2920,15 @@ export class AgentRuntime {
           description: String(args.description).trim(),
           body: String(args.body).trim(),
           origin,
+          projectId: this.activeProjectId ?? undefined,
         };
         // One playbook per site: replace any existing playbook bound to this
         // origin, regardless of name, so re-learning updates rather than duplicates.
-        const idx = skills.findIndex((s) => s.origin === origin);
+        // Only a playbook visible under the active project counts as "existing" —
+        // otherwise re-learning a site from project A would silently overwrite
+        // project B's playbook for that same origin.
+        const existing = this.scopedSkills(skills).find((s) => s.origin === origin);
+        const idx = existing ? skills.findIndex((s) => s.id === existing.id) : -1;
         const replaced = idx >= 0;
         if (replaced) {
           playbook.id = skills[idx].id;
@@ -2895,7 +2940,7 @@ export class AgentRuntime {
         return `${replaced ? 'Updated' : 'Saved'} app playbook "${playbook.name}" for ${origin}. It will auto-activate on that site.`;
       }
       case 'use_skill': {
-        const skills = await getSkills();
+        const skills = this.scopedSkills(await getSkills());
         const wanted = String(args.name).toLowerCase().replace(/^\//, '');
         const skill = skills.find((s) => s.name.toLowerCase() === wanted);
         if (!skill) {
@@ -3282,7 +3327,7 @@ export class AgentRuntime {
    */
   private async computeRelevantMemoryBlock(settings: Settings, userText: string): Promise<string> {
     if (this.memoryGraph.nodes.length === 0 || !userText.trim()) return '';
-    const coreIds = new Set(rankCoreMemoryNodes(this.memoryGraph).map((n) => n.id));
+    const coreIds = new Set(rankCoreMemoryNodes(this.memoryGraph, this.activeProjectId).map((n) => n.id));
     const hits = await memoryIndexSearch(settings, userText, 5);
     if (!hits) return ''; // index unavailable — the core tier still answers what it can
     const byId = new Map(this.memoryGraph.nodes.map((n) => [n.id, n]));
@@ -3291,6 +3336,7 @@ export class AgentRuntime {
     for (const hit of hits) {
       const node = byId.get(hit.nodeId);
       if (!node || node.status === 'superseded' || coreIds.has(node.id) || seen.has(node.id)) continue;
+      if (!visibleToProject(node.projectId, this.activeProjectId)) continue;
       found.push(node);
       seen.add(node.id);
     }
@@ -3302,6 +3348,7 @@ export class AgentRuntime {
       if (!neighborId || coreIds.has(neighborId) || seen.has(neighborId)) continue;
       const neighbor = byId.get(neighborId);
       if (!neighbor || neighbor.status === 'superseded') continue;
+      if (!visibleToProject(neighbor.projectId, this.activeProjectId)) continue;
       found.push(neighbor);
       seen.add(neighborId);
     }

@@ -124,6 +124,24 @@ export interface Skill {
   showButton?: boolean;
   /** Display text for the quick-launch button; falls back to /name if empty. */
   buttonLabel?: string;
+  /** Optional project scope. Unset = global (visible regardless of active project). */
+  projectId?: string;
+}
+
+/**
+ * A named workspace that scopes conversations, memory, skills, capabilities, and
+ * knowledge bases. Scoping is a *filter*, not a partition: records without a
+ * `projectId` stay global and remain visible under every project, so nothing
+ * needs to be migrated when this feature is introduced. Stored under `ba_projects`;
+ * the currently active one lives separately under `ba_active_project` (a plain id
+ * string, or absent/null for "no project" — everything global-only).
+ */
+export interface Project {
+  id: string;
+  name: string;
+  /** Palette key (see shared/labelColors.ts), never a raw hex. */
+  color?: string;
+  createdAt: string;
 }
 
 /** One durable fact about the user, kept only when memory is enabled. */
@@ -327,6 +345,8 @@ export interface ConversationSummary {
   summary?: string;
   /** Ids of the labels assigned to this conversation (see ConversationLabel). */
   labels?: string[];
+  /** Project this conversation was started under. Unset = global/no project. */
+  projectId?: string;
 }
 
 /**

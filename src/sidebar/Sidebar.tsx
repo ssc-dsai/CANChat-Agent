@@ -22,6 +22,7 @@ import type {
 import { ChatPanel } from './ChatPanel';
 import { ConversationsScreen } from './ConversationsScreen';
 import { OnboardingScreen } from './OnboardingScreen';
+import { ProjectSwitcher } from './ProjectSwitcher';
 import { exportConversationHtml } from './conversationExport';
 import { useT } from './i18n';
 import { PlanPanel } from './PlanPanel';
@@ -284,6 +285,7 @@ export function Sidebar() {
             </button>
           </span>
           <span class="header-divider" />
+          <ProjectSwitcher />
           <button class="icon-btn" aria-label={t('header.history')} title={t('header.history')} onClick={() => setShowHistory(true)}>
             <IconHistory />
           </button>

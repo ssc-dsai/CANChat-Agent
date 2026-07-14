@@ -16,6 +16,7 @@ import type {
   LessonEntry,
   MemoryEntry,
   PlanStepStatus,
+  Project,
   Settings,
   SiteEntry,
   Skill,
@@ -30,6 +31,8 @@ const MEMORY_KEY = 'ba_memory';
 const MEMORY_ENABLED_KEY = 'ba_memory_enabled';
 const MEMORY_GRAPH_KEY = 'ba_memory_graph';
 const LESSONS_KEY = 'ba_lessons';
+const PROJECTS_KEY = 'ba_projects';
+const ACTIVE_PROJECT_KEY = 'ba_active_project';
 
 export const MEMORY_MAX_ENTRIES = 100;
 export const LESSON_MAX_ENTRIES = 50;
@@ -74,6 +77,8 @@ export interface StoredConversation {
   groupName?: string;
   /** Pages in the conversation's tab group, reopened on restore so they stay queryable. */
   groupUrls?: { url: string; title: string }[];
+  /** Project this conversation was started under, stamped once at creation. */
+  projectId?: string;
 }
 
 // chrome.storage.local only — the API key must never sync across devices.
@@ -184,6 +189,27 @@ export async function saveSkills(skills: Skill[]): Promise<void> {
   await chrome.storage.local.set({ [SKILLS_KEY]: skills });
 }
 
+export async function getProjects(): Promise<Project[]> {
+  const result = await chrome.storage.local.get(PROJECTS_KEY);
+  const projects = result[PROJECTS_KEY];
+  return Array.isArray(projects) ? (projects as Project[]) : [];
+}
+
+export async function saveProjects(projects: Project[]): Promise<void> {
+  await chrome.storage.local.set({ [PROJECTS_KEY]: projects });
+}
+
+/** The one active project, or null when no project is active (everything global-only). */
+export async function getActiveProjectId(): Promise<string | null> {
+  const result = await chrome.storage.local.get(ACTIVE_PROJECT_KEY);
+  const id = result[ACTIVE_PROJECT_KEY];
+  return typeof id === 'string' && id ? id : null;
+}
+
+export async function setActiveProjectId(id: string | null): Promise<void> {
+  await chrome.storage.local.set({ [ACTIVE_PROJECT_KEY]: id });
+}
+
 export async function getMemoryEnabled(): Promise<boolean> {
   const result = await chrome.storage.local.get(MEMORY_ENABLED_KEY);
   return result[MEMORY_ENABLED_KEY] === true; // off by default
@@ -271,6 +297,9 @@ export async function saveConversation(
     // whatever is already on the index entry (or the record) so a per-turn
     // autosave of the active conversation never wipes them.
     labels: existing?.labels ?? record.labels ?? [],
+    // The project a conversation was started under is stamped once and never
+    // changes on later autosaves, same reasoning as labels above.
+    projectId: existing?.projectId ?? record.projectId,
   };
   const next = [...index.filter((c) => c.id !== record.id), entry];
   const { kept, evicted } = pruneIndex(next, MAX_SAVED_CONVERSATIONS);

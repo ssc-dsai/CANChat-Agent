@@ -126,6 +126,14 @@ export type RuntimeRequest =
   | { type: 'memory_graph_confirm'; id: string }
   | { type: 'memory_graph_update'; id: string; text: string }
   | { type: 'memory_graph_delete'; id: string }
+  // Project CRUD + the single active-project pointer. Scoping is a filter, not a
+  // partition — see shared/types.ts Project and shared/memoryGraph.ts visibleToProject.
+  | { type: 'project_list' }
+  | { type: 'project_get_active' }
+  | { type: 'project_create'; name: string; color?: string }
+  | { type: 'project_update'; id: string; name?: string; color?: string }
+  | { type: 'project_delete'; id: string }
+  | { type: 'project_set_active'; id: string | null }
   // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
   // service worker owns the offscreen document, so it routes the op for them.
   | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };

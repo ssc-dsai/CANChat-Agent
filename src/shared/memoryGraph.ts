@@ -27,7 +27,7 @@ export interface MemoryNode {
   durability: number; // 0..1 — identity/preference high, situational low
   status: MemoryStatus;
   supersededBy?: string;
-  /** Nullable project scope; undefined/null means global. Reserved for a future Projects phase. */
+  /** Nullable project scope; undefined/null means global (visible under every project). */
   projectId?: string;
   createdAt: string;
   updatedAt: string;
@@ -296,13 +296,31 @@ export function pruneGraph(graph: MemoryGraph): MemoryGraph {
 }
 
 /**
+ * A record is visible under a given active project when it's global (no
+ * `projectId`) or scoped to that exact project. `activeProjectId` of
+ * null/undefined means "no project active" — only global records are visible.
+ * Scoping is a filter, not a partition: nothing is ever hard-excluded by id,
+ * so a record created before Projects existed (or left global on purpose)
+ * stays visible everywhere.
+ */
+export function visibleToProject(recordProjectId: string | undefined, activeProjectId: string | null | undefined): boolean {
+  return recordProjectId == null || recordProjectId === activeProjectId;
+}
+
+/**
  * The top-N durable active nodes, ranked by durability × effective
  * confidence — the core (systemBase) tier. Exported separately from
  * `renderCoreMemoryBlock` so the working-state (relevant-subgraph) tier can
- * exclude these ids without re-deriving the ranking.
+ * exclude these ids without re-deriving the ranking. `activeProjectId` scopes
+ * out nodes tagged for a different project (see `visibleToProject`).
  */
-export function rankCoreMemoryNodes(graph: MemoryGraph, limit = 15, now: Date = new Date()): MemoryNode[] {
-  const active = graph.nodes.filter((n) => n.status !== 'superseded');
+export function rankCoreMemoryNodes(
+  graph: MemoryGraph,
+  activeProjectId: string | null | undefined = null,
+  limit = 15,
+  now: Date = new Date(),
+): MemoryNode[] {
+  const active = graph.nodes.filter((n) => n.status !== 'superseded' && visibleToProject(n.projectId, activeProjectId));
   return [...active]
     .sort((a, b) => b.durability * effectiveConfidence(b, now) - a.durability * effectiveConfidence(a, now))
     .slice(0, limit);
@@ -325,8 +343,14 @@ function renderNodeEdgeLines(graph: MemoryGraph, nodes: MemoryNode[]): string[] 
  * ranked by durability × effective confidence, plus their edges. Built once
  * per conversation into the byte-stable system prefix — never called
  * mid-conversation, so prompt caching is unaffected by reflection results.
+ * `activeProjectId` scopes out nodes tagged for a different project.
  */
-export function renderCoreMemoryBlock(graph: MemoryGraph, limit = 15, now: Date = new Date()): string {
+export function renderCoreMemoryBlock(
+  graph: MemoryGraph,
+  activeProjectId: string | null | undefined = null,
+  limit = 15,
+  now: Date = new Date(),
+): string {
   const guidance =
     `\n\nMemory — the user has enabled persistent memory on this device. ` +
     `Save genuinely durable facts about the user (their role, projects, interests, preferences, ongoing work) with save_memory as you learn them — one fact per call. ` +
@@ -335,9 +359,9 @@ export function renderCoreMemoryBlock(graph: MemoryGraph, limit = 15, now: Date 
     `If the known facts below already answer the user's question, answer directly from them — do not run searches or tools to re-derive what memory already states. ` +
     `Only reach for live tools when the question concerns live or time-sensitive data (calendar, mail, page contents, anything that changes) or the remembered fact could plausibly be stale. ` +
     `Memories marked (stale) may be outdated — verify before relying on them.`;
-  const active = graph.nodes.filter((n) => n.status !== 'superseded');
+  const active = graph.nodes.filter((n) => n.status !== 'superseded' && visibleToProject(n.projectId, activeProjectId));
   if (active.length === 0) return guidance + `\nMemory is currently empty.`;
-  const ranked = rankCoreMemoryNodes(graph, limit, now);
+  const ranked = rankCoreMemoryNodes(graph, activeProjectId, limit, now);
   const lines = ranked.map((n) => `- [${n.id}] ${n.label} — ${n.summary}${n.status === 'stale' ? ' (stale)' : ''}`);
   const edgeLines = renderNodeEdgeLines(graph, ranked);
   return (
