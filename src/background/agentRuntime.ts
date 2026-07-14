@@ -45,8 +45,17 @@ import type {
   Skill,
 } from '../shared/types';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
-import { emptyMemoryGraph, MEMORY_NODE_CAP, renderCoreMemoryBlock, type MemoryGraph, type MemoryNode, type MemoryNodeKind } from '../shared/memoryGraph';
-import { memoryIndexRemove, memoryIndexUpsert, rebuildMemoryIndex } from './memoryIndex';
+import {
+  emptyMemoryGraph,
+  MEMORY_NODE_CAP,
+  rankCoreMemoryNodes,
+  renderCoreMemoryBlock,
+  renderRelevantMemoryBlock,
+  type MemoryGraph,
+  type MemoryNode,
+  type MemoryNodeKind,
+} from '../shared/memoryGraph';
+import { memoryIndexRemove, memoryIndexSearch, memoryIndexUpsert, rebuildMemoryIndex } from './memoryIndex';
 import { eventMatchesQuery, parseCalendarView, buildCalendarViewUrl } from '../shared/graphCalendar';
 import { buildGraphDraftMessage, createMessageUrl, parseGraphDraftResponse } from '../shared/graphMail';
 import type { ScheduledTaskRecurrence } from '../shared/scheduledTasks';
@@ -561,6 +570,10 @@ export class AgentRuntime {
   // loaded once per task, mutated in place by save/update/delete_memory and by
   // reflection, and persisted back to storage after each mutation).
   private memoryGraph: MemoryGraph = emptyMemoryGraph();
+  // Working-state (relevant-subgraph) tier: computed once per user turn (not
+  // per agent step) and appended to the mutable trailing message, never the
+  // byte-stable systemBase — see runLoop and buildStateBlock.
+  private relevantMemoryBlock = '';
   // Per-conversation tab group (reset only on clearConversation).
   private groupName: string | null = null;
   private groupId: number | null = null;
@@ -1511,6 +1524,7 @@ export class AgentRuntime {
     const capabilities = await getCapabilities();
     this.knownSiteNames = capabilities.map((c) => c.name);
     this.memoryGraph = memoryEnabled ? await getMemoryGraph() : emptyMemoryGraph();
+    this.relevantMemoryBlock = memoryEnabled ? await this.computeRelevantMemoryBlock(settings, userText) : '';
     const lessonEntries = memoryEnabled ? relevantLessons(await getLessons(), userText, this.activeHost, 3) : [];
     this.systemBase =
       SYSTEM_PROMPT +
@@ -2955,6 +2969,7 @@ export class AgentRuntime {
         'You are low on steps. Record any remaining findings and prepare to give your best final answer soon.',
       );
     }
+    if (this.relevantMemoryBlock) lines.push(this.relevantMemoryBlock);
     return lines.join('\n');
   }
 
@@ -3114,6 +3129,42 @@ export class AgentRuntime {
       fileArtifact,
     });
     return `Created the PowerPoint "${fileArtifact.filename}" with ${slides.length} slide(s). The user can download it from the card.`;
+  }
+
+  /**
+   * The working-state (relevant-subgraph) tier: nodes found relevant to this
+   * user turn by embedding search, one hop of edges expanded, excluding
+   * whatever is already in the core (systemBase) tier. Computed once per
+   * turn (not per agent step within it) and cached on `relevantMemoryBlock`
+   * for `buildStateBlock`. Degrades to '' (never throws) so an unavailable
+   * index/embedder only loses the extra context, not the turn.
+   */
+  private async computeRelevantMemoryBlock(settings: Settings, userText: string): Promise<string> {
+    if (this.memoryGraph.nodes.length === 0 || !userText.trim()) return '';
+    const coreIds = new Set(rankCoreMemoryNodes(this.memoryGraph).map((n) => n.id));
+    const hits = await memoryIndexSearch(settings, userText, 5);
+    if (!hits) return ''; // index unavailable — the core tier still answers what it can
+    const byId = new Map(this.memoryGraph.nodes.map((n) => [n.id, n]));
+    const found: MemoryNode[] = [];
+    const seen = new Set<string>();
+    for (const hit of hits) {
+      const node = byId.get(hit.nodeId);
+      if (!node || node.status === 'superseded' || coreIds.has(node.id) || seen.has(node.id)) continue;
+      found.push(node);
+      seen.add(node.id);
+    }
+    // Expand one hop of edges from the found nodes, pulling in their active neighbors.
+    const frontier = new Set(found.map((n) => n.id));
+    for (const edge of this.memoryGraph.edges) {
+      if (edge.status !== 'active') continue;
+      const neighborId = frontier.has(edge.from) ? edge.to : frontier.has(edge.to) ? edge.from : null;
+      if (!neighborId || coreIds.has(neighborId) || seen.has(neighborId)) continue;
+      const neighbor = byId.get(neighborId);
+      if (!neighbor || neighbor.status === 'superseded') continue;
+      found.push(neighbor);
+      seen.add(neighborId);
+    }
+    return renderRelevantMemoryBlock(found);
   }
 
   /**

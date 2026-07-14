@@ -6,12 +6,17 @@ import {
   MEMORY_EDGE_CAP,
   MEMORY_NODE_CAP,
   MEMORY_STALE_THRESHOLD,
+  memoryNodeChunkText,
+  memoryNodeUrl,
   mergeNodes,
   migrateFlatEntries,
+  nodeIdFromMemoryUrl,
   nodeSimilarity,
   parseReflection,
   pruneGraph,
+  rankCoreMemoryNodes,
   renderCoreMemoryBlock,
+  renderRelevantMemoryBlock,
   type MemoryEdge,
   type MemoryGraph,
   type MemoryNode,
@@ -275,6 +280,60 @@ describe('renderCoreMemoryBlock', () => {
     const block = renderCoreMemoryBlock(emptyMemoryGraph());
     expect(block).toContain('answer directly from them');
     expect(block).toContain('could plausibly be stale');
+  });
+});
+
+describe('rankCoreMemoryNodes', () => {
+  it('excludes superseded nodes and ranks by durability × effective confidence', () => {
+    const now = new Date('2026-06-01T00:00:00.000Z');
+    const graph: MemoryGraph = {
+      nodes: [
+        node({ id: 'top', durability: 0.9, confidence: 0.9, lastConfirmedAt: '2026-05-30T00:00:00.000Z' }),
+        node({ id: 'low', durability: 0.1, confidence: 0.9, lastConfirmedAt: '2025-01-01T00:00:00.000Z' }),
+        node({ id: 'hidden', status: 'superseded' }),
+      ],
+      edges: [],
+      version: 1,
+    };
+    const ranked = rankCoreMemoryNodes(graph, 15, now);
+    expect(ranked.map((n) => n.id)).toEqual(['top', 'low']);
+  });
+
+  it('respects the limit', () => {
+    const nodes = Array.from({ length: 20 }, (_, i) => node({ id: `n${i}` }));
+    expect(rankCoreMemoryNodes({ nodes, edges: [], version: 1 }, 5).length).toBe(5);
+  });
+});
+
+describe('renderRelevantMemoryBlock', () => {
+  it('returns an empty string for no nodes', () => {
+    expect(renderRelevantMemoryBlock([])).toBe('');
+  });
+
+  it('renders each node with a stale marker where applicable', () => {
+    const out = renderRelevantMemoryBlock([
+      node({ id: 'a', label: 'A', summary: 'Fact A' }),
+      node({ id: 'b', label: 'B', summary: 'Fact B', status: 'stale' }),
+    ]);
+    expect(out).toContain('[a] A — Fact A');
+    expect(out).toContain('[b] B — Fact B (stale)');
+    expect(out).toContain('Memories relevant to this message');
+  });
+});
+
+describe('memory index url helpers', () => {
+  it('builds and recovers a node id round-trip', () => {
+    const url = memoryNodeUrl('abc123');
+    expect(url).toBe('memory:abc123');
+    expect(nodeIdFromMemoryUrl(url)).toBe('abc123');
+  });
+
+  it('returns null for a non-memory url', () => {
+    expect(nodeIdFromMemoryUrl('https://example.com')).toBeNull();
+  });
+
+  it('builds the embeddable chunk text as label: summary', () => {
+    expect(memoryNodeChunkText({ label: 'Scott role', summary: 'Data scientist.' })).toBe('Scott role: Data scientist.');
   });
 });
 

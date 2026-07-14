@@ -266,6 +266,31 @@ export function pruneGraph(graph: MemoryGraph): MemoryGraph {
 }
 
 /**
+ * The top-N durable active nodes, ranked by durability × effective
+ * confidence — the core (systemBase) tier. Exported separately from
+ * `renderCoreMemoryBlock` so the working-state (relevant-subgraph) tier can
+ * exclude these ids without re-deriving the ranking.
+ */
+export function rankCoreMemoryNodes(graph: MemoryGraph, limit = 15, now: Date = new Date()): MemoryNode[] {
+  const active = graph.nodes.filter((n) => n.status !== 'superseded');
+  return [...active]
+    .sort((a, b) => b.durability * effectiveConfidence(b, now) - a.durability * effectiveConfidence(a, now))
+    .slice(0, limit);
+}
+
+function renderNodeEdgeLines(graph: MemoryGraph, nodes: MemoryNode[]): string[] {
+  const ids = new Set(nodes.map((n) => n.id));
+  return graph.edges
+    .filter((e) => e.status === 'active' && ids.has(e.from) && ids.has(e.to))
+    .map((e) => {
+      const from = nodes.find((n) => n.id === e.from);
+      const to = nodes.find((n) => n.id === e.to);
+      return from && to ? `- ${from.label} —${e.relation}→ ${to.label}` : '';
+    })
+    .filter(Boolean);
+}
+
+/**
  * Render the core (systemBase) memory block: the top-N durable active facts,
  * ranked by durability × effective confidence, plus their edges. Built once
  * per conversation into the byte-stable system prefix — never called
@@ -282,25 +307,29 @@ export function renderCoreMemoryBlock(graph: MemoryGraph, limit = 15, now: Date 
     `Memories marked (stale) may be outdated — verify before relying on them.`;
   const active = graph.nodes.filter((n) => n.status !== 'superseded');
   if (active.length === 0) return guidance + `\nMemory is currently empty.`;
-  const ranked = [...active]
-    .sort((a, b) => b.durability * effectiveConfidence(b, now) - a.durability * effectiveConfidence(a, now))
-    .slice(0, limit);
-  const rankedIds = new Set(ranked.map((n) => n.id));
+  const ranked = rankCoreMemoryNodes(graph, limit, now);
   const lines = ranked.map((n) => `- [${n.id}] ${n.label} — ${n.summary}${n.status === 'stale' ? ' (stale)' : ''}`);
-  const edgeLines = graph.edges
-    .filter((e) => e.status === 'active' && rankedIds.has(e.from) && rankedIds.has(e.to))
-    .map((e) => {
-      const from = ranked.find((n) => n.id === e.from);
-      const to = ranked.find((n) => n.id === e.to);
-      return from && to ? `- ${from.label} —${e.relation}→ ${to.label}` : '';
-    })
-    .filter(Boolean);
+  const edgeLines = renderNodeEdgeLines(graph, ranked);
   return (
     guidance +
     `\nKnown facts (use them naturally to tailor answers; reference by id when updating):\n` +
     lines.join('\n') +
     (edgeLines.length > 0 ? `\nRelationships:\n${edgeLines.join('\n')}` : '')
   );
+}
+
+/**
+ * Render the working-state (relevant-subgraph) tier: a small set of nodes
+ * found relevant to the current user turn by embedding search, that aren't
+ * already in the core tier. Returns '' for an empty set so an empty result
+ * adds nothing to the working-state block. This is appended to the mutable
+ * trailing message each user turn — never to the byte-stable systemBase — so
+ * per-turn retrieval never invalidates prompt caching.
+ */
+export function renderRelevantMemoryBlock(nodes: MemoryNode[]): string {
+  if (nodes.length === 0) return '';
+  const lines = nodes.map((n) => `- [${n.id}] ${n.label} — ${n.summary}${n.status === 'stale' ? ' (stale)' : ''}`);
+  return `\nMemories relevant to this message (not already listed above):\n${lines.join('\n')}`;
 }
 
 /**
