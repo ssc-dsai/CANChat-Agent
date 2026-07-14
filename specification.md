@@ -273,12 +273,25 @@ state), persists/restores its view to `chrome.storage.session`, and posts the
 **`src/microphone/`** — `microphone.ts`: a hidden page that records a voice prompt
 via `getUserMedia` and returns the audio for `/audio/transcriptions`.
 
-**`src/workspace/`** — the full-tab work environment (`workspace.html` → `main.tsx`):
-`Workspace.tsx` (shell + tabs, mirrors the conversation state over the `Port`),
-`ToolManager.tsx` (browse the unified tool catalog), `SkillEditor.tsx` (edit skills),
-`DataViewer.tsx` (table viewer over `export_data` results), `DatasetBrowser.tsx`
-(DuckDB: list/preview tables, import CSV/JSON, run SQL — via the `duckdb`
-`RuntimeRequest`), `ImageViewer.tsx` (full-size generated images); `workspace.css`.
+**`src/workspace/`** — the full-tab management console (`workspace.html` → `main.tsx`,
+which imports both `../sidebar/styles.css` and `workspace.css` so pages built from
+reused sidebar sections render styled): `Workspace.tsx` (shell + nav, mirrors the
+conversation state over the `Port`). Nav pages: **Chat** (composer, same as the side
+panel), **Knowledge** (`RepositoriesSection`, reused from the sidebar), **Memory**
+(`MemoryPage.tsx` — see §9), **Skills** (`SkillsSection`, reused), **Tools**
+(`CapabilitiesSection`, reused, opened with `defaultOpen` so the console isn't a
+collapsed accordion on load), **Models** (`ModelSection.tsx` — a self-contained
+endpoint/key/model/temperature/max-tokens editor, independent of `SettingsScreen` so
+it can't regress onboarding), **Datasets** (`DatasetBrowser.tsx` — DuckDB: list/preview
+tables, import CSV/JSON, run SQL via the `duckdb` `RuntimeRequest`), **Data**
+(`DataViewer.tsx`, over `export_data` results), **Image** (`ImageViewer.tsx`, full-size
+generated images), and **Settings** (`ConsoleSettingsPage.tsx` — language switcher +
+reused `BackupRestoreSection`, also opened with `defaultOpen`). The reused sidebar
+sections (`CapabilitiesSection`, `BackupRestoreSection`) take an optional
+`defaultOpen` prop so the same component collapses in the sidebar's stacked accordion
+but starts expanded as a dedicated console page. The sidebar's `SettingsScreen` is
+unchanged — the console pages are additive, not a replacement, so onboarding and its
+E2E coverage stay untouched.
 
 **`src/sidebar/`** — `main.tsx` (bootstrap + UI scale), `Sidebar.tsx` (shell,
 header, text-size control, **Undo** + **History** controls), `ChatPanel.tsx` (composer,
@@ -1004,13 +1017,15 @@ service worker — which owns the offscreen document — routes the op. Everythi
 on-device.
 
 **Workspace (full tab).** An "Open workspace" header button opens `workspace.html`
-(`chrome.tabs.create`) — a roomy work environment that mirrors the conversation state
+(`chrome.tabs.create`) — a management console that mirrors the conversation state
 over the same `Port` **and** is interactive: a **composer** sends `user_message`s like
-the side panel. It adds panels too cramped for the side panel: a tool browser
-(`ToolManager`), a skill editor (`SkillEditor`), a **DuckDB dataset browser**
-(`DatasetBrowser` — list/preview tables, import pasted CSV/JSON, run SQL), a
-data/table viewer (`DataViewer`, over `export_data` results), and a full-size image
-viewer (`ImageViewer`). It shares the side panel's **brand theme**: the palette +
+the side panel. Its nav gives every management surface a dedicated page — Knowledge,
+Memory, Skills, Tools, Models, Settings — largely by reusing the sidebar's own section
+components rather than duplicating their logic (see `src/workspace/` above), plus
+panels too cramped for the side panel: a **DuckDB dataset browser** (`DatasetBrowser`
+— list/preview tables, import pasted CSV/JSON, run SQL), a data/table viewer
+(`DataViewer`, over `export_data` results), and a full-size image viewer
+(`ImageViewer`). It shares the side panel's **brand theme**: the palette +
 light/dark variables live in `src/shared/theme.css`, imported by both `styles.css` and
 `workspace.css`, so the workspace renders in the same colours (gradient header, purple
 accents) and follows the OS light/dark setting.
@@ -1289,8 +1304,10 @@ all `CapabilityRegistryEntry` *kinds* (see §9). What remains is mostly **automa
 discovery** to populate that registry, plus deeper data/output handling.
 
 ### Shipped (now in the body)
-- **✅ 15.1 Expandable workspace** — the **Open workspace** button opens `workspace.html`
-  (tool/skill/data/image panels) sharing conversation state. See §9 *Workspace* and §10.
+- **✅ 15.1 Expandable workspace** — the **Open workspace** button opens `workspace.html`,
+  a full management console (Chat/Knowledge/Memory/Skills/Tools/Models/Datasets/Data/
+  Image/Settings pages, most built by reusing the sidebar's own section components)
+  sharing conversation state. See §9 *Workspace* and §10.
 - **✅ 15.2 Capability Registry** — replaces Known Sites; `ba_capabilities`,
   `CapabilitiesSection`, legacy-site migration. See §9 *Capability Registry*.
 - **✅ 15.12 Built-in DuckDB data engine** — DuckDB-WASM in the offscreen document, OPFS

@@ -563,6 +563,19 @@ Three collapsible sections (collapsed by default — click to expand):
   **Include conversations** (warned). Restore overwrites current settings, hints,
   skills, memory, and lessons, and replaces same-named knowledge bases.
 
+### The Workspace console
+
+For more room than the side panel offers, click **Open workspace** to open a full
+browser tab with the same conversation plus a dedicated page per management area:
+**Chat**, **Knowledge**, **Memory**, **Skills**, **Tools**, **Models**, **Datasets**,
+and **Settings** (language + Backup & Restore), alongside result viewers for data
+tables and images. Knowledge, Skills, and Tools are the same editors described above,
+just given a full page instead of a collapsible section; **Models** is a focused
+connection editor (endpoint, key, model, API version, temperature, max tokens) for
+when you just need to swap or test a model without opening the rest of Settings.
+Changes made in the workspace and the side panel share the same on-device storage,
+so either surface always reflects the latest state.
+
 ---
 
 ## 7. Common workflows

@@ -35,7 +35,7 @@ interface Backup {
   repos: ExportedRepo[];
 }
 
-export function BackupRestoreSection() {
+export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: boolean } = {}) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [includeKey, setIncludeKey] = useState(true);
@@ -119,7 +119,7 @@ export function BackupRestoreSection() {
   };
 
   return (
-    <details class="sites-section settings-acc">
+    <details class="sites-section settings-acc" open={defaultOpen}>
       <summary class="settings-header settings-acc-summary">
         <strong>Backup &amp; Restore</strong>
       </summary>

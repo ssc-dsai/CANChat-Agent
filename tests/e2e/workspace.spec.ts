@@ -100,3 +100,28 @@ test('workspace Memory page lists, edits, confirms, and deletes a node', async (
 
   await page.close();
 });
+
+test('workspace console nav reaches Knowledge, Skills, Tools, Models, and Settings pages', async ({ context, extensionId }) => {
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(`chrome-extension://${extensionId}/workspace.html`);
+
+  await page.getByRole('button', { name: 'Knowledge' }).click();
+  await expect(page.locator('.settings-acc-summary', { hasText: 'Knowledge bases' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Skills' }).click();
+  await expect(page.locator('.settings-header strong', { hasText: 'Skills' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Tools' }).click();
+  await expect(page.locator('.settings-acc-summary', { hasText: 'Capabilities' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Models' }).click();
+  await expect(page.locator('.ws-model-page label', { hasText: 'Endpoint base URL' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.ws-settings-page .settings-about')).toContainText('CANChat Agent');
+
+  expect(errors).toEqual([]);
+  await page.close();
+});

@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { BackgroundEvent } from '../shared/messages';
 import type { AgentStatus, ChatMessageView, DataExport, FileArtifact, PlanView } from '../shared/types';
-import { ToolManager } from './ToolManager';
-import { SkillEditor } from './SkillEditor';
+import { CapabilitiesSection } from '../sidebar/CapabilitiesSection';
+import { RepositoriesSection } from '../sidebar/RepositoriesSection';
+import { SkillsSection } from '../sidebar/SkillsSection';
+import { useT } from '../sidebar/i18n';
+import { ConsoleSettingsPage } from './ConsoleSettingsPage';
+import { ModelSection } from './ModelSection';
 import { DataViewer } from './DataViewer';
 import { DatasetBrowser } from './DatasetBrowser';
 import { ImageViewer } from './ImageViewer';
 import { MemoryPage } from './MemoryPage';
 
-type WorkspaceView = 'chat' | 'tools' | 'skills' | 'memory' | 'data' | 'datasets' | 'image' | 'settings';
-const VALID_VIEWS: WorkspaceView[] = ['chat', 'tools', 'skills', 'memory', 'data', 'datasets', 'image', 'settings'];
+type WorkspaceView = 'chat' | 'knowledge' | 'tools' | 'skills' | 'models' | 'memory' | 'data' | 'datasets' | 'image' | 'settings';
+const VALID_VIEWS: WorkspaceView[] = ['chat', 'knowledge', 'tools', 'skills', 'models', 'memory', 'data', 'datasets', 'image', 'settings'];
 
 function initialView(): WorkspaceView {
   const fromHash = location.hash.slice(1) as WorkspaceView;
@@ -17,6 +21,7 @@ function initialView(): WorkspaceView {
 }
 
 export function Workspace() {
+  const t = useT();
   const [status, setStatus] = useState<AgentStatus>('idle');
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
   const [plan, setPlan] = useState<PlanView | null>(null);
@@ -84,12 +89,18 @@ export function Workspace() {
 
   const rightPane = () => {
     switch (view) {
+      case 'knowledge':
+        return <RepositoriesSection />;
       case 'tools':
-        return <ToolManager />;
+        return <CapabilitiesSection defaultOpen />;
       case 'skills':
-        return <SkillEditor />;
+        return <SkillsSection />;
+      case 'models':
+        return <ModelSection />;
       case 'memory':
         return <MemoryPage />;
+      case 'settings':
+        return <ConsoleSettingsPage />;
       case 'datasets':
         return <DatasetBrowser />;
       case 'data':
@@ -133,13 +144,16 @@ export function Workspace() {
         </span>
         <span class="ws-title">CANChat Agent workspace</span>
         <nav class="ws-nav">
-          <button class="ws-nav-btn" onClick={() => setView('chat')}>Chat</button>
-          <button class="ws-nav-btn" onClick={() => setView('tools')}>Tools</button>
-          <button class="ws-nav-btn" onClick={() => setView('skills')}>Skills</button>
-          <button class="ws-nav-btn" onClick={() => setView('memory')}>Memory</button>
-          <button class="ws-nav-btn" onClick={() => setView('datasets')}>Datasets</button>
-          {displayExport && <button class="ws-nav-btn" onClick={() => setView('data')}>Data{exports.length > 1 ? ` (${exports.length})` : ''}</button>}
-          {focusedImage && <button class="ws-nav-btn" onClick={() => setView('image')}>Image</button>}
+          <button class={`ws-nav-btn ${view === 'chat' ? 'is-active' : ''}`} onClick={() => setView('chat')}>{t('workspace.nav.chat')}</button>
+          <button class={`ws-nav-btn ${view === 'knowledge' ? 'is-active' : ''}`} onClick={() => setView('knowledge')}>{t('workspace.nav.knowledge')}</button>
+          <button class={`ws-nav-btn ${view === 'memory' ? 'is-active' : ''}`} onClick={() => setView('memory')}>{t('workspace.nav.memory')}</button>
+          <button class={`ws-nav-btn ${view === 'skills' ? 'is-active' : ''}`} onClick={() => setView('skills')}>{t('workspace.nav.skills')}</button>
+          <button class={`ws-nav-btn ${view === 'tools' ? 'is-active' : ''}`} onClick={() => setView('tools')}>{t('workspace.nav.tools')}</button>
+          <button class={`ws-nav-btn ${view === 'models' ? 'is-active' : ''}`} onClick={() => setView('models')}>{t('workspace.nav.models')}</button>
+          <button class={`ws-nav-btn ${view === 'datasets' ? 'is-active' : ''}`} onClick={() => setView('datasets')}>{t('workspace.nav.datasets')}</button>
+          {displayExport && <button class={`ws-nav-btn ${view === 'data' ? 'is-active' : ''}`} onClick={() => setView('data')}>{t('workspace.nav.data')}{exports.length > 1 ? ` (${exports.length})` : ''}</button>}
+          {focusedImage && <button class={`ws-nav-btn ${view === 'image' ? 'is-active' : ''}`} onClick={() => setView('image')}>{t('workspace.nav.image')}</button>}
+          <button class={`ws-nav-btn ${view === 'settings' ? 'is-active' : ''}`} onClick={() => setView('settings')}>{t('workspace.nav.settings')}</button>
         </nav>
       </header>
       <div class="ws-body">

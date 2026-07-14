@@ -28,7 +28,7 @@ const EMPTY_FORM: Omit<CapabilityRegistryEntry, 'id'> = {
   mcpToken: '',
 };
 
-export function CapabilitiesSection() {
+export function CapabilitiesSection({ defaultOpen = false }: { defaultOpen?: boolean } = {}) {
   const [entries, setEntries] = useState<CapabilityRegistryEntry[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -110,7 +110,7 @@ export function CapabilitiesSection() {
   };
 
   return (
-    <details class="sites-section settings-acc">
+    <details class="sites-section settings-acc" open={defaultOpen}>
       <summary class="settings-header settings-acc-summary">
         <strong>Capabilities</strong>
         <span class="sites-count">{entries.length}</span>

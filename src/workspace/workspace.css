@@ -44,22 +44,10 @@ html, body, #app { margin: 0; height: 100%; font-family: -apple-system, BlinkMac
 .ws-detail-card:hover { border-color: var(--accent); }
 .ws-thumb { max-width: 100%; max-height: 120px; }
 
-.ws-tool-manager h2 { margin: 16px 0 8px; font-size: 15px; }
-.ws-tool-list { list-style: none; padding: 0; margin: 0; }
-.ws-tool-item { padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
-.ws-tool-item:hover { background: var(--brand-soft); }
-.ws-tool-kind { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--chip-slate-bg); color: var(--chip-slate-fg); text-transform: uppercase; }
-.ws-tool-name { font-weight: 500; }
-.ws-tool-desc { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
-
-.ws-skill-editor { display: flex; height: 100%; gap: 16px; }
-.ws-skill-list { width: 200px; display: flex; flex-direction: column; gap: 2px; }
-.ws-skill-btn { padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); cursor: pointer; text-align: left; font-size: 13px; }
-.ws-skill-btn.is-active { background: var(--brand-soft); border-color: var(--accent); }
-.ws-skill-body { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-.ws-skill-desc { color: var(--text-dim); font-size: 13px; margin: 0; }
-.ws-skill-origin { font-size: 12px; color: var(--text-dim); }
-.ws-textarea { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); color: var(--text); font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; resize: vertical; }
+/* ===== Console pages that reuse sidebar accordion sections (Knowledge, Skills,
+   Tools, Models, Settings) — cap width for readability in the full-tab layout. */
+.ws-model-page, .ws-settings-page { max-width: 640px; }
+.ws-model-page h2, .ws-settings-page h2 { margin: 0 0 12px; font-size: 16px; }
 
 /* ===== Data Viewer ===== */
 .ws-data-viewer { display: flex; flex-direction: column; height: 100%; gap: 6px; }
