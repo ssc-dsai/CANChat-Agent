@@ -123,6 +123,11 @@ const EN: Dict = {
     'Keeps the mailbox current in the background over your existing Outlook session — no need to click Index again. Off by default; only refreshes a mailbox you’ve indexed at least once.',
   'mail.autoRefreshLast': 'Last auto-refresh: {when} — {added} new message(s).',
   'mail.autoRefreshLastError': 'Last auto-refresh failed ({when}): {msg}',
+  'memory.title': 'Memory',
+  'memory.toggle': 'Remember things about me (stored only on this device)',
+  'memory.note':
+    'When enabled, the agent extracts durable facts about you from your conversations — your role, projects, interests, and preferences — and uses them to tailor answers. You can also say "remember that…" or "forget…".',
+  'memory.manage': 'Manage memories',
   'sharepoint.title': '☁ Index SharePoint / OneDrive documents',
   'sharepoint.hint': 'Indexes a SharePoint or OneDrive document library over your existing browser sign-in. Re-run to add only changed files.',
   'sharepoint.libraryUrl': 'Library URL',
@@ -371,6 +376,11 @@ const FR: Dict = {
     'Garde la boîte à jour en arrière-plan avec votre session Outlook existante — plus besoin de cliquer sur Indexer. Désactivé par défaut; n’actualise qu’une boîte déjà indexée au moins une fois.',
   'mail.autoRefreshLast': 'Dernière actualisation automatique : {when} — {added} nouveau(x) message(s).',
   'mail.autoRefreshLastError': 'Échec de la dernière actualisation automatique ({when}) : {msg}',
+  'memory.title': 'Mémoire',
+  'memory.toggle': 'Se souvenir de moi (stocké uniquement sur cet appareil)',
+  'memory.note':
+    'Lorsqu’activée, l’agent extrait des faits durables vous concernant à partir de vos conversations — votre rôle, vos projets, vos intérêts et vos préférences — et les utilise pour adapter ses réponses. Vous pouvez aussi dire « souviens-toi que… » ou « oublie… ».',
+  'memory.manage': 'Gérer les souvenirs',
   'sharepoint.title': '☁ Indexer les documents SharePoint / OneDrive',
   'sharepoint.hint': 'Indexe une bibliothèque SharePoint ou OneDrive avec votre session navigateur existante. Relancez pour n’ajouter que les fichiers modifiés.',
   'sharepoint.libraryUrl': 'URL de la bibliothèque',

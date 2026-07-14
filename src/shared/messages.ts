@@ -119,6 +119,11 @@ export type RuntimeRequest =
   // Probe the signed-in environment (M365 identity, open work systems, locale) to
   // populate memory; only honored when the memory feature is enabled.
   | { type: 'probe_environment' }
+  // Graph memory management for the Workspace Memory page.
+  | { type: 'memory_graph_get' }
+  | { type: 'memory_graph_confirm'; id: string }
+  | { type: 'memory_graph_update'; id: string; text: string }
+  | { type: 'memory_graph_delete'; id: string }
   // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
   // service worker owns the offscreen document, so it routes the op for them.
   | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };

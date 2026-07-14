@@ -52,7 +52,7 @@ import { reconcileScheduledAlarms, runScheduledTaskById, taskIdFromAlarm } from 
 import { getMemoryEnabled, getMemoryGraph, getSettings, migrateLegacySites, saveMemoryGraph, seedSkillsIfEmpty } from './storage';
 import { probeEnvironment } from './envProbe';
 import { applyDecay, pruneGraph } from '../shared/memoryGraph';
-import { memoryIndexRemove } from './memoryIndex';
+import { memoryIndexRemove, memoryIndexUpsert } from './memoryIndex';
 
 // ----- Mailbox auto-refresh (chrome.alarms, opt-in) -----
 //
@@ -413,6 +413,58 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
       } finally {
         mailIndexBusy = false;
       }
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_get') {
+    getMemoryGraph().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_confirm') {
+    (async () => {
+      const graph = await getMemoryGraph();
+      const now = new Date().toISOString();
+      const next = {
+        ...graph,
+        nodes: graph.nodes.map((n) => (n.id === request.id ? { ...n, status: 'active' as const, lastConfirmedAt: now, updatedAt: now } : n)),
+      };
+      await saveMemoryGraph(next);
+      return { ok: true };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_update') {
+    (async () => {
+      const graph = await getMemoryGraph();
+      const existing = graph.nodes.find((n) => n.id === request.id);
+      if (!existing) return { ok: false, error: `No memory entry with id ${request.id}.` };
+      const now = new Date().toISOString();
+      const updated = { ...existing, summary: request.text.trim(), status: 'active' as const, updatedAt: now, lastConfirmedAt: now };
+      const next = { ...graph, nodes: graph.nodes.map((n) => (n.id === request.id ? updated : n)) };
+      await saveMemoryGraph(next);
+      const settings = await getSettings();
+      if (settings) {
+        try {
+          await memoryIndexUpsert(settings, [updated]);
+        } catch {
+          // The graph write already succeeded; a stale index entry self-heals on the next decay sweep or reflection upsert.
+        }
+      }
+      return { ok: true };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_delete') {
+    (async () => {
+      const graph = await getMemoryGraph();
+      const next = {
+        ...graph,
+        nodes: graph.nodes.filter((n) => n.id !== request.id),
+        edges: graph.edges.filter((e) => e.from !== request.id && e.to !== request.id),
+      };
+      await saveMemoryGraph(next);
+      await memoryIndexRemove([request.id]);
+      return { ok: true };
     })().then(sendResponse);
     return true;
   }

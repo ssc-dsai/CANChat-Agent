@@ -6,14 +6,21 @@ import { SkillEditor } from './SkillEditor';
 import { DataViewer } from './DataViewer';
 import { DatasetBrowser } from './DatasetBrowser';
 import { ImageViewer } from './ImageViewer';
+import { MemoryPage } from './MemoryPage';
 
-type WorkspaceView = 'chat' | 'tools' | 'skills' | 'data' | 'datasets' | 'image' | 'settings';
+type WorkspaceView = 'chat' | 'tools' | 'skills' | 'memory' | 'data' | 'datasets' | 'image' | 'settings';
+const VALID_VIEWS: WorkspaceView[] = ['chat', 'tools', 'skills', 'memory', 'data', 'datasets', 'image', 'settings'];
+
+function initialView(): WorkspaceView {
+  const fromHash = location.hash.slice(1) as WorkspaceView;
+  return VALID_VIEWS.includes(fromHash) ? fromHash : 'chat';
+}
 
 export function Workspace() {
   const [status, setStatus] = useState<AgentStatus>('idle');
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
   const [plan, setPlan] = useState<PlanView | null>(null);
-  const [view, setView] = useState<WorkspaceView>('chat');
+  const [view, setView] = useState<WorkspaceView>(initialView);
   const [exports, setExports] = useState<DataExport[]>([]);
   const [focusedExport, setFocusedExport] = useState<DataExport | null>(null);
   const [focusedImage, setFocusedImage] = useState<string | null>(null);
@@ -81,6 +88,8 @@ export function Workspace() {
         return <ToolManager />;
       case 'skills':
         return <SkillEditor />;
+      case 'memory':
+        return <MemoryPage />;
       case 'datasets':
         return <DatasetBrowser />;
       case 'data':
@@ -127,6 +136,7 @@ export function Workspace() {
           <button class="ws-nav-btn" onClick={() => setView('chat')}>Chat</button>
           <button class="ws-nav-btn" onClick={() => setView('tools')}>Tools</button>
           <button class="ws-nav-btn" onClick={() => setView('skills')}>Skills</button>
+          <button class="ws-nav-btn" onClick={() => setView('memory')}>Memory</button>
           <button class="ws-nav-btn" onClick={() => setView('datasets')}>Datasets</button>
           {displayExport && <button class="ws-nav-btn" onClick={() => setView('data')}>Data{exports.length > 1 ? ` (${exports.length})` : ''}</button>}
           {focusedImage && <button class="ws-nav-btn" onClick={() => setView('image')}>Image</button>}
