@@ -29,6 +29,25 @@ const backup = {
     ba_skills: [{ id: 's1', name: 'research', description: 'research', body: '1. do it' }],
     ba_sites: [{ id: 'site1', name: 'Wiki', url: 'https://w', description: 'docs' }],
     ba_memory: [{ id: 'm1', text: 'likes metric', createdAt: '', updatedAt: '' }],
+    ba_memory_graph: {
+      version: 1,
+      nodes: [
+        {
+          id: 'n1',
+          kind: 'preference',
+          label: 'Metric preference',
+          summary: 'Prefers metric units.',
+          confidence: 0.9,
+          durability: 0.8,
+          status: 'active',
+          createdAt: '',
+          updatedAt: '',
+          lastConfirmedAt: '',
+          provenance: [],
+        },
+      ],
+      edges: [],
+    },
     ba_lessons: [{ id: 'l1', text: 'Use endpoint tools first.', triggers: ['mail'], uses: 1, createdAt: '', updatedAt: '' }],
   },
   repos: [
@@ -51,8 +70,16 @@ describe('parseBackup', () => {
     expect(parsed.skills.map((s) => s.name)).toEqual(['research']);
     expect(parsed.sites).toHaveLength(1);
     expect(parsed.memory).toHaveLength(1);
+    expect(parsed.memoryGraph.nodes.map((n) => n.label)).toEqual(['Metric preference']);
     expect(parsed.lessons.map((l) => l.text)).toEqual(['Use endpoint tools first.']);
     expect(parsed.repos).toHaveLength(1);
+  });
+
+  it('falls back to an empty graph for a backup taken before ba_memory_graph existed', () => {
+    const { ba_memory_graph, ...storageWithoutGraph } = backup.storage;
+    void ba_memory_graph;
+    const parsed = parseBackup({ ...backup, storage: storageWithoutGraph });
+    expect(parsed.memoryGraph).toEqual({ nodes: [], edges: [], version: 1 });
   });
 
   it('decodes repo vectors so similarity search works end-to-end', () => {

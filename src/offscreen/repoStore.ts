@@ -234,6 +234,12 @@ export async function repoSearch(
   return { results };
 }
 
+/**
+ * List every repository except the reserved `kind:'memory'` embedding index
+ * (`__memory__`) — that repo is internal plumbing for graph memory retrieval,
+ * not a user-created knowledge base, and must never appear in (or be
+ * deletable from) the repo-management UIs.
+ */
 export async function repoList(): Promise<
   Array<{ name: string; docs: number; chunks: number; kind?: RepoKind; embedModel?: string }>
 > {
@@ -243,6 +249,7 @@ export async function repoList(): Promise<
   for await (const [name, handle] of dir.entries()) {
     if (handle.kind !== 'directory') continue;
     const meta = await readJson<RepoMeta | null>(handle as FileSystemDirectoryHandle, 'meta.json', null);
+    if (meta?.kind === 'memory') continue;
     out.push({
       name,
       docs: meta?.docs.length ?? 0,

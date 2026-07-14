@@ -537,13 +537,19 @@ Three collapsible sections (collapsed by default — click to expand):
   (a URL with `{query}` in it), and optionally a **tool server (MCP endpoint)**
   with a token. The agent consults this before falling back to a web search.
 - **Memory** — toggle **"Remember things about me (stored only on this device)."**
-  When on, the agent saves durable facts about you (work, projects, preferences)
-  to tailor answers; **Add memory**, import/export, and **Clear all** are here.
-  Capacity is 100 entries; secrets are never saved. **Probe environment** (shown
-  only when memory is on) fills memory with what the extension can detect about you
-  — your Microsoft 365 name / work email / sign-in (AD) username from the signed-in
+  When on, the agent notices durable facts you mention in conversation — work,
+  projects, preferences — and saves them automatically after each turn (as well as
+  when you say "remember that…" or "forget…"); it answers directly from what it
+  already knows instead of re-searching. **Probe environment** (shown only when
+  memory is on) fills memory with what the extension can detect about you — your
+  Microsoft 365 name / work email / sign-in (AD) username from the signed-in
   session, the work systems you currently have open, and your locale/timezone. It
-  runs entirely on-device and adds only new facts.
+  runs entirely on-device and adds only new facts. Click **Manage memories** to open
+  the full editor (in its own tab): filter by status or kind, edit a memory's text,
+  **Confirm** it to clear a "stale" flag, or delete it — each entry shows the excerpt
+  it was learned from. A memory that hasn't been reconfirmed in a while is marked
+  stale automatically (never deleted) so you know it might be out of date. Capacity
+  is 500 entries; secrets are never saved.
 
   The same toggle also enables **automatic lessons**: after a substantial or
   corrected task (one with a real plan, several tool calls, or a self-correction),
@@ -922,8 +928,10 @@ state-changing step.
 - SharePoint search via signed-in session ✅ (`schemas.ts`, runtime)
 - Skills, app playbooks, `/learn`, curated playbook library (Outlook OWA/Live,
   Gmail, MarineTraffic, Jira Cloud) ✅ (`SkillsSection.tsx`, `curatedPlaybooks.ts`)
-- Memory (opt-in, ≤100 entries) and automatic lessons (opt-in, ≤50 entries) ✅
-  (`MemorySection.tsx`, `storage.ts`)
+- Durable graph memory (opt-in, ≤500 nodes): post-conversation reflection,
+  embedding-indexed retrieval, staleness decay, and a full management page; and
+  automatic lessons (opt-in, ≤50 entries) ✅ (`memoryGraph.ts`, `memoryIndex.ts`,
+  `MemoryPage.tsx`, `MemorySection.tsx`, `storage.ts`)
 
 **Input/output**
 - Voice prompts via `/audio/transcriptions` ✅ (`ChatPanel.tsx`, `llmProvider.ts`)

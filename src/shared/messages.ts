@@ -119,8 +119,10 @@ export type RuntimeRequest =
   // Probe the signed-in environment (M365 identity, open work systems, locale) to
   // populate memory; only honored when the memory feature is enabled.
   | { type: 'probe_environment' }
-  // Graph memory management for the Workspace Memory page.
+  // Graph memory management for the Workspace Memory page and the sidebar's
+  // Memory section (add covers manual entries and the environment probe).
   | { type: 'memory_graph_get' }
+  | { type: 'memory_graph_add'; text: string; source?: string }
   | { type: 'memory_graph_confirm'; id: string }
   | { type: 'memory_graph_update'; id: string; text: string }
   | { type: 'memory_graph_delete'; id: string }

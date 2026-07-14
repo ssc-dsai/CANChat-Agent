@@ -165,8 +165,10 @@ discriminator, exactly like the offscreen document:
 **`src/shared/`** (imported by every context)
 - `types.ts` — all data types: `Settings`, `TabSummary`, `PageContent`,
   `ElementRef`, `AuthState`, `NavigationResult`, `AgentStatus`, `ChatMessageView`,
-  `ToolActivity`, `PlanView`/`PlanStepStatus`, `MemoryEntry`, `Skill`, `DataExport`,
-  etc.
+  `ToolActivity`, `PlanView`/`PlanStepStatus`, `MemoryEntry` (legacy flat memory,
+  migration source), `Skill`, `DataExport`, etc.
+- `memoryGraph.ts` — durable graph memory: `MemoryNode`/`MemoryEdge` types and
+  pure logic (reflection parsing, merge, decay, pruning, prompt rendering).
 - `messages.ts` — the wire protocol: `SidebarCommand`, `BackgroundEvent`,
   `RuntimeRequest` (one-shot), the offscreen request/response unions
   (`ExtractPdfRequest/Response`, `ExtractOfficeRequest/Response`,
@@ -575,8 +577,9 @@ classification, non-gated; datasets persist to OPFS)
 - `use_skill {name}` — load a named skill's instructions.
 - `export_data {title, columns, rows}` — produce a downloadable CSV/JSON table.
 - `set_plan {steps}`, `update_plan {step, status, note?}`, `record_finding {text}`.
-- `save_memory {text, …}`, `update_memory {id, text}`, `delete_memory {id}` —
-  persistent memory (only when the memory feature is enabled).
+- `save_memory {text, kind?, subject?}`, `update_memory {id, text}`,
+  `delete_memory {id}` — durable graph memory (only when the memory feature
+  is enabled). See §16.6.
 
 ---
 
@@ -854,15 +857,75 @@ name, so the "me" filter isn't a perfect identity match.
   an `origin`; the matching site's playbook auto-appears in the prompt. The user
   teaches one with `/learn` (the agent explores and calls `save_app_playbook`;
   re-running upserts by origin).
-- **Memory** — optional persistent facts (off by default, toggled in Settings). When
-  on, the agent may `save/update/delete_memory`; entries are injected into the
-  prompt. A **Probe environment** button (Memory settings, shown only when memory is
-  enabled) sends a `probe_environment` `RuntimeRequest`; `background/envProbe.ts`
-  gathers on-device facts about the signed-in user — Microsoft 365 identity (name /
-  work email / AD sign-in username via SharePoint `/_api/web/currentuser` over the
-  session cookie), the enterprise systems currently open (an allowlist of work hosts),
-  and locale/timezone — and the UI appends them as memory entries (dedup, capped 100).
-  The service worker refuses the probe when memory is off. Nothing leaves the device.
+- **Memory** — see "Durable graph memory" below for the full design (graph
+  model, reflection, retrieval tiers). Optional (off by default, toggled in
+  Settings). A **Probe environment** button (Memory settings, shown only when
+  memory is enabled) sends a `probe_environment` `RuntimeRequest`;
+  `background/envProbe.ts` gathers on-device facts about the signed-in user —
+  Microsoft 365 identity (name / work email / AD sign-in username via
+  SharePoint `/_api/web/currentuser` over the session cookie), the enterprise
+  systems currently open (an allowlist of work hosts), and locale/timezone —
+  and the UI adds each as a graph memory node via `memory_graph_add`
+  (exact-text dedup, capped at `MEMORY_NODE_CAP`). The service worker refuses
+  the probe when memory is off. Nothing leaves the device.
+
+**Durable graph memory** (`shared/memoryGraph.ts`, `background/memoryIndex.ts`,
+`chrome.storage.local` key `ba_memory_graph`): entities/facts (`MemoryNode`) and
+relationships (`MemoryEdge`), each with `kind` (entity/fact/preference/event),
+`confidence`, `durability`, `status` (active/stale/superseded), `provenance`
+(conversation id + verbatim excerpt), and timestamps. Replaces the earlier flat
+`MemoryEntry[]` (`ba_memory`), which is lazily, non-destructively migrated into
+graph nodes on first read (`storage.ts:getMemoryGraph`) and left in place as a
+Backup/Restore fallback for one release.
+- **Embedding index** — a reserved OPFS repo (`__memory__`, `RepoKind:'memory'`)
+  holds one chunk per node (`label: summary` text), reusing the RAG store's
+  hybrid BM25+vector search wholesale (`memoryIndex.ts`'s
+  upsert/remove/search/rebuild wrap the existing `repoAdd`/`repoSearch`/
+  `repoDeleteDoc` — no parallel search engine). `repoList` excludes this repo
+  from every user-facing knowledge-base UI (it is retrieval plumbing, not a
+  knowledge base the user created). Embeddings are an index only — the graph's
+  `summary` text is the source of truth, so an embed-model switch just
+  triggers a cheap full rebuild rather than data loss.
+- **Reflection** — `AgentRuntime.reflectMemories` fires after every settled
+  turn (alongside the existing `maybeLearnLesson`, same trigger conditions): one
+  plain `complete()` call (no tools — unattended-safe) extracts durable facts
+  from the turn as strict JSON (`parseReflection`); an empty result is the
+  common case. Each candidate is merged into an existing node (term-overlap or
+  embedding-index match) or inserted fresh; a match whose text has drifted
+  enough to look like a contradiction (`shouldAdjudicate`) gets one more cheap
+  LLM call deciding supersede-vs-merge (`adjudicateSupersede`) — a superseded
+  node is kept (`status:'superseded'`, `supersededBy`) rather than deleted. The
+  graph is persisted before any embedding-index call, so an index/embedder
+  failure never loses an extracted fact.
+- **Retrieval — two tiers, prompt-cache safe.** *Core tier*: the top ~15 active
+  nodes ranked by `durability × effectiveConfidence` (time-decayed — see
+  below), rendered into the byte-stable `systemBase` once per conversation
+  (`renderCoreMemoryBlock`) alongside the memory-first answering rule ("if the
+  known facts already answer the question, answer directly — don't reach for
+  tools"). *Relevant-subgraph tier*: computed once per user turn (not per
+  agent step) — an embedding-index search over the message plus one hop of
+  active edges, excluding whatever is already in the core tier — appended to
+  the mutable trailing working-state message (`computeRelevantMemoryBlock`),
+  so per-turn retrieval never invalidates the provider's prompt cache on the
+  fixed prefix.
+- **Decay** — `applyDecay` marks a node/edge `stale` (never deletes) once its
+  time-decayed effective confidence drops below `MEMORY_STALE_THRESHOLD`; the
+  decay half-life scales with `durability` (a preference decays far slower
+  than a situational fact). Runs lazily on load and via a daily
+  `chrome.alarms` sweep (`serviceWorker.ts`, `memory_decay_sweep`) that also
+  prunes the graph back under its caps (`MEMORY_NODE_CAP`/`MEMORY_EDGE_CAP`,
+  superseded records evicted first) and reconciles the embedding index for
+  anything dropped.
+- **Management UI** — `src/workspace/MemoryPage.tsx` (reachable from
+  Workspace's nav or `workspace.html#memory`): filterable list (status/kind) +
+  detail pane to edit a node's summary, confirm it (clears staleness, bumps
+  `lastConfirmedAt`), or delete it, with evidence excerpts and relationships
+  shown per node. The sidebar's `MemorySection.tsx` is a thin summary (count +
+  enabled toggle + Probe environment + a link into the Workspace page) backed
+  by new `RuntimeRequest`s (`memory_graph_get/add/confirm/update/delete`,
+  `serviceWorker.ts`) that operate on the graph store directly — the same
+  one-shot-message pattern already used for repo/mailbox/SharePoint
+  management.
 
 **Auth auto-pause.** When page extraction detects a login wall, the task pauses,
 the panel shows a sign-in notice, and resuming re-fetches the page.

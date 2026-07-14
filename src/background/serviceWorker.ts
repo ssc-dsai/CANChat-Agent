@@ -51,7 +51,7 @@ import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAu
 import { reconcileScheduledAlarms, runScheduledTaskById, taskIdFromAlarm } from './scheduler';
 import { getMemoryEnabled, getMemoryGraph, getSettings, migrateLegacySites, saveMemoryGraph, seedSkillsIfEmpty } from './storage';
 import { probeEnvironment } from './envProbe';
-import { applyDecay, pruneGraph } from '../shared/memoryGraph';
+import { applyDecay, MEMORY_NODE_CAP, pruneGraph } from '../shared/memoryGraph';
 import { memoryIndexRemove, memoryIndexUpsert } from './memoryIndex';
 
 // ----- Mailbox auto-refresh (chrome.alarms, opt-in) -----
@@ -418,6 +418,45 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
   }
   if (request.type === 'memory_graph_get') {
     getMemoryGraph().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_add') {
+    (async () => {
+      const text = request.text.trim();
+      if (!text) return { ok: false, error: 'Empty memory text.' };
+      const graph = await getMemoryGraph();
+      if (graph.nodes.some((n) => n.status !== 'superseded' && n.summary === text)) {
+        return { ok: true, added: false }; // already known — quietly skip rather than duplicate
+      }
+      if (graph.nodes.length >= MEMORY_NODE_CAP) {
+        return { ok: false, error: `Memory is full (${MEMORY_NODE_CAP} entries). Delete entries before adding more.` };
+      }
+      const now = new Date().toISOString();
+      const node = {
+        id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        kind: 'fact' as const,
+        label: text.split(/\s+/).slice(0, 6).join(' '),
+        summary: text,
+        confidence: 1,
+        durability: 0.7,
+        status: 'active' as const,
+        createdAt: now,
+        updatedAt: now,
+        lastConfirmedAt: now,
+        provenance: request.source ? [{ conversationId: '', excerpt: request.source, at: now }] : [],
+      };
+      const next = { ...graph, nodes: [...graph.nodes, node] };
+      await saveMemoryGraph(next);
+      const settings = await getSettings();
+      if (settings) {
+        try {
+          await memoryIndexUpsert(settings, [node]);
+        } catch {
+          // Graph write already succeeded; the index self-heals on the next decay sweep or reflection upsert.
+        }
+      }
+      return { ok: true, added: true, id: node.id };
+    })().then(sendResponse);
     return true;
   }
   if (request.type === 'memory_graph_confirm') {
