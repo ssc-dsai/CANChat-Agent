@@ -41,11 +41,12 @@ import type {
   DataExport,
   FileArtifact,
   LessonEntry,
-  MemoryEntry,
   Settings,
   Skill,
 } from '../shared/types';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
+import { emptyMemoryGraph, MEMORY_NODE_CAP, renderCoreMemoryBlock, type MemoryGraph, type MemoryNode, type MemoryNodeKind } from '../shared/memoryGraph';
+import { memoryIndexRemove, memoryIndexUpsert, rebuildMemoryIndex } from './memoryIndex';
 import { eventMatchesQuery, parseCalendarView, buildCalendarViewUrl } from '../shared/graphCalendar';
 import { buildGraphDraftMessage, createMessageUrl, parseGraphDraftResponse } from '../shared/graphMail';
 import type { ScheduledTaskRecurrence } from '../shared/scheduledTasks';
@@ -71,17 +72,16 @@ import {
   getConversation,
   getConversationLabels,
   getLessons,
-  getMemories,
   getMemoryEnabled,
+  getMemoryGraph,
   getSessionApprovals,
   getSettings,
   getSkills,
   LESSON_MAX_ENTRIES,
-  MEMORY_MAX_ENTRIES,
   saveConversation,
   saveConversationLabels,
   saveLessons,
-  saveMemories,
+  saveMemoryGraph,
   saveSkills,
   setConversationLabels as setStoredConversationLabels,
   type StoredConversation,
@@ -402,24 +402,6 @@ function skillsPromptBlock(skills: Skill[], activeHost: string): string {
   return block;
 }
 
-function memoryPromptBlock(entries: MemoryEntry[]): string {
-  const guidance =
-    `\n\nMemory — the user has enabled persistent memory on this device. ` +
-    `Save genuinely durable facts about the user (their role, projects, interests, preferences, ongoing work) with save_memory as you learn them — one fact per call. ` +
-    `Never save secrets, credentials, or sensitive page content. ` +
-    `Use update_memory/delete_memory to keep entries current, and honor "forget ..." requests immediately with delete_memory. ` +
-    `If the known facts below already answer the user's question, answer directly from them — do not run searches or tools to re-derive what memory already states. ` +
-    `Only reach for live tools when the question concerns live or time-sensitive data (calendar, mail, page contents, anything that changes) or the remembered fact could plausibly be stale.`;
-  if (entries.length === 0) {
-    return guidance + `\nMemory is currently empty.`;
-  }
-  return (
-    guidance +
-    `\nKnown facts (use them naturally to tailor answers; reference by id when updating):\n` +
-    entries.map((e) => `- [${e.id}] ${e.text}`).join('\n')
-  );
-}
-
 function lessonsPromptBlock(entries: LessonEntry[]): string {
   if (entries.length === 0) return '';
   return (
@@ -575,6 +557,10 @@ export class AgentRuntime {
   private lastTaskUrl = '';
   private systemBase = '';
   private knownSiteNames: string[] = [];
+  // Graph memory loaded for the current task (mirrors systemBase's lifecycle:
+  // loaded once per task, mutated in place by save/update/delete_memory and by
+  // reflection, and persisted back to storage after each mutation).
+  private memoryGraph: MemoryGraph = emptyMemoryGraph();
   // Per-conversation tab group (reset only on clearConversation).
   private groupName: string | null = null;
   private groupId: number | null = null;
@@ -1524,14 +1510,14 @@ export class AgentRuntime {
     // appended as a trailing message each turn (see withWorkingState).
     const capabilities = await getCapabilities();
     this.knownSiteNames = capabilities.map((c) => c.name);
-    const memoryEntries = memoryEnabled ? await getMemories() : [];
+    this.memoryGraph = memoryEnabled ? await getMemoryGraph() : emptyMemoryGraph();
     const lessonEntries = memoryEnabled ? relevantLessons(await getLessons(), userText, this.activeHost, 3) : [];
     this.systemBase =
       SYSTEM_PROMPT +
       capabilitiesPromptBlock(capabilities) +
       mcpPromptBlock(capabilities) +
       skillsPromptBlock(await getSkills(), this.activeHost) +
-      (memoryEnabled ? memoryPromptBlock(memoryEntries) + lessonsPromptBlock(lessonEntries) : '') +
+      (memoryEnabled ? renderCoreMemoryBlock(this.memoryGraph) + lessonsPromptBlock(lessonEntries) : '') +
       customInstructions;
     // Keep conversation[0] = the byte-stable system base (no volatile state).
     // The live working-state is appended as a trailing message at call time (see
@@ -2673,35 +2659,60 @@ export class AgentRuntime {
         return `Dropped dataset "${tableName}" from memory and on-device storage.`;
       }
       case 'save_memory': {
-        const entries = await getMemories();
-        if (entries.length >= MEMORY_MAX_ENTRIES) {
-          return `Error: memory is full (${MEMORY_MAX_ENTRIES} entries). Consolidate or delete entries before saving more.`;
+        if (this.memoryGraph.nodes.length >= MEMORY_NODE_CAP) {
+          return `Error: memory is full (${MEMORY_NODE_CAP} entries). Consolidate or delete entries before saving more.`;
         }
+        const settings = await getSettings();
+        if (!settings) return 'Error: no LLM connection configured, so the memory cannot be embedded.';
         const now = new Date().toISOString();
-        const entry: MemoryEntry = {
+        const text = String(args.text).trim();
+        const subject = typeof args.subject === 'string' ? args.subject.trim() : '';
+        const kind: MemoryNodeKind = ['entity', 'fact', 'preference', 'event'].includes(String(args.kind))
+          ? (args.kind as MemoryNodeKind)
+          : 'fact';
+        const node: MemoryNode = {
           id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          text: String(args.text).trim(),
+          kind,
+          label: subject || text.split(/\s+/).slice(0, 6).join(' '),
+          summary: text,
+          confidence: 1,
+          durability: 0.7,
+          status: 'active',
           createdAt: now,
           updatedAt: now,
+          lastConfirmedAt: now,
+          provenance: this.currentConversationId
+            ? [{ conversationId: this.currentConversationId, excerpt: text.slice(0, 200), at: now }]
+            : [],
         };
-        await saveMemories([...entries, entry]);
-        return `Saved memory [${entry.id}]: ${entry.text}`;
+        this.memoryGraph = { ...this.memoryGraph, nodes: [...this.memoryGraph.nodes, node] };
+        await saveMemoryGraph(this.memoryGraph);
+        await this.upsertMemoryIndex(settings, [node]);
+        return `Saved memory [${node.id}]: ${node.summary}`;
       }
       case 'update_memory': {
-        const entries = await getMemories();
+        const settings = await getSettings();
+        if (!settings) return 'Error: no LLM connection configured, so the memory cannot be re-embedded.';
         const id = String(args.id);
-        const entry = entries.find((e) => e.id === id);
-        if (!entry) return `Error: no memory entry with id ${id}.`;
-        entry.text = String(args.text).trim();
-        entry.updatedAt = new Date().toISOString();
-        await saveMemories(entries);
-        return `Updated memory [${id}]: ${entry.text}`;
+        const existing = this.memoryGraph.nodes.find((n) => n.id === id);
+        if (!existing) return `Error: no memory entry with id ${id}.`;
+        const now = new Date().toISOString();
+        const updated: MemoryNode = { ...existing, summary: String(args.text).trim(), status: 'active', updatedAt: now, lastConfirmedAt: now };
+        this.memoryGraph = { ...this.memoryGraph, nodes: this.memoryGraph.nodes.map((n) => (n.id === id ? updated : n)) };
+        await saveMemoryGraph(this.memoryGraph);
+        await this.upsertMemoryIndex(settings, [updated]);
+        return `Updated memory [${id}]: ${updated.summary}`;
       }
       case 'delete_memory': {
-        const entries = await getMemories();
         const id = String(args.id);
-        if (!entries.some((e) => e.id === id)) return `Error: no memory entry with id ${id}.`;
-        await saveMemories(entries.filter((e) => e.id !== id));
+        if (!this.memoryGraph.nodes.some((n) => n.id === id)) return `Error: no memory entry with id ${id}.`;
+        this.memoryGraph = {
+          ...this.memoryGraph,
+          nodes: this.memoryGraph.nodes.filter((n) => n.id !== id),
+          edges: this.memoryGraph.edges.filter((e) => e.from !== id && e.to !== id),
+        };
+        await saveMemoryGraph(this.memoryGraph);
+        await memoryIndexRemove([id]);
         return `Deleted memory [${id}].`;
       }
       case 'save_app_playbook': {
@@ -3103,6 +3114,26 @@ export class AgentRuntime {
       fileArtifact,
     });
     return `Created the PowerPoint "${fileArtifact.filename}" with ${slides.length} slide(s). The user can download it from the card.`;
+  }
+
+  /**
+   * Upsert nodes into the memory embedding index, transparently rebuilding
+   * the whole index from `this.memoryGraph` if the repo's embed-model lock
+   * has tripped (the user switched embedders since the index was built) and
+   * retrying once. A failure here never blocks the tool call from succeeding
+   * — the graph itself (already persisted) remains the source of truth even
+   * if the index falls behind; a later rebuild will catch it up.
+   */
+  private async upsertMemoryIndex(settings: Settings, nodes: MemoryNode[]): Promise<void> {
+    try {
+      await memoryIndexUpsert(settings, nodes);
+    } catch {
+      try {
+        await rebuildMemoryIndex(settings, this.memoryGraph.nodes);
+      } catch {
+        // Index unavailable (offscreen/embedder down) — the graph is still saved.
+      }
+    }
   }
 
   private recordFinding(text: string): string {

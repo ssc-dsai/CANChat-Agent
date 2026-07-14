@@ -39,6 +39,12 @@ export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
         type: 'object',
         properties: {
           text: { type: 'string', description: 'The fact, plainly stated in third person.' },
+          kind: {
+            type: 'string',
+            enum: ['entity', 'fact', 'preference', 'event'],
+            description: 'What sort of memory this is. Defaults to "fact" if omitted.',
+          },
+          subject: { type: 'string', description: 'Optional short name of who/what this fact is about, e.g. "Scott".' },
         },
         required: ['text'],
       },
