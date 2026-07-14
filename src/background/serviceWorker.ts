@@ -49,8 +49,10 @@ import {
 } from './sharepointIngest';
 import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAuth';
 import { reconcileScheduledAlarms, runScheduledTaskById, taskIdFromAlarm } from './scheduler';
-import { getMemoryEnabled, getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
+import { getMemoryEnabled, getMemoryGraph, getSettings, migrateLegacySites, saveMemoryGraph, seedSkillsIfEmpty } from './storage';
 import { probeEnvironment } from './envProbe';
+import { applyDecay, pruneGraph } from '../shared/memoryGraph';
+import { memoryIndexRemove } from './memoryIndex';
 
 // ----- Mailbox auto-refresh (chrome.alarms, opt-in) -----
 //
@@ -85,15 +87,51 @@ async function syncMailAlarm(): Promise<void> {
     chrome.alarms.clear(MAILBOX_ALARM);
   }
 }
+
+// ----- Memory decay sweep (chrome.alarms, daily, opt-in via memory itself) -----
+//
+// Applies time-based staleness to graph memory (never deletes — see
+// applyDecay's docstring) and prunes the graph back under its caps, then
+// reconciles the embedding index for anything pruneGraph dropped. Runs once
+// a day; cheap since the graph lives in chrome.storage.local, not OPFS.
+
+const MEMORY_DECAY_ALARM = 'memory_decay_sweep';
+
+async function syncMemoryDecayAlarm(): Promise<void> {
+  if (await getMemoryEnabled()) {
+    chrome.alarms.create(MEMORY_DECAY_ALARM, { periodInMinutes: 1440 });
+  } else {
+    chrome.alarms.clear(MEMORY_DECAY_ALARM);
+  }
+}
+
+async function runMemoryDecaySweep(): Promise<void> {
+  try {
+    if (!(await getMemoryEnabled())) return;
+    const graph = await getMemoryGraph();
+    const swept = pruneGraph(applyDecay(graph));
+    await saveMemoryGraph(swept);
+    const keptIds = new Set(swept.nodes.map((n) => n.id));
+    const droppedIds = graph.nodes.filter((n) => !keptIds.has(n.id)).map((n) => n.id);
+    if (droppedIds.length > 0) await memoryIndexRemove(droppedIds);
+  } catch {
+    // Best-effort maintenance; a failed sweep just retries on the next alarm.
+  }
+}
+
 void syncMailAlarm();
+void syncMemoryDecayAlarm();
 void reconcileScheduledAlarms();
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.ba_settings) void syncMailAlarm();
+  if (area !== 'local') return;
+  if (changes.ba_settings) void syncMailAlarm();
+  if (changes.ba_memory_enabled) void syncMemoryDecayAlarm();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === MAILBOX_ALARM) void runAutoMailboxRefresh();
+  if (alarm.name === MEMORY_DECAY_ALARM) void runMemoryDecaySweep();
   const scheduledTaskId = taskIdFromAlarm(alarm.name);
   if (scheduledTaskId) void runScheduledTaskById(scheduledTaskId, runtime);
 });
@@ -151,6 +189,7 @@ chrome.runtime.onInstalled.addListener(() => {
   void seedSkillsIfEmpty();
   void migrateLegacySites();
   void syncMailAlarm();
+  void syncMemoryDecayAlarm();
   void reconcileScheduledAlarms();
 });
 
