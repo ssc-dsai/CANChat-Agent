@@ -90,6 +90,23 @@ function decide(req: ChatRequest): ChatMessage {
       content: '{"title":"Test topic","summary":"A concise summary of the test conversation."}',
     };
   }
+  // Memory reflection: empty by default (the common case); REMEMBER_ME_DEMO in
+  // the turn's user text drives one extracted fact so a test can assert it lands
+  // in the graph.
+  if (system.includes('Extract durable facts about the USER')) {
+    const wantsMemory = latestUserText(req.messages).includes('REMEMBER_ME_DEMO');
+    return {
+      role: 'assistant',
+      content: wantsMemory
+        ? '{"memories":[{"kind":"preference","subject":"Test User","label":"Editor preference","summary":"Test User prefers dark mode in every app.","relations":[],"confidence":0.9,"durability":0.8,"evidence":"REMEMBER_ME_DEMO: I always use dark mode"}]}'
+        : '{"memories":[]}',
+    };
+  }
+  // Memory adjudication (supersede-vs-merge): always "merge" for the mock — no
+  // test currently exercises the supersede branch.
+  if (system.includes('Two memory facts about the same subject')) {
+    return { role: 'assistant', content: '{"supersedes": false}' };
+  }
 
   const hasToolResult = req.messages.some((m) => m.role === 'tool');
   const userMentions = (needle: string) =>
@@ -242,7 +259,9 @@ export async function startMockLlm(): Promise<MockLlm> {
       if (
         systemText.includes('strict reviewer') ||
         systemText.includes('compress a browser agent') ||
-        systemText.includes('label a conversation')
+        systemText.includes('label a conversation') ||
+        systemText.includes('Extract durable facts about the USER') ||
+        systemText.includes('Two memory facts about the same subject')
       ) {
         const message = decide(parsed);
         res.end(JSON.stringify({ id: 'chatcmpl-mock', choices: [{ index: 0, message, finish_reason: 'stop' }] }));

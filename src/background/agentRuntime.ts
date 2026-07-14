@@ -48,12 +48,18 @@ import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from
 import {
   emptyMemoryGraph,
   MEMORY_NODE_CAP,
+  mergeNodes,
+  nodeSimilarity,
+  parseReflection,
+  parseSupersedeVerdict,
   rankCoreMemoryNodes,
   renderCoreMemoryBlock,
   renderRelevantMemoryBlock,
+  shouldAdjudicate,
   type MemoryGraph,
   type MemoryNode,
   type MemoryNodeKind,
+  type ParsedMemoryCandidate,
 } from '../shared/memoryGraph';
 import { memoryIndexRemove, memoryIndexSearch, memoryIndexUpsert, rebuildMemoryIndex } from './memoryIndex';
 import { eventMatchesQuery, parseCalendarView, buildCalendarViewUrl } from '../shared/graphCalendar';
@@ -824,6 +830,7 @@ export class AgentRuntime {
         // survives service-worker eviction and shows up in History.
         void this.persistCurrentConversation();
         void this.maybeLearnLesson(settings, epoch);
+        void this.reflectMemories(settings, epoch);
         // Once the first exchange exists, generate a descriptive topic title.
         // Fire-and-forget so it never delays the user's next message; retries on
         // later turns until it succeeds, then locks (see titleIsAuto).
@@ -1053,6 +1060,140 @@ export class AgentRuntime {
       await saveLessons(lessons.slice(0, LESSON_MAX_ENTRIES));
     } catch {
       // Automatic lessons are opportunistic; never affect the completed task.
+    }
+  }
+
+  /**
+   * Post-conversation reflection: extract durable facts the user stated this
+   * turn into graph memory. Fires after every settled turn alongside
+   * `maybeLearnLesson` (same trigger conditions) — the common case is an
+   * empty candidate list, so most turns cost one cheap LLM call and nothing
+   * else. Every call here is a plain `complete()` with no tools, so this is
+   * safe to run unattended in principle; it currently shares
+   * `maybeLearnLesson`'s `!this.unattended` guard for consistency with the
+   * existing lesson-learning behavior.
+   */
+  private async reflectMemories(settings: Settings, epoch: number): Promise<void> {
+    if (this.taskEpoch !== epoch || this.stopRequested || this.unattended) return;
+    if (!(await getMemoryEnabled())) return;
+    const finalAnswer = [...this.messages].reverse().find((m) => m.role === 'assistant')?.text ?? '';
+    if (!this.lastUserText.trim() && !finalAnswer.trim()) return;
+
+    const prompt: LlmMessage[] = [
+      {
+        role: 'system',
+        content:
+          'Extract durable facts about the USER from this exchange — identity, role, projects, interests, preferences, ongoing work. ' +
+          'Not: task minutiae, page content, secrets, credentials, or anything situational to this one task. ' +
+          'Empty is the common, correct answer for most exchanges — only extract what will still be true and useful weeks from now. ' +
+          'Reply ONLY JSON: {"memories":[{"kind":"entity"|"fact"|"preference"|"event","subject":"<who/what, short>","label":"<short name>","summary":"<the fact, third person>","relations":[{"to":"<related subject>","relation":"<verb phrase>"}],"confidence":0-1,"durability":0-1,"evidence":"<verbatim excerpt, max 200 chars>"}]}. ' +
+          'durability: identity/preference facts ~0.7-0.9; situational/one-off facts ~0.2-0.4.',
+      },
+      {
+        role: 'user',
+        content: `User said:\n${this.lastUserText.slice(0, 1200)}\n\nAssistant replied:\n${finalAnswer.slice(0, 1200)}`,
+      },
+    ];
+    try {
+      const reply = await complete({ ...settings, maxTokens: 400, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
+      if (this.taskEpoch !== epoch) return;
+      const candidates = parseReflection(typeof reply.content === 'string' ? reply.content : '');
+      if (candidates.length === 0) return;
+
+      let graph = this.memoryGraph;
+      const now = new Date().toISOString();
+      const conversationId = this.currentConversationId ?? '';
+      const toUpsert: MemoryNode[] = [];
+      const toRemoveFromIndex: string[] = [];
+      const newId = () => `mem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      for (const cand of candidates) {
+        if (this.taskEpoch !== epoch) return; // aborted mid-reflection (new task started)
+        const prov = { conversationId, excerpt: cand.evidence || cand.summary.slice(0, 200), at: now };
+        let target = graph.nodes.find((n) => n.status === 'active' && nodeSimilarity(n, cand) >= 0.5);
+        if (!target) {
+          const hits = await memoryIndexSearch(settings, `${cand.label}: ${cand.summary}`, 3);
+          target = hits?.map((h) => graph.nodes.find((n) => n.id === h.nodeId)).find((n) => n?.status === 'active');
+        }
+        if (target && shouldAdjudicate(target, cand)) {
+          const supersedes = await this.adjudicateSupersede(settings, target, cand, epoch);
+          if (supersedes) {
+            const oldId = target.id;
+            const replacement: MemoryNode = {
+              id: newId(),
+              kind: cand.kind,
+              label: cand.label,
+              summary: cand.summary,
+              confidence: cand.confidence,
+              durability: cand.durability,
+              status: 'active',
+              createdAt: now,
+              updatedAt: now,
+              lastConfirmedAt: now,
+              provenance: [prov],
+            };
+            graph = {
+              ...graph,
+              nodes: [
+                ...graph.nodes.map((n) => (n.id === oldId ? { ...n, status: 'superseded' as const, supersededBy: replacement.id, updatedAt: now } : n)),
+                replacement,
+              ],
+            };
+            toUpsert.push(replacement);
+            toRemoveFromIndex.push(oldId);
+            continue;
+          }
+          // Adjudicated as reinforcement despite low text overlap — fall through to merge.
+        }
+        if (target) {
+          const merged = mergeNodes(target, cand, prov, now);
+          graph = { ...graph, nodes: graph.nodes.map((n) => (n.id === target!.id ? merged : n)) };
+          toUpsert.push(merged);
+        } else {
+          const node: MemoryNode = {
+            id: newId(),
+            kind: cand.kind,
+            label: cand.label,
+            summary: cand.summary,
+            confidence: cand.confidence,
+            durability: cand.durability,
+            status: 'active',
+            createdAt: now,
+            updatedAt: now,
+            lastConfirmedAt: now,
+            provenance: [prov],
+          };
+          graph = { ...graph, nodes: [...graph.nodes, node] };
+          toUpsert.push(node);
+        }
+      }
+
+      this.memoryGraph = graph;
+      await saveMemoryGraph(graph);
+      if (toRemoveFromIndex.length > 0) await memoryIndexRemove(toRemoveFromIndex);
+      if (toUpsert.length > 0) await this.upsertMemoryIndex(settings, toUpsert);
+    } catch {
+      // Reflection is opportunistic; never affect the completed task.
+    }
+  }
+
+  /** One adjudication call: does `candidate` supersede `existing`, or merely restate it? Fails closed (false) on any error. */
+  private async adjudicateSupersede(settings: Settings, existing: MemoryNode, candidate: ParsedMemoryCandidate, epoch: number): Promise<boolean> {
+    const prompt: LlmMessage[] = [
+      {
+        role: 'system',
+        content:
+          'Two memory facts about the same subject were matched but their text differs. Decide whether the NEW fact supersedes (replaces/updates) the EXISTING one, or is just a differently-worded restatement/addition that should be merged instead. ' +
+          'Reply ONLY JSON: {"supersedes": true|false}.',
+      },
+      { role: 'user', content: `EXISTING: ${existing.label}: ${existing.summary}\n\nNEW: ${candidate.label}: ${candidate.summary}` },
+    ];
+    try {
+      const reply = await complete({ ...settings, maxTokens: 20, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
+      if (this.taskEpoch !== epoch) return false;
+      return parseSupersedeVerdict(typeof reply.content === 'string' ? reply.content : '');
+    } catch {
+      return false;
     }
   }
 

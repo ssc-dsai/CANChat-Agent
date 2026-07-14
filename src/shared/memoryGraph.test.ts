@@ -13,10 +13,12 @@ import {
   nodeIdFromMemoryUrl,
   nodeSimilarity,
   parseReflection,
+  parseSupersedeVerdict,
   pruneGraph,
   rankCoreMemoryNodes,
   renderCoreMemoryBlock,
   renderRelevantMemoryBlock,
+  shouldAdjudicate,
   type MemoryEdge,
   type MemoryGraph,
   type MemoryNode,
@@ -280,6 +282,36 @@ describe('renderCoreMemoryBlock', () => {
     const block = renderCoreMemoryBlock(emptyMemoryGraph());
     expect(block).toContain('answer directly from them');
     expect(block).toContain('could plausibly be stale');
+  });
+});
+
+describe('shouldAdjudicate', () => {
+  it('is false for a near-identical match (reinforcement, not contradiction)', () => {
+    const existing = { label: 'Scott role', summary: 'Scott is a data scientist' };
+    expect(shouldAdjudicate(existing, existing)).toBe(false);
+  });
+
+  it('is true when a matched node has little text overlap (possible drift/contradiction)', () => {
+    const existing = { label: 'Scott role', summary: 'Scott is a data scientist' };
+    const candidate = { label: 'Scott job', summary: 'currently a product manager at Acme' };
+    expect(shouldAdjudicate(existing, candidate)).toBe(true);
+  });
+});
+
+describe('parseSupersedeVerdict', () => {
+  it('parses a true verdict', () => {
+    expect(parseSupersedeVerdict('{"supersedes": true}')).toBe(true);
+  });
+
+  it('fails closed (false) on false, malformed, or empty input', () => {
+    expect(parseSupersedeVerdict('{"supersedes": false}')).toBe(false);
+    expect(parseSupersedeVerdict('not json')).toBe(false);
+    expect(parseSupersedeVerdict('')).toBe(false);
+    expect(parseSupersedeVerdict('{}')).toBe(false);
+  });
+
+  it('strips a markdown code fence', () => {
+    expect(parseSupersedeVerdict('```json\n{"supersedes": true}\n```')).toBe(true);
   });
 });
 

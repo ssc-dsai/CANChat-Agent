@@ -170,6 +170,36 @@ export function nodeSimilarity(a: Pick<MemoryNode, 'label' | 'summary'>, b: Pick
   return overlap / Math.min(ta.size, tb.size);
 }
 
+/** Merge-target similarity below which a reflection hit looks like text drift (possible contradiction) rather than reinforcement, and is worth a real adjudication call. */
+export const ADJUDICATION_SIMILARITY_THRESHOLD = 0.3;
+
+/**
+ * True when a candidate matched an existing node (by embedding search or
+ * `nodeSimilarity`) but their text overlaps little — the sort of mismatch
+ * that could mean the candidate updates/contradicts the existing fact rather
+ * than merely restating it, and is worth one adjudication LLM call rather
+ * than a silent merge.
+ */
+export function shouldAdjudicate(existing: Pick<MemoryNode, 'label' | 'summary'>, candidate: Pick<ParsedMemoryCandidate, 'label' | 'summary'>): boolean {
+  return nodeSimilarity(existing, candidate) < ADJUDICATION_SIMILARITY_THRESHOLD;
+}
+
+/**
+ * Parse the adjudication model's reply — expected to be
+ * `{"supersedes": true|false}`. Fails closed (false = keep both / reinforce
+ * rather than supersede) on anything malformed, so a flaky adjudication call
+ * never silently discards an existing memory.
+ */
+export function parseSupersedeVerdict(raw: string): boolean {
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(stripCodeFence(raw)) as { supersedes?: unknown };
+    return parsed?.supersedes === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Merge a newly-extracted candidate into an existing node: union provenance,
  * take the max confidence, prefer the candidate's summary when it is more
