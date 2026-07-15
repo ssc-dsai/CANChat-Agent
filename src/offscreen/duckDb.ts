@@ -263,9 +263,18 @@ export async function importCsv(tableName: string, csv: string, persist?: boolea
     const tmpFile = `_import_${tableName}_${Date.now()}.csv`;
     await db.registerFileText(tmpFile, csv);
     const c = conn;
-    await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
-    await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_csv_auto('${tmpFile}')`);
-    await db.dropFile(tmpFile);
+    try {
+      await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
+      try {
+        await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_csv_auto('${tmpFile}')`);
+      } catch {
+        await c.query(
+          `CREATE TABLE "${tableName}" AS SELECT * FROM read_csv_auto('${tmpFile}', ignore_errors=true, all_varchar=1)`,
+        );
+      }
+    } finally {
+      await db.dropFile(tmpFile);
+    }
     if (persist !== false) await persistTable(tableName, projectId);
     return { ok: true, rowCount: await countRows(c, tableName) };
   } catch (e) {
@@ -279,9 +288,18 @@ export async function importJson(tableName: string, json: string, persist?: bool
     const tmpFile = `_import_${tableName}_${Date.now()}.json`;
     await db.registerFileText(tmpFile, json);
     const c = conn;
-    await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
-    await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_json_auto('${tmpFile}')`);
-    await db.dropFile(tmpFile);
+    try {
+      await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
+      try {
+        await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_json_auto('${tmpFile}')`);
+      } catch {
+        await c.query(
+          `CREATE TABLE "${tableName}" AS SELECT * FROM read_json_auto('${tmpFile}', ignore_errors=true, maximum_object_size=0)`,
+        );
+      }
+    } finally {
+      await db.dropFile(tmpFile);
+    }
     if (persist !== false) await persistTable(tableName, projectId);
     return { ok: true, rowCount: await countRows(c, tableName) };
   } catch (e) {
@@ -334,6 +352,24 @@ export function isOpenableExt(ext: string): boolean {
 async function readerSelect(ext: string, tmp: string): Promise<{ select: string; fallback?: string }> {
   if (FORMAT_READER[ext]) {
     const opts = ext === 'tsv' ? ", delim='\t'" : '';
+    if (ext === 'csv' || ext === 'tsv') {
+      return {
+        select: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}'${opts})`,
+        fallback: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}'${opts}, ignore_errors=true, all_varchar=1)`,
+      };
+    }
+    if (ext === 'json' || ext === 'ndjson') {
+      return {
+        select: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}')`,
+        fallback: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}', ignore_errors=true, maximum_object_size=0)`,
+      };
+    }
+    if (ext === 'parquet') {
+      return {
+        select: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}')`,
+        fallback: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}', union_by_name=true)`,
+      };
+    }
     return { select: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}'${opts})` };
   }
   if (SPATIAL_EXT.includes(ext)) {

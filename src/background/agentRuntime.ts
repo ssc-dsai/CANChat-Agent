@@ -201,6 +201,56 @@ interface PlanStep {
   status: PlanStepStatus;
 }
 
+function sanitizeTextFilename(filename: string): string {
+  return filename
+    .replace(/[\\/]/g, '_')
+    .replace(/[<>:"|?*\x00-\x1F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function fileExtension(filename: string): string {
+  const base = filename.split(/[\\/]/).pop() ?? filename;
+  const dot = base.lastIndexOf('.');
+  if (dot <= 0 || dot === base.length - 1) return '';
+  return base.slice(dot + 1).toLowerCase();
+}
+
+function mimeTypeForTextFile(filename: string): string {
+  switch (fileExtension(filename)) {
+    case 'md':
+    case 'markdown':
+      return 'text/markdown';
+    case 'txt':
+    case 'log':
+      return 'text/plain';
+    case 'csv':
+      return 'text/csv';
+    case 'json':
+      return 'application/json';
+    case 'yaml':
+    case 'yml':
+      return 'text/yaml';
+    case 'html':
+    case 'htm':
+      return 'text/html';
+    case 'xml':
+      return 'application/xml';
+    default:
+      return 'text/plain';
+  }
+}
+
+function encodeUtf8Base64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 /** Tools that mutate page or browser state and therefore need user approval. */
 const APPROVAL_REQUIRED = new Set([
   'click_element',
@@ -253,6 +303,7 @@ const READ_ONLY_TOOLS = new Set([
   'update_plan',
   'record_finding',
   'export_data',
+  'create_file',
   'create_word_document',
   'read_pdf',
   'read_office_document',
@@ -343,9 +394,10 @@ Planning multi-step tasks:
 - You can issue several independent read-only tool calls in one turn — they run in parallel (e.g. get_tab_content on several tabs at once).
 - Before giving your final answer, verify the goal is actually met (re-read the page or re-check the result) rather than assuming an action worked.
 - When the task is to collect structured information (one row per item, often across several pages), gather it as you go and call export_data with columns and rows — the user gets a downloadable CSV/JSON table.
+- When the user wants a text or markdown file, call create_file with a filename and full content — they get a downloadable .txt/.md card.
 - When the user wants a Word document, report, or formatted write-up to keep, call create_word_document with a title and markdown body — they get a downloadable .docx.
 - When the user wants a slide deck or presentation, call create_powerpoint with a title and an ordered slides array (each slide: title, bullets, optional speaker notes) — they get a downloadable .pptx.
-- When the task involves analysing, filtering, sorting, aggregating, joining, or comparing structured data, use the data analysis tools: (1) import_data to load CSV/JSON into the DuckDB engine, (2) query_data to run SQL queries (SELECT, WHERE, GROUP BY, ORDER BY, LIMIT, JOIN, window functions) and get results as JSON, (3) list_datasets to see what tables are loaded, (4) describe_dataset to see the schema. Import data first, then run multiple queries to explore and answer the question. For natural-language questions, translate them into SQL queries against the loaded data.
+- When the task involves analysing, filtering, sorting, aggregating, joining, or comparing structured data, use the data analysis tools: (1) import_data to load CSV/JSON/Parquet into the DuckDB engine when you already have the file contents, (2) query_data to run SQL queries (SELECT, WHERE, GROUP BY, ORDER BY, LIMIT, JOIN, window functions) and get results as JSON, (3) list_datasets to see what tables are loaded, (4) describe_dataset to see the schema. Import data first, then run multiple queries to explore and answer the question. For natural-language questions, translate them into SQL queries against the loaded data.
 - **NL→SQL examples:**
   - "What's the average salary by department?" → \`SELECT department, AVG(CAST(salary AS DOUBLE)) AS avg_salary FROM data GROUP BY department ORDER BY avg_salary DESC\`
   - "Find the top 5 most expensive products" → \`SELECT product, price FROM data ORDER BY CAST(price AS DOUBLE) DESC LIMIT 5\`
@@ -2574,7 +2626,7 @@ export class AgentRuntime {
         return JSON.stringify(await browser.navigate(tabId, url));
       }
       case 'search_web': {
-        const result = await browser.searchWeb(String(args.query));
+        const result = await browser.searchWeb(String(args.query), this.unattended);
         if (result.tabId > 0) await this.addToConversationGroup(result.tabId);
         return JSON.stringify({ ...result, group: this.groupName });
       }
@@ -2839,6 +2891,8 @@ export class AgentRuntime {
       }
       case 'export_data':
         return this.exportData(args);
+      case 'create_file':
+        return this.createFile(args);
       case 'create_word_document':
         return this.createWordDocument(args);
       case 'create_powerpoint':
@@ -2887,13 +2941,24 @@ export class AgentRuntime {
       case 'import_data': {
         const tableName = String(args.tableName ?? '').trim();
         const format = String(args.format ?? 'csv');
+        const raw = args.data;
+        if (!tableName || raw == null) return 'Error: import_data needs tableName and data.';
+        if (format === 'parquet') {
+          const bytesB64 = typeof raw === 'string' ? raw : '';
+          if (!bytesB64) return 'Error: import_data needs base64-encoded parquet bytes in data.';
+          const fileName = `${tableName}.parquet`;
+          const ores = await duckDbOpenFile(fileName, bytesB64, this.activeProjectId ?? undefined);
+          if (!ores.ok) return `Error: ${ores.error}`;
+          const opened = (ores.tables ?? []).filter((t) => visibleToProject(t.projectId, this.activeProjectId));
+          this.trackDatasets(opened.map((t) => t.name));
+          const summary = opened.map((t) => `${t.name} (${t.rowCount} rows, ${t.columns.length} cols)`).join('; ');
+          return `Imported ${opened.length} table(s) from parquet data into "${tableName}": ${summary}. You can now query it with query_data.`;
+        }
         // Models often emit `data` as a real JSON array/object rather than a string,
         // even though the schema says string. String() would turn that into
         // "[object Object],…" which read_json_auto rejects — so stringify non-strings.
-        const raw = args.data;
-        const data =
-          raw == null ? '' : typeof raw === 'string' ? raw : JSON.stringify(raw);
-        if (!tableName || !data) return 'Error: import_data needs tableName and data.';
+        const data = typeof raw === 'string' ? raw : JSON.stringify(raw);
+        if (!data) return 'Error: import_data needs tableName and data.';
         const ires =
           format === 'json'
             ? await duckDbImportJson(tableName, data, this.activeProjectId ?? undefined)
@@ -3400,6 +3465,26 @@ export class AgentRuntime {
       dataExport,
     });
     return `Exported ${rows.length} rows${note}. The user can download it as CSV or JSON from the card.`;
+  }
+
+  private createFile(args: Record<string, unknown>): string {
+    const filename = sanitizeTextFilename(String(args.filename ?? '').trim());
+    const content = String(args.content ?? '');
+    if (!filename) {
+      return 'Error: create_file needs a filename.';
+    }
+    const fileArtifact: FileArtifact = {
+      filename,
+      mimeType: mimeTypeForTextFile(filename),
+      dataBase64: encodeUtf8Base64(content),
+    };
+    this.pushChat({
+      role: 'notice',
+      text: `Prepared a file: "${filename}". Download it from the card below.`,
+      timestamp: new Date().toISOString(),
+      fileArtifact,
+    });
+    return `Created the file "${filename}" (${content.length} characters). The user can download it from the card.`;
   }
 
   /**

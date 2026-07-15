@@ -100,7 +100,11 @@ export function Workspace() {
       case 'tools':
         return <CapabilitiesSection defaultOpen />;
       case 'skills':
-        return <SkillsSection />;
+        return (
+          <div class="ws-skills-page">
+            <SkillsSection />
+          </div>
+        );
       case 'models':
         return (
           <div class="ws-models-page">

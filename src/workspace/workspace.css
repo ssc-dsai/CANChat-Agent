@@ -79,8 +79,8 @@ html, body, #app { margin: 0; height: 100%; font-family: -apple-system, BlinkMac
 
 /* ===== Console pages that reuse sidebar accordion sections (Knowledge, Skills,
    Tools, Models, Settings) — cap width for readability in the full-tab layout. */
-.ws-model-page, .ws-settings-page, .ws-projects-page { max-width: 640px; }
-.ws-model-page h2, .ws-settings-page h2, .ws-projects-page h2 { margin: 0 0 12px; font-size: 16px; }
+.ws-model-page, .ws-settings-page, .ws-projects-page, .ws-skills-page { max-width: 760px; }
+.ws-model-page h2, .ws-settings-page h2, .ws-projects-page h2, .ws-skills-page h2 { margin: 0 0 12px; font-size: 16px; }
 
 /* ===== Projects page ===== */
 .ws-project-row { display: flex; align-items: center; gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--border); }

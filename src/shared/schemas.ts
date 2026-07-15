@@ -735,6 +735,28 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'create_file',
+      description:
+        'Generate a downloadable plain-text file such as .txt or .md. Use when the user wants a text note, markdown document, config file, or other text-based file they can save. The user gets a download card.',
+      parameters: {
+        type: 'object',
+        properties: {
+          filename: {
+            type: 'string',
+            description: 'Filename including extension, such as notes.md or summary.txt.',
+          },
+          content: {
+            type: 'string',
+            description: 'The complete file contents as plain text or markdown.',
+          },
+        },
+        required: ['filename', 'content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_word_document',
       description:
         'Generate a downloadable Microsoft Word (.docx) file from markdown. Use when the user wants a Word document, report, letter, or formatted write-up they can save. The markdown supports headings, paragraphs, bold/italic, bulleted/numbered lists, tables, and code blocks. The user gets a download card.',
@@ -1127,13 +1149,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'import_data',
-      description: 'Import structured data into the in-memory DuckDB engine so it can be queried with query_data. Accepts CSV or JSON content. Creates or replaces a table with the given name. For JSON, data must be an ARRAY OF ROW OBJECTS (one object per row, sharing the same keys) — e.g. [{"price":500000,"mls":"A1"},{"price":600000,"mls":"A2"}] — not an object wrapping the array. Each key becomes a column.',
+      description: 'Import structured data into the in-memory DuckDB engine so it can be queried with query_data. Accepts CSV, JSON, or Parquet content. Creates or replaces a table with the given name. For JSON, data must be an ARRAY OF ROW OBJECTS (one object per row, sharing the same keys) — e.g. [{"price":500000,"mls":"A1"},{"price":600000,"mls":"A2"}] — not an object wrapping the array. Each key becomes a column. For Parquet, data must be base64-encoded file bytes.',
       parameters: {
         type: 'object',
         properties: {
           tableName: { type: 'string', description: 'Name for the table to create/replace.' },
-          format: { type: 'string', enum: ['csv', 'json'], description: 'Data format: csv or json. Use json for an array of records.' },
-          data: { type: 'string', description: 'The data to import. For csv: the full CSV text (header row + data rows). For json: an array of row objects (may be supplied as a JSON string or a JSON array).' },
+          format: { type: 'string', enum: ['csv', 'json', 'parquet'], description: 'Data format: csv, json, or parquet. Use json for an array of records.' },
+          data: { type: 'string', description: 'The data to import. For csv: the full CSV text (header row + data rows). For json: an array of row objects (may be supplied as a JSON string or a JSON array). For parquet: the base64-encoded parquet file bytes.' },
         },
         required: ['tableName', 'format', 'data'],
       },
