@@ -115,7 +115,7 @@ export type RuntimeRequest =
   | { type: 'mailbox_disconnect' }
   | { type: 'index_sharepoint_library'; repo: string; libraryUrl: string }
   | { type: 'sharepoint_session'; base?: string }
-  | { type: 'open_data_files'; files: DataFileUpload[] }
+  | { type: 'open_data_files'; files: DataFileUpload[]; projectId?: string }
   | { type: 'transcribe_audio'; audioDataUrl: string }
   // Probe the signed-in environment (M365 identity, open work systems, locale) to
   // populate memory; only honored when the memory feature is enabled.
@@ -162,7 +162,7 @@ export type RuntimeRequest =
   | { type: 'products_import'; products: ExportedProduct[] }
   // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
   // service worker owns the offscreen document, so it routes the op for them.
-  | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };
+  | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string; projectId?: string };
 
 /** One picked file on its way into a repository (see shared/uploadFile.ts). */
 export interface UploadFile {
@@ -464,6 +464,8 @@ export interface DuckDbRequest {
   /** Original filename for `open_file` — drives format detection + table naming. */
   name?: string;
   persist?: boolean;
+  /** Project to tag a newly persisted table with (import_csv/import_json/open_file/persist_table). */
+  projectId?: string;
 }
 
 /**
@@ -486,6 +488,8 @@ export interface DuckDbTableInfo {
   rowCount: number;
   persisted?: boolean;
   columnProfiles?: ColumnProfile[];
+  /** Nullable project scope for a persisted table; undefined/null means global (visible under every project). */
+  projectId?: string;
 }
 
 export interface DuckDbResponse {

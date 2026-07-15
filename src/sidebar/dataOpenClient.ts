@@ -24,7 +24,7 @@ export interface OpenDataResult {
 }
 
 /** Open data files into the engine; client-side skips (too big/unsupported) merge in. */
-export async function openDataFiles(files: File[]): Promise<OpenDataResult> {
+export async function openDataFiles(files: File[], projectId?: string): Promise<OpenDataResult> {
   const skips: AddFileResult[] = [];
   const payload: DataFileUpload[] = [];
   for (const file of files) {
@@ -41,7 +41,7 @@ export async function openDataFiles(files: File[]): Promise<OpenDataResult> {
 
   if (payload.length === 0) return { results: skips, tables: [] };
 
-  const resp = (await chrome.runtime.sendMessage({ type: 'open_data_files', files: payload })) as
+  const resp = (await chrome.runtime.sendMessage({ type: 'open_data_files', files: payload, projectId })) as
     | (OpenDataResponse & { results: AddFileResult[] })
     | undefined;
   const serverResults = resp?.results ?? payload.map((f) => ({ name: f.name, ok: false, error: resp?.error ?? 'no response' }));

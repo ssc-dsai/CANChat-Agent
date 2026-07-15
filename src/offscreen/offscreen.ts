@@ -463,10 +463,10 @@ chrome.runtime.onMessage.addListener((message: DuckDbRequest, _sender, sendRespo
           result = await duck.query(message.sql ?? '');
           break;
         case 'import_csv':
-          result = await duck.importCsv(message.tableName ?? 'table', message.data ?? '', message.persist);
+          result = await duck.importCsv(message.tableName ?? 'table', message.data ?? '', message.persist, message.projectId);
           break;
         case 'import_json':
-          result = await duck.importJson(message.tableName ?? 'table', message.data ?? '', message.persist);
+          result = await duck.importJson(message.tableName ?? 'table', message.data ?? '', message.persist, message.projectId);
           break;
         case 'list_tables':
           result = await duck.listTables();
@@ -475,7 +475,7 @@ chrome.runtime.onMessage.addListener((message: DuckDbRequest, _sender, sendRespo
           result = await duck.describeTable(message.tableName ?? '');
           break;
         case 'persist_table':
-          result = await duck.persistTableByName(message.tableName ?? '');
+          result = await duck.persistTableByName(message.tableName ?? '', message.projectId);
           break;
         case 'load_table':
           result = await duck.loadTable(message.tableName ?? '');
@@ -485,7 +485,7 @@ chrome.runtime.onMessage.addListener((message: DuckDbRequest, _sender, sendRespo
           break;
         case 'open_file': {
           const bytes = Uint8Array.from(atob(message.bytesB64 ?? ''), (ch) => ch.charCodeAt(0));
-          const tables = await duck.openBuffer(message.name ?? 'data', bytes);
+          const tables = await duck.openBuffer(message.name ?? 'data', bytes, message.projectId);
           result = { ok: true, tables };
           break;
         }

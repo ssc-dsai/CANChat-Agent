@@ -23,6 +23,8 @@ interface PersistedMeta {
   columns: string[];
   columnTypes: string[];
   rowCount: number;
+  /** Nullable project scope (filter, not partition — see shared/memoryGraph.ts visibleToProject). */
+  projectId?: string;
 }
 
 async function datasetsDir(): Promise<FileSystemDirectoryHandle> {
@@ -229,11 +231,19 @@ export async function query(sql: string): Promise<DuckDbResponse> {
   }
 }
 
-async function persistTable(tableName: string): Promise<void> {
+/**
+ * Persist a table's rows + schema to OPFS. `projectId` tags the dataset's
+ * scope; when omitted (a routine re-persist rather than a fresh import/save),
+ * whatever scope the table already had on disk is preserved rather than
+ * silently cleared.
+ */
+async function persistTable(tableName: string, projectId?: string): Promise<void> {
   const dump = await dumpTable(tableName);
   if (!dump) return;
   const dir = await datasetDir(tableName);
-  await persistMeta(dir, { columns: dump.columns, columnTypes: dump.columnTypes, rowCount: dump.rows.length });
+  const existing = await readMeta(dir);
+  const effectiveProjectId = projectId !== undefined ? projectId : existing?.projectId;
+  await persistMeta(dir, { columns: dump.columns, columnTypes: dump.columnTypes, rowCount: dump.rows.length, projectId: effectiveProjectId });
   await persistData(dir, dump.rows);
 }
 
@@ -247,7 +257,7 @@ async function countRows(c: typeof conn, tableName: string): Promise<number> {
   }
 }
 
-export async function importCsv(tableName: string, csv: string, persist?: boolean): Promise<DuckDbResponse> {
+export async function importCsv(tableName: string, csv: string, persist?: boolean, projectId?: string): Promise<DuckDbResponse> {
   try {
     await ensureDb();
     const tmpFile = `_import_${tableName}_${Date.now()}.csv`;
@@ -256,14 +266,14 @@ export async function importCsv(tableName: string, csv: string, persist?: boolea
     await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
     await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_csv_auto('${tmpFile}')`);
     await db.dropFile(tmpFile);
-    if (persist !== false) await persistTable(tableName);
+    if (persist !== false) await persistTable(tableName, projectId);
     return { ok: true, rowCount: await countRows(c, tableName) };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
 }
 
-export async function importJson(tableName: string, json: string, persist?: boolean): Promise<DuckDbResponse> {
+export async function importJson(tableName: string, json: string, persist?: boolean, projectId?: string): Promise<DuckDbResponse> {
   try {
     await ensureDb();
     const tmpFile = `_import_${tableName}_${Date.now()}.json`;
@@ -272,7 +282,7 @@ export async function importJson(tableName: string, json: string, persist?: bool
     await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
     await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_json_auto('${tmpFile}')`);
     await db.dropFile(tmpFile);
-    if (persist !== false) await persistTable(tableName);
+    if (persist !== false) await persistTable(tableName, projectId);
     return { ok: true, rowCount: await countRows(c, tableName) };
   } catch (e) {
     return { ok: false, error: String(e) };
@@ -360,7 +370,7 @@ async function tableInfo(name: string): Promise<DuckDbTableInfo> {
 }
 
 /** Load one registered buffer (a single tabular file) into a new table. */
-async function loadOne(name: string, bytes: Uint8Array, used: Set<string>): Promise<DuckDbTableInfo> {
+async function loadOne(name: string, bytes: Uint8Array, used: Set<string>, projectId?: string): Promise<DuckDbTableInfo> {
   const ext = extOf(name);
   if (!isOpenableExt(ext)) throw new Error(`Unsupported data file: ${name}`);
   const c = await ensureDb();
@@ -381,23 +391,23 @@ async function loadOne(name: string, bytes: Uint8Array, used: Set<string>): Prom
   } finally {
     await db.dropFile(tmp);
   }
-  await persistTable(table);
+  await persistTable(table, projectId);
   return tableInfo(table);
 }
 
 /** Recurse into the entries, handling zip members and single files alike. */
-async function openInto(name: string, bytes: Uint8Array, used: Set<string>): Promise<DuckDbTableInfo[]> {
+async function openInto(name: string, bytes: Uint8Array, used: Set<string>, projectId?: string): Promise<DuckDbTableInfo[]> {
   if (extOf(name) === 'zip') {
     const out: DuckDbTableInfo[] = [];
     const entries = unzipSync(bytes);
     for (const [member, data] of Object.entries(entries)) {
       if (member.endsWith('/') || member.startsWith('__MACOSX')) continue;
       if (!ARCHIVE_MEMBER_EXT.includes(extOf(member))) continue;
-      out.push(...(await openInto(member, data, used)));
+      out.push(...(await openInto(member, data, used, projectId)));
     }
     return out;
   }
-  return [await loadOne(name, bytes, used)];
+  return [await loadOne(name, bytes, used, projectId)];
 }
 
 /**
@@ -406,10 +416,10 @@ async function openInto(name: string, bytes: Uint8Array, used: Set<string>): Pro
  * info for each created table. Geospatial formats are read through the
  * locally-bundled spatial extension.
  */
-export async function openBuffer(name: string, bytes: Uint8Array): Promise<DuckDbTableInfo[]> {
+export async function openBuffer(name: string, bytes: Uint8Array, projectId?: string): Promise<DuckDbTableInfo[]> {
   await ensureDb();
   const used = await existingTableNames();
-  const tables = await openInto(name, bytes, used);
+  const tables = await openInto(name, bytes, used, projectId);
   if (tables.length === 0) {
     throw new Error(
       `No supported data files found in ${name}. The data engine opens CSV, TSV, JSON, NDJSON, Parquet, ` +
@@ -429,6 +439,7 @@ export async function listTables(): Promise<DuckDbResponse> {
     const tables: DuckDbTableInfo[] = [];
     for (const nm of names) {
       const p = persisted.includes(nm);
+      const projectId = p ? (await readMeta(await datasetDir(nm)))?.projectId : undefined;
       try {
         const desc = await c.query(`SELECT COUNT(*) as cnt FROM "${nm}"`);
         const cnt = Number(desc.toArray()[0].cnt ?? 0);
@@ -439,9 +450,10 @@ export async function listTables(): Promise<DuckDbResponse> {
           columnTypes: columnTypesFromArrow(colResult),
           rowCount: cnt,
           persisted: p || undefined,
+          projectId,
         });
       } catch {
-        tables.push({ name: nm, columns: [], columnTypes: [], rowCount: 0, persisted: true });
+        tables.push({ name: nm, columns: [], columnTypes: [], rowCount: 0, persisted: true, projectId });
       }
     }
     return { ok: true, tables };
@@ -491,26 +503,32 @@ export async function describeTable(tableName: string): Promise<DuckDbResponse> 
     const count = await c.query(`SELECT COUNT(*) as cnt FROM "${tableName}"`);
     const rowCount = Number(count.toArray()[0].cnt ?? 0);
     const columnProfiles = await profileColumns(c, tableName);
+    // Only touch OPFS for a table known to be persisted — datasetDir() would
+    // otherwise create an empty directory as a side effect of merely checking.
+    const isPersisted = (await listPersisted()).includes(tableName);
+    const projectId = isPersisted ? (await readMeta(await datasetDir(tableName)))?.projectId : undefined;
     return {
       ok: true,
       columns: cols,
       columnTypes: types,
       rows,
       rowCount,
-      tables: [{ name: tableName, columns: rows.map((r) => r[0]), columnTypes: rows.map((r) => r[1]), rowCount, columnProfiles }],
+      tables: [{ name: tableName, columns: rows.map((r) => r[0]), columnTypes: rows.map((r) => r[1]), rowCount, columnProfiles, projectId }],
     };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
 }
 
-export async function persistTableByName(tableName: string): Promise<DuckDbResponse> {
+export async function persistTableByName(tableName: string, projectId?: string): Promise<DuckDbResponse> {
   try {
     await ensureDb();
     const dump = await dumpTable(tableName);
     if (!dump) return { ok: false, error: `Table "${tableName}" not found.` };
     const dir = await datasetDir(tableName);
-    await persistMeta(dir, { columns: dump.columns, columnTypes: dump.columnTypes, rowCount: dump.rows.length });
+    const existing = await readMeta(dir);
+    const effectiveProjectId = projectId !== undefined ? projectId : existing?.projectId;
+    await persistMeta(dir, { columns: dump.columns, columnTypes: dump.columnTypes, rowCount: dump.rows.length, projectId: effectiveProjectId });
     await persistData(dir, dump.rows);
     return { ok: true, rowCount: dump.rows.length };
   } catch (e) {

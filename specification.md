@@ -627,6 +627,24 @@ classification, non-gated; datasets persist to OPFS)
   workspace page via a **Profile** button per table.
 - `persist_dataset {tableName}` / `load_dataset {tableName}` / `drop_dataset {tableName}`
   — explicitly persist, reload, or permanently delete a dataset (memory + OPFS).
+  **Project-scoped** (Structured Data RAG MVP item #3, mirroring the existing
+  memory/skills/capabilities pattern — see `visibleToProject`,
+  `shared/memoryGraph.ts`): persisting a table (via `import_data`,
+  `open_data_url`, or `persist_dataset`) tags its OPFS `meta.json` with
+  `AgentRuntime.activeProjectId`; a routine re-persist that doesn't pass a
+  project id preserves whatever the table already had rather than clearing it.
+  `list_datasets` filters to datasets visible under the active project (global
+  = no `projectId`, else exact match) before returning names, so a
+  differently-scoped dataset's name is never disclosed to the model at all;
+  `describe_dataset`/`persist_dataset`/`load_dataset`/`drop_dataset` each
+  re-check visibility by name (`AgentRuntime.isDatasetVisible`) before acting,
+  so guessing an exact name from a different project still fails. This is a
+  filter, not a partition — `query_data`'s free-form SQL is **not** scanned
+  for table references, so a model that already knows another project's exact
+  table name (e.g. from stale context) could still `SELECT` it directly; true
+  per-query enforcement is a known gap, not solved here. The Datasets
+  workspace page applies the same filter client-side, reading
+  `ba_active_project` the same way `ProjectSwitcher.tsx` does.
 
 **Knowledge & output**
 - `save_app_playbook {origin, name, description, content, reason}` — persist a

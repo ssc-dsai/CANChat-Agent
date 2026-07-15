@@ -696,15 +696,15 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
     return true;
   }
   if (request.type === 'duckdb') {
-    const { op, sql, tableName, data } = request;
+    const { op, sql, tableName, data, projectId } = request;
     const run = (): Promise<unknown> => {
       switch (op) {
         case 'query': return duckDbQuery(sql ?? '');
-        case 'import_csv': return duckDbImportCsv(tableName ?? 'table', data ?? '');
-        case 'import_json': return duckDbImportJson(tableName ?? 'table', data ?? '');
+        case 'import_csv': return duckDbImportCsv(tableName ?? 'table', data ?? '', projectId);
+        case 'import_json': return duckDbImportJson(tableName ?? 'table', data ?? '', projectId);
         case 'list_tables': return duckDbListTables();
         case 'describe_table': return duckDbDescribeTable(tableName ?? '');
-        case 'persist_table': return duckDbPersistTable(tableName ?? '');
+        case 'persist_table': return duckDbPersistTable(tableName ?? '', projectId);
         case 'load_table': return duckDbLoadTable(tableName ?? '');
         case 'drop_table': return duckDbDropTable(tableName ?? '');
         default: return Promise.resolve({ ok: false, error: `Unknown DuckDB op: ${String(op)}` });
@@ -718,7 +718,7 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
       const results = [];
       const allTables = [];
       for (const file of request.files) {
-        const r = await duckDbOpenFile(file.name, file.bytesB64);
+        const r = await duckDbOpenFile(file.name, file.bytesB64, request.projectId);
         results.push({ name: file.name, ok: r.ok, error: r.error });
         if (r.ok && r.tables) allTables.push(...r.tables);
       }

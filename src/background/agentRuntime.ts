@@ -2893,7 +2893,10 @@ export class AgentRuntime {
         const data =
           raw == null ? '' : typeof raw === 'string' ? raw : JSON.stringify(raw);
         if (!tableName || !data) return 'Error: import_data needs tableName and data.';
-        const ires = format === 'json' ? await duckDbImportJson(tableName, data) : await duckDbImportCsv(tableName, data);
+        const ires =
+          format === 'json'
+            ? await duckDbImportJson(tableName, data, this.activeProjectId ?? undefined)
+            : await duckDbImportCsv(tableName, data, this.activeProjectId ?? undefined);
         if (!ires.ok) return `Error: ${ires.error}`;
         this.trackDatasets([tableName]);
         const n = ires.rowCount ?? 0;
@@ -2915,7 +2918,7 @@ export class AgentRuntime {
         } catch (e) {
           return `Error: could not fetch ${url}: ${String(e)}`;
         }
-        const ores = await duckDbOpenFile(fileName, bytesB64);
+        const ores = await duckDbOpenFile(fileName, bytesB64, this.activeProjectId ?? undefined);
         if (!ores.ok) return `Error: ${ores.error}`;
         const opened = ores.tables ?? [];
         this.trackDatasets(opened.map((t) => t.name));
@@ -2925,12 +2928,18 @@ export class AgentRuntime {
       case 'list_datasets': {
         const lres = await duckDbListTables();
         if (!lres.ok) return `Error: ${lres.error}`;
-        const names = (lres.tables ?? []).map((t) => t.name);
+        // Filter, not partition (see visibleToProject) — a dataset persisted
+        // under a different active project simply doesn't appear here, so the
+        // model never learns its name to reference in a later query.
+        const names = (lres.tables ?? [])
+          .filter((t) => visibleToProject(t.projectId, this.activeProjectId))
+          .map((t) => t.name);
         return names.length === 0 ? 'No tables loaded. Use import_data to load data first.' : JSON.stringify(names);
       }
       case 'describe_dataset': {
         const tableName = String(args.tableName ?? '').trim();
         if (!tableName) return 'Error: describe_dataset needs a tableName.';
+        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
         const dres = await duckDbDescribeTable(tableName);
         if (!dres.ok) return `Error: ${dres.error}`;
         return JSON.stringify({
@@ -2944,13 +2953,15 @@ export class AgentRuntime {
       case 'persist_dataset': {
         const tableName = String(args.tableName ?? '').trim();
         if (!tableName) return 'Error: persist_dataset needs a tableName.';
-        const pres = await duckDbPersistTable(tableName);
+        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
+        const pres = await duckDbPersistTable(tableName, this.activeProjectId ?? undefined);
         if (!pres.ok) return `Error: ${pres.error}`;
         return `Persisted dataset "${tableName}" (${pres.rowCount ?? 0} rows) to on-device storage. It will auto-restart on next load.`;
       }
       case 'load_dataset': {
         const tableName = String(args.tableName ?? '').trim();
         if (!tableName) return 'Error: load_dataset needs a tableName.';
+        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
         const lres = await duckDbLoadTable(tableName);
         if (!lres.ok) return `Error: ${lres.error}`;
         return `Loaded dataset "${tableName}" (${lres.rowCount ?? 0} rows) from on-device storage. You can now query it with query_data.`;
@@ -2958,6 +2969,7 @@ export class AgentRuntime {
       case 'drop_dataset': {
         const tableName = String(args.tableName ?? '').trim();
         if (!tableName) return 'Error: drop_dataset needs a tableName.';
+        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
         const drres = await duckDbDropTable(tableName);
         if (!drres.ok) return `Error: ${drres.error}`;
         this.loadedDatasets = this.loadedDatasets.filter((n) => n !== tableName);
@@ -3646,6 +3658,22 @@ export class AgentRuntime {
 
   private notice(text: string): void {
     this.pushChat({ role: 'notice', text, timestamp: new Date().toISOString() });
+  }
+
+  /**
+   * Filter, not partition (see visibleToProject): a dataset persisted under a
+   * different active project is invisible to describe/persist/load/drop, even
+   * if the model somehow already knows its exact name (it can't discover it
+   * via list_datasets, which applies the same filter). Fails open on an
+   * engine error or an in-memory-only table absent from listTables — those
+   * aren't scoping decisions, and the underlying call surfaces its own error.
+   */
+  private async isDatasetVisible(tableName: string): Promise<boolean> {
+    const lres = await duckDbListTables();
+    if (!lres.ok) return true;
+    const t = (lres.tables ?? []).find((x) => x.name === tableName);
+    if (!t) return true;
+    return visibleToProject(t.projectId, this.activeProjectId);
   }
 
   /** Remember table names so the working-state block can advertise them (deduped). */
