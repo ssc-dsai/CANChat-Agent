@@ -595,9 +595,9 @@ Three collapsible sections (collapsed by default — click to expand):
 
 For more room than the side panel offers, click **Open workspace** to open a full
 browser tab with the same conversation plus a dedicated page per management area:
-**Chat**, **Projects**, **Knowledge**, **Memory**, **Skills**, **Tools**, **Models**,
-**Datasets**, and **Settings** (language + Backup & Restore), alongside result
-viewers for data tables and images. Knowledge, Skills, and Tools are the same
+**Chat**, **Projects**, **Knowledge**, **Memory**, **Automations**, **Products**,
+**Skills**, **Tools**, **Models**, **Datasets**, and **Settings** (language +
+Backup & Restore), alongside result viewers for data tables and images. Knowledge, Skills, and Tools are the same
 editors described above, just given a full page instead of a collapsible section;
 **Models** is a focused connection editor (endpoint, key, model, API version,
 temperature, max tokens) for when you just need to swap or test a model without
@@ -665,8 +665,9 @@ agent does without you watching turn by turn — lives:
   truncated — no need to hover to read it. When a run finishes you'll get a
   desktop notification (click it to jump straight to this page) even if the
   sidebar wasn't open; if that run created a file (e.g. "create a PowerPoint of
-  today's headlines"), it's downloaded automatically to your Downloads folder —
-  its filename is both in the notification and listed under that run here.
+  today's headlines"), it's saved to the **Products** page (see below) rather
+  than forced into an OS download prompt — handy if you have several jobs
+  running and don't want a download popup for each one.
 - **Workflows.** A named, ordered chain of your existing skills — e.g. a "Morning
   routine" workflow that runs `/research` then `/search-mail` in sequence.
   Create one from the page (name it, list the skills in order); it's not a new
@@ -682,6 +683,18 @@ freely, but a state-changing action (clicking something, filling a form,
 sending mail) still needs your approval, so it simply pauses and waits rather
 than acting without you. Nothing here can do something a normal chat message
 couldn't already do with your approval; these just decide *when* it runs.
+
+### Products
+
+Files a scheduled task or event trigger generates — a PowerPoint, a Word
+document — land on the **Products** page in the Workspace, not your OS
+Downloads folder. Each entry shows its filename, when it was created, its
+size, and which task or trigger produced it; click **Download** to save a
+copy wherever you like, or **✕** to delete it once you're done. They're
+stored on-device (in the browser's private file system) and never expire on
+their own, so a week of morning digests won't scatter files across your
+Downloads folder — they're all in one place, timestamped, until you clear
+them.
 
 ---
 

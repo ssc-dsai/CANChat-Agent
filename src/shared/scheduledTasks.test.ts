@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { buildRunNotificationMessage, computeNextRunAt, nextRunFromSchedule, parseLocalTimeOfDay } from './scheduledTasks';
 
 describe('buildRunNotificationMessage', () => {
-  it('mentions downloaded file names on success', () => {
-    expect(buildRunNotificationMessage('ok', undefined, ['headlines.pptx'])).toContain('Saved to Downloads: headlines.pptx');
+  it('mentions saved product file names on success', () => {
+    expect(buildRunNotificationMessage('ok', undefined, ['headlines.pptx'])).toContain('Saved to Products: headlines.pptx');
   });
 
-  it('omits the Downloads line when nothing was generated', () => {
-    expect(buildRunNotificationMessage('ok', undefined, undefined)).not.toContain('Downloads');
-    expect(buildRunNotificationMessage('ok', undefined, [])).not.toContain('Downloads');
+  it('omits the Products line when nothing was generated', () => {
+    expect(buildRunNotificationMessage('ok', undefined, undefined)).not.toContain('Products');
+    expect(buildRunNotificationMessage('ok', undefined, [])).not.toContain('Products');
   });
 
   it('surfaces the error text on failure', () => {

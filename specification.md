@@ -289,6 +289,8 @@ it can't regress onboarding — plus `ModelProfilesSection.tsx` below it for nam
 alternate-endpoint profiles and role routing; see §9 *Model orchestration*),
 **Automations** (`AutomationsPage.tsx` — scheduled tasks, workflows, and
 event triggers; see §9 *Agent platform*),
+**Products** (`ProductsPage.tsx` — files those runs generate, OPFS-backed;
+see §9 *Agent platform*),
 **Datasets** (`DatasetBrowser.tsx` — DuckDB: list/preview
 tables, import CSV/JSON, run SQL via the `duckdb` `RuntimeRequest`), **Data**
 (`DataViewer.tsx`, over `export_data` results), **Image** (`ImageViewer.tsx`, full-size
@@ -1096,13 +1098,29 @@ untouched by any of this):
   text pulled out as pure `buildRunNotificationMessage` for testability;
   degrades to a no-op if the `notifications` permission/API is unavailable)
   fires on every run, clicking it opens the Automations page; any
-  `FileArtifact` produced (e.g. `create_powerpoint`) is auto-downloaded via
-  `chrome.downloads.download` from `AgentRuntime.pushChat` (only when
+  `FileArtifact` produced (e.g. `create_powerpoint`) is saved into the durable
+  **Products** store (`AgentRuntime.pushChat` → `productSave`, only when
   `this.unattended` — an attended turn still uses the click-to-download card,
-  unchanged) rather than only ever rendering as a card no one is present to
-  click; `runScheduledTask`'s return value carries `conversationId` and
-  `fileArtifactNames`, threaded into `ScheduledRun`/`TriggerRun` and shown in
-  full (not truncated to a hover tooltip) on the Automations page.
+  unchanged) rather than either only rendering as a card no one is present to
+  click, or firing an OS download prompt per run (a real annoyance once
+  several jobs are scheduled); `runScheduledTask`'s return value carries
+  `conversationId` and `fileArtifactNames`, threaded into
+  `ScheduledRun`/`TriggerRun` and shown in full (not truncated to a hover
+  tooltip) on the Automations page.
+- **Products** (`offscreen/productStore.ts`, `shared/messages.ts`
+  `ProductRequest`/`ProductMeta`) — an OPFS-backed store for files unattended
+  runs generate, mirroring `repoStore.ts`'s pattern (offscreen-document-only;
+  the service worker reaches it via `offscreenClient.ts`'s
+  `productSave`/`productList`/`productGet`/`productDelete` → `target:
+  'offscreen-product'` messages) but laid out one self-contained item per
+  directory (`products/<id>/{meta.json, blob}`), closer to `duckDb.ts`'s
+  per-dataset directories than `repoStore.ts`'s single shared corpus. Each
+  `ProductMeta {id, filename, mimeType, createdAt, sizeBytes, sourceTitle?,
+  conversationId?}` is retrievable by id (base64 round-trip through the same
+  bridge) and listed newest-first. UI: `src/workspace/ProductsPage.tsx` — a
+  flat list (filename, timestamp, size, source task/trigger name) with
+  Download (via the existing `saveFile` Save-As flow) and Delete per row; no
+  expiry, capacity, or auto-pruning — deletion is manual.
 - **Workflows** (`shared/workflows.ts` `Workflow {name, skillNames[]}`) — a
   named, ordered chain of *existing* skills. Running one is not a new
   execution engine: `buildWorkflowPrompt` just writes an explicit

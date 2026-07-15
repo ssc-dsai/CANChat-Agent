@@ -152,6 +152,12 @@ export type RuntimeRequest =
   | { type: 'event_trigger_update'; id: string; patch: Partial<Pick<EventTrigger, 'name' | 'hostPattern' | 'target' | 'cooldownMinutes' | 'enabled'>> }
   | { type: 'event_trigger_delete'; id: string }
   | { type: 'trigger_runs_get' }
+  // Products: durable OPFS-backed outputs from scheduled tasks/triggers (see
+  // productStore.ts) — the service worker owns the offscreen document, so it
+  // routes these for the Workspace Products page same as the DuckDB ops below.
+  | { type: 'products_list' }
+  | { type: 'product_get'; id: string }
+  | { type: 'product_delete'; id: string }
   // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
   // service worker owns the offscreen document, so it routes the op for them.
   | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };
@@ -402,6 +408,32 @@ export type RepoRequest =
   | { target: 'offscreen-repo'; op: 'import'; repos: ExportedRepo[] };
 
 export interface RepoResponse {
+  ok: boolean;
+  error?: string;
+  result?: unknown;
+}
+
+// ----- Products store (offscreen document, OPFS) -----
+// Durable outputs from scheduled tasks/triggers (generated files), kept
+// browsable/downloadable after the run that produced them — see productStore.ts.
+
+export interface ProductMeta {
+  id: string;
+  filename: string;
+  mimeType: string;
+  createdAt: string;
+  sizeBytes: number;
+  sourceTitle?: string;
+  conversationId?: string;
+}
+
+export type ProductRequest =
+  | { target: 'offscreen-product'; op: 'save'; filename: string; mimeType: string; dataBase64: string; sourceTitle?: string; conversationId?: string }
+  | { target: 'offscreen-product'; op: 'list' }
+  | { target: 'offscreen-product'; op: 'get'; id: string }
+  | { target: 'offscreen-product'; op: 'delete'; id: string };
+
+export interface ProductResponse {
   ok: boolean;
   error?: string;
   result?: unknown;

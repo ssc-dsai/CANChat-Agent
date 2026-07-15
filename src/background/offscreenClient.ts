@@ -20,6 +20,9 @@ import type {
   GenerateDocumentResponse,
   GeneratePresentationRequest,
   SlideSpec,
+  ProductMeta,
+  ProductRequest,
+  ProductResponse,
   RepoRequest,
   RepoResponse,
   RepoKind,
@@ -220,6 +223,40 @@ export function repoExport(): Promise<RepoResponse> {
 
 export function repoImport(repos: ExportedRepo[]): Promise<RepoResponse> {
   return repoRequest({ target: 'offscreen-repo', op: 'import', repos });
+}
+
+// ----- Products store (durable outputs from scheduled tasks/triggers) -----
+
+async function productRequest(req: ProductRequest): Promise<ProductResponse> {
+  try {
+    await ensureOffscreen();
+  } catch (e) {
+    return { ok: false, error: `Could not start the products store: ${String(e)}` };
+  }
+  return sendOffscreen<ProductResponse>(req);
+}
+
+export async function productSave(
+  filename: string,
+  mimeType: string,
+  dataBase64: string,
+  opts: { sourceTitle?: string; conversationId?: string } = {},
+): Promise<ProductResponse> {
+  return productRequest({ target: 'offscreen-product', op: 'save', filename, mimeType, dataBase64, ...opts });
+}
+
+export async function productList(): Promise<ProductMeta[]> {
+  const res = await productRequest({ target: 'offscreen-product', op: 'list' });
+  return res.ok && Array.isArray(res.result) ? (res.result as ProductMeta[]) : [];
+}
+
+export async function productGet(id: string): Promise<{ meta: ProductMeta; dataBase64: string } | null> {
+  const res = await productRequest({ target: 'offscreen-product', op: 'get', id });
+  return res.ok ? (res.result as { meta: ProductMeta; dataBase64: string } | null) : null;
+}
+
+export function productDelete(id: string): Promise<ProductResponse> {
+  return productRequest({ target: 'offscreen-product', op: 'delete', id });
 }
 
 // ----- DuckDB data engine -----

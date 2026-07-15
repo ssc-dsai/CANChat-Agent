@@ -32,6 +32,9 @@ import {
   duckDbOpenFile,
   duckDbPersistTable,
   duckDbQuery,
+  productDelete,
+  productGet,
+  productList,
   repoDelete,
   repoDeleteDoc,
   repoDocs,
@@ -668,6 +671,18 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
   }
   if (request.type === 'trigger_runs_get') {
     getTriggerRuns().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'products_list') {
+    productList().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'product_get') {
+    productGet(request.id).then(sendResponse);
+    return true;
+  }
+  if (request.type === 'product_delete') {
+    productDelete(request.id).then((r) => sendResponse({ ok: r.ok }));
     return true;
   }
   if (request.type === 'duckdb') {

@@ -5,6 +5,8 @@
 //   - `extract_pdf`: pull text from a PDF with pdf.js.
 //   - `extract_office`: unzip .docx/.pptx/.xlsx (fflate) and parse the OOXML.
 //   - RAG (`offscreen-repo`): delegate to `repoStore` (OPFS-backed vector store).
+//   - Products (`offscreen-product`): delegate to `productStore` (OPFS-backed
+//     durable outputs from scheduled tasks/triggers).
 // The service worker reaches these via `offscreenClient`; this file is the
 // receiving end of that channel. Heavy/binary work lives here so it can't stall
 // the worker and so it has a real Window to use.
@@ -26,6 +28,8 @@ import type {
   GenerateDocumentRequest,
   GenerateDocumentResponse,
   GeneratePresentationRequest,
+  ProductRequest,
+  ProductResponse,
   RepoRequest,
   RepoResponse,
 } from '../shared/messages';
@@ -39,6 +43,7 @@ import {
   repoList,
   repoSearch,
 } from './repoStore';
+import { productDelete, productGet, productList, productSave } from './productStore';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -399,6 +404,29 @@ async function handleRepo(req: RepoRequest): Promise<RepoResponse> {
 chrome.runtime.onMessage.addListener((message: RepoRequest, _sender, sendResponse) => {
   if (message?.target !== 'offscreen-repo') return undefined;
   handleRepo(message).then(sendResponse);
+  return true; // async response
+});
+
+async function handleProduct(req: ProductRequest): Promise<ProductResponse> {
+  try {
+    switch (req.op) {
+      case 'save':
+        return { ok: true, result: await productSave(req.filename, req.mimeType, req.dataBase64, { sourceTitle: req.sourceTitle, conversationId: req.conversationId }) };
+      case 'list':
+        return { ok: true, result: await productList() };
+      case 'get':
+        return { ok: true, result: await productGet(req.id) };
+      case 'delete':
+        return { ok: true, result: await productDelete(req.id) };
+    }
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+chrome.runtime.onMessage.addListener((message: ProductRequest, _sender, sendResponse) => {
+  if (message?.target !== 'offscreen-product') return undefined;
+  handleProduct(message).then(sendResponse);
   return true; // async response
 });
 

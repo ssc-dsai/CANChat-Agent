@@ -76,7 +76,7 @@ import { mcpCallTool, mcpListTools } from './mcpClient';
 import { mapCommand } from './mapClient';
 import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, resolveModelForRole, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
-import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
+import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, productSave, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
 import type { SearchHit } from '../shared/vectorSearch';
 import { ingestTab } from './repoIngest';
@@ -540,6 +540,8 @@ export class AgentRuntime {
   private pendingApproval: PendingApproval | null = null;
   private unattended = false;
   private unattendedApprovalBlocked = false;
+  /** The scheduled task/trigger title driving the current unattended run, for tagging Products with their source. */
+  private unattendedTaskTitle: string | null = null;
   private authWait: AuthWait | null = null;
   private permissionWait: PermissionWait | null = null;
   private abortController: AbortController | null = null;
@@ -869,13 +871,15 @@ export class AgentRuntime {
     const before = this.messages.length;
     this.unattended = true;
     this.unattendedApprovalBlocked = false;
+    this.unattendedTaskTitle = title;
     try {
       await this.handleUserMessage(`[Scheduled task: ${title}]\n${prompt}`);
       const turnMessages = this.messages.slice(before);
       const response = [...turnMessages].reverse().find((m) => m.role === 'assistant')?.text;
-      // Files generated unattended are auto-downloaded (see pushChat) since no
-      // sidebar is open to click the card's Download button — surface their
-      // names here so the run record (and its notification) can say where they went.
+      // Files generated unattended are saved to the Products store (see
+      // pushChat) since no sidebar is open to click the card's Download
+      // button — surface their names here so the run record (and its
+      // notification) can say where they went.
       const fileArtifactNames = turnMessages.filter((m) => m.fileArtifact).map((m) => m.fileArtifact!.filename);
       const conversationId = this.currentConversationId ?? undefined;
       if (this.unattendedApprovalBlocked) {
@@ -884,6 +888,7 @@ export class AgentRuntime {
       return { ok: Boolean(response), response, error: response ? undefined : 'Scheduled task produced no response.', conversationId, fileArtifactNames };
     } finally {
       this.unattended = false;
+      this.unattendedTaskTitle = null;
     }
   }
 
@@ -3594,17 +3599,18 @@ export class AgentRuntime {
     this.messages.push(message);
     // In an attended turn, a generated file waits as a card the user clicks to
     // download. In an unattended (scheduled/triggered) run there is no one to
-    // click it — the file must still reach disk, so download it directly.
-    if (this.unattended && message.fileArtifact) void this.downloadFileArtifact(message.fileArtifact);
+    // click it and firing an OS download prompt for every run is its own kind
+    // of annoying (especially with several jobs running), so save it to the
+    // durable, browsable Products store instead.
+    if (this.unattended && message.fileArtifact) void this.saveFileArtifactToProducts(message.fileArtifact);
     this.emit({ type: 'chat_message', message });
   }
 
-  private async downloadFileArtifact(artifact: FileArtifact): Promise<void> {
+  private async saveFileArtifactToProducts(artifact: FileArtifact): Promise<void> {
     try {
-      await chrome.downloads.download({
-        url: `data:${artifact.mimeType};base64,${artifact.dataBase64}`,
-        filename: artifact.filename,
-        saveAs: false,
+      await productSave(artifact.filename, artifact.mimeType, artifact.dataBase64, {
+        sourceTitle: this.unattendedTaskTitle ?? undefined,
+        conversationId: this.currentConversationId ?? undefined,
       });
     } catch {
       // Best-effort — the bytes are still retained in the conversation record either way.

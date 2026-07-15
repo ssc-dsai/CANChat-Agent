@@ -183,7 +183,7 @@ export function AutomationsPage() {
                 </div>
                 {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
                 {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
-                  <p class="ws-run-detail ws-dim">📎 Saved to Downloads: {r.fileArtifactNames.join(', ')}</p>
+                  <p class="ws-run-detail ws-dim">📎 Saved to Products: {r.fileArtifactNames.join(', ')}</p>
                 )}
               </li>
             ))}
@@ -312,7 +312,7 @@ export function AutomationsPage() {
                 </div>
                 {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
                 {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
-                  <p class="ws-run-detail ws-dim">📎 Saved to Downloads: {r.fileArtifactNames.join(', ')}</p>
+                  <p class="ws-run-detail ws-dim">📎 Saved to Products: {r.fileArtifactNames.join(', ')}</p>
                 )}
               </li>
             ))}

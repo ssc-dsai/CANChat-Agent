@@ -100,7 +100,7 @@ export function buildRunNotificationMessage(
   error: string | undefined,
   fileArtifactNames: string[] | undefined,
 ): string {
-  const files = fileArtifactNames && fileArtifactNames.length > 0 ? ` Saved to Downloads: ${fileArtifactNames.join(', ')}.` : '';
+  const files = fileArtifactNames && fileArtifactNames.length > 0 ? ` Saved to Products: ${fileArtifactNames.join(', ')}.` : '';
   if (status === 'ok') return `Finished.${files} Open Automations for details.`;
   if (status === 'needs_approval') return 'Needs your approval for a state-changing step — open Automations to review.';
   return `Failed: ${error ?? 'unknown error'}`;
