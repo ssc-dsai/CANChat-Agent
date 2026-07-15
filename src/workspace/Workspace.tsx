@@ -153,11 +153,7 @@ export function Workspace() {
   return (
     <div class="ws-root">
       <header class="ws-header">
-        <span class={`ws-status ws-status-${status}`}>
-          <span class="ws-dot" />
-          {status}
-        </span>
-        <span class="ws-title">CANChat Agent workspace</span>
+        <span class="ws-title">CANChat Agent</span>
         <nav class="ws-nav">
           <button class={`ws-nav-btn ${view === 'chat' ? 'is-active' : ''}`} onClick={() => setView('chat')}>{t('workspace.nav.chat')}</button>
           <button class={`ws-nav-btn ${view === 'projects' ? 'is-active' : ''}`} onClick={() => setView('projects')}>{t('workspace.nav.projects')}</button>
@@ -173,6 +169,10 @@ export function Workspace() {
           {focusedImage && <button class={`ws-nav-btn ${view === 'image' ? 'is-active' : ''}`} onClick={() => setView('image')}>{t('workspace.nav.image')}</button>}
           <button class={`ws-nav-btn ${view === 'settings' ? 'is-active' : ''}`} onClick={() => setView('settings')}>{t('workspace.nav.settings')}</button>
         </nav>
+        <span class={`ws-status ws-status-${status}`}>
+          <span class="ws-dot" />
+          {status}
+        </span>
       </header>
       <div class="ws-body">
         <aside class="ws-sidebar">

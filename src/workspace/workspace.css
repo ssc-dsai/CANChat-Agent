@@ -13,20 +13,53 @@ html, body, #app { margin: 0; height: 100%; font-family: -apple-system, BlinkMac
 }
 
 .ws-root { display: flex; flex-direction: column; height: 100vh; }
-.ws-header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--brand-grad); color: #fff; }
-.ws-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: rgba(255, 255, 255, 0.85); }
-.ws-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.6); display: inline-block; }
-.ws-status-idle .ws-dot { background: #6ee79b; }
-.ws-status-thinking .ws-dot { background: #9fc6ff; }
-.ws-status-acting .ws-dot { background: #ffcf8f; }
-.ws-title { font-weight: 600; flex: 1; color: #fff; }
-.ws-nav { display: flex; gap: 4px; }
-.ws-nav-btn { padding: 4px 12px; border: 1px solid rgba(255, 255, 255, 0.45); border-radius: 4px; background: rgba(255, 255, 255, 0.14); color: #fff; cursor: pointer; font-size: 13px; }
-.ws-nav-btn:hover { background: rgba(255, 255, 255, 0.26); }
-.ws-nav-btn.is-active { background: #fff; color: var(--accent-dim); border-color: #fff; font-weight: 600; }
+
+/* Toolbar, not a wall of chips: the brand gradient stays as a thin identity
+   rule (same language as the side panel's header), the row itself is a
+   neutral surface so ~11 nav destinations don't all compete at equal
+   weight — only the active one gets a filled pill (contrast carries the
+   hierarchy, per NN/g). */
+.ws-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 4px;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border-bottom: 2px solid transparent;
+  border-image: var(--brand-grad) 1;
+}
+.ws-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); flex-shrink: 0; }
+.ws-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); display: inline-block; }
+.ws-status-idle .ws-dot { background: var(--ok); }
+.ws-status-thinking .ws-dot { background: var(--accent); }
+.ws-status-acting .ws-dot { background: var(--warn); }
+.ws-title { font-weight: 700; font-size: 13px; letter-spacing: -0.01em; color: var(--text); white-space: nowrap; margin-right: 4px; flex-shrink: 0; }
+.ws-nav { display: flex; flex-wrap: wrap; gap: 2px; flex: 1; }
+.ws-nav-btn {
+  padding: 5px 11px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.ws-nav-btn:hover { background: var(--bg-input); color: var(--text); }
+.ws-nav-btn.is-active { background: var(--accent); color: #fff; font-weight: 600; }
+/* Mouse/programmatic focus shouldn't leave a stray highlight once the click
+   lands — only keyboard focus should (handled by the global :focus-visible
+   rule above). Inset rather than the global rule's positive offset: on a
+   small pill button a ring drawn outside the edge reads as a blurry halo
+   instead of a crisp focus indicator. */
+.ws-nav-btn:focus:not(:focus-visible) { outline: none; }
+.ws-nav-btn:focus-visible { outline-offset: -2px; }
 .ws-body { display: flex; flex: 1; overflow: hidden; }
 .ws-sidebar { width: 320px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg-panel); overflow-y: auto; }
-.ws-main { flex: 1; overflow-y: auto; padding: 16px; background: var(--bg); }
+.ws-main { flex: 1; overflow-y: auto; padding: 20px 24px; background: var(--bg); }
 .ws-message-list { flex: 1; padding: 8px; overflow-y: auto; }
 .ws-msg { padding: 8px; margin-bottom: 4px; border-radius: 6px; font-size: 13px; color: var(--text); }
 .ws-msg-user { background: var(--brand-soft); }

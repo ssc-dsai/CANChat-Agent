@@ -157,13 +157,14 @@ body {
 .header-controls {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
+  flex-shrink: 0;
 }
 
 .header-divider {
   width: 1px;
   align-self: stretch;
-  margin: 4px 6px;
+  margin: 4px 4px;
   background: var(--border);
 }
 
@@ -176,12 +177,13 @@ body {
   color: var(--text-dim);
   cursor: pointer;
   line-height: 0;
-  padding: 7px;
-  /* Taller hit area for touch/pointer accessibility; width stays compact so the
-     header's icon cluster doesn't crowd out the brand title. */
-  min-width: 32px;
-  min-height: 36px;
-  border-radius: 8px;
+  padding: 6px;
+  /* Taller hit area for touch/pointer accessibility (WCAG 2.1 AA target size);
+     width stays compact so a 6-icon header cluster doesn't crowd the brand
+     title down to "CAN…" at the ~360-400px default panel width. */
+  min-width: 30px;
+  min-height: 32px;
+  border-radius: 7px;
   transition: background 0.12s ease, color 0.12s ease;
 }
 
@@ -1187,9 +1189,9 @@ body {
 }
 
 .settings-card {
-  background: var(--bg-panel);
+  background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 16px;
   width: 100%;
   max-width: 420px;
@@ -1198,12 +1200,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-shadow: var(--shadow-2);
 }
 
 .settings-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.settings-header strong {
+  font-size: 15px;
 }
 
 /* Pin the overlay's top line while its body scrolls. Scoped to the card's
@@ -1212,38 +1218,44 @@ body {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--bg-panel);
+  background: var(--bg-card);
   /* Pull out over the card's 16px padding so scrolling content can't show
      through above or beside the pinned header. */
   margin: -16px -16px 0;
   padding: 16px 16px 10px;
   border-bottom: 1px solid var(--border);
-  border-radius: 12px 12px 0 0;
+  border-radius: 14px 14px 0 0;
 }
 
-/* Settings tab bar — splits the long modal into Model / Advanced / Skills / Data. */
+/* Settings tab bar — splits the long modal into Model / Advanced / Skills / Data.
+   Wraps to a second row rather than clipping or scrolling sideways: at the
+   panel's ~360px width, five labels don't fit one line, and a hidden-overflow
+   tab (WCAG 1.4.10 reflow) is worse than an uneven two-row bar. */
 .settings-tabs {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 2px 4px;
   border-bottom: 1px solid var(--border);
   margin: 0 0 4px;
 }
 
 .settings-tab {
-  flex: 1;
+  flex: 0 0 auto;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-dim);
   font-size: 12px;
   font-weight: 600;
-  padding: 6px 4px;
+  padding: 6px 8px;
   cursor: pointer;
   white-space: nowrap;
+  border-radius: 6px 6px 0 0;
 }
 
 .settings-tab:hover {
   color: var(--text);
+  background: var(--bg-input);
 }
 
 .settings-tab.is-active {
@@ -1311,18 +1323,106 @@ body {
   min-width: 0;
 }
 
-.field input {
+.field input,
+.field select {
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
   padding: 7px 9px;
   font-size: 13px;
+  font-family: inherit;
 }
-.field input:focus {
+.field input:focus,
+.field select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--brand-soft);
+}
+
+/* One-line explanation directly under a field's input — subordinate to the
+   label (smaller, dimmer, tighter leading) so scanning the label row alone
+   still gives the gist; the sentence is there when needed, not before. */
+.field-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+/* ----- Settings groups: Mac-System-Settings-style elevated cards ----- */
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-group + .settings-group {
+  margin-top: 20px;
+}
+.settings-group-title {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.settings-group-desc {
+  margin: -4px 2px 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.settings-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: var(--shadow-1);
+}
+/* Fields stack vertically inside a group by default — the flex-basis meant
+   for horizontal .field-row layouts would otherwise stretch a lone field's
+   min-height when its parent is a column flow (see .field-row below). */
+.settings-group-body > .field {
+  flex: initial;
+}
+.settings-group-body .field-row {
+  margin: 0;
+}
+
+/* Checkbox row: label bold-ish and note subordinate underneath, checkbox
+   aligned to the label's cap-height rather than the whole two-line block. */
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.toggle-row input[type='checkbox'] {
+  margin-top: 3px;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toggle-label {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+.toggle-note {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
 }
 
 .field-row {
@@ -1469,19 +1569,40 @@ body {
 
 /* Collapsible Data & privacy sections — native <details> for keyboard a11y.
    Collapsed by default, so the tab reads as a scannable four-item menu rather
-   than one long scroll. A rotating caret on the title signals expand state. */
+   than one long scroll. Each is its own elevated card (common region, same
+   language as .settings-group) rather than a bare top-border list; a rotating
+   caret on the title signals expand state. */
 .settings-acc {
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
 }
-.settings-card .settings-acc:first-of-type {
-  border-top: none;
-  padding-top: 0;
+.settings-card .settings-acc + .settings-acc {
+  margin-top: 10px;
 }
 .settings-acc-summary {
   cursor: pointer;
   list-style: none;
   user-select: none;
+  padding: 12px 14px;
+}
+.settings-acc-summary:hover {
+  background: var(--bg-input);
+}
+.settings-acc[open] > .settings-acc-summary {
+  border-bottom: 1px solid var(--border);
+}
+.settings-acc > :not(summary) {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+.settings-acc > summary + * {
+  margin-top: 12px;
+}
+.settings-acc > :last-child {
+  margin-bottom: 14px;
 }
 .settings-acc-summary::-webkit-details-marker {
   display: none;

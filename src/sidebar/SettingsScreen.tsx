@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
@@ -14,6 +15,45 @@ interface Props {
 }
 
 const EMPTY: Settings = { baseUrl: '', apiKey: '', model: '' };
+
+/**
+ * Mac-System-Settings-style group: a small uppercase-ish title and optional
+ * one-line description sit OUTSIDE an elevated card that holds the fields, so
+ * related controls read as one unit (Gestalt: proximity + common region)
+ * without per-field explanation paragraphs breaking the scan.
+ */
+function Group({ title, desc, children }: { title: string; desc?: string; children: ComponentChildren }) {
+  return (
+    <section class="settings-group">
+      <h3 class="settings-group-title">{title}</h3>
+      {desc && <p class="settings-group-desc">{desc}</p>}
+      <div class="settings-group-body">{children}</div>
+    </section>
+  );
+}
+
+/** Checkbox row with the label strong and the explanation subordinate under it. */
+function Toggle({
+  checked,
+  onChange,
+  label,
+  note,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  note?: string;
+}) {
+  return (
+    <label class="toggle-row">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange((e.target as HTMLInputElement).checked)} />
+      <span class="toggle-text">
+        <span class="toggle-label">{label}</span>
+        {note && <span class="toggle-note">{note}</span>}
+      </span>
+    </label>
+  );
+}
 
 type SettingsTab = 'model' | 'advanced' | 'skills' | 'knowledge' | 'data';
 const TABS: ReadonlyArray<[SettingsTab, string]> = [
@@ -134,176 +174,75 @@ export function SettingsScreen({ onClose }: Props) {
 
         {tab === 'model' && (
         <>
-        <label class="field">
-          <span>{t('settings.language')}</span>
-          <select
-            value={langPref}
-            onChange={(e) => changeLanguage((e.target as HTMLSelectElement).value as LangPref)}
-          >
-            <option value="auto">{t('settings.languageAuto')}</option>
-            <option value="en">{t('settings.languageEn')}</option>
-            <option value="fr">{t('settings.languageFr')}</option>
-          </select>
-        </label>
-        <p class="settings-note">{t('settings.languageNote')}</p>
+        <Group title={t('settings.groupConnection')} desc={t('settings.note')}>
+          <label class="field">
+            <span>{t('settings.endpointUrl')}</span>
+            <input
+              type="url"
+              placeholder="https://api.example.com/v1"
+              value={settings.baseUrl}
+              onInput={(e) => update({ baseUrl: (e.target as HTMLInputElement).value })}
+            />
+          </label>
 
-        <p class="settings-note">{t('settings.note')}</p>
+          <label class="field">
+            <span>{t('settings.apiKey')}</span>
+            <input
+              type="password"
+              placeholder="sk-…"
+              value={settings.apiKey}
+              onInput={(e) => update({ apiKey: (e.target as HTMLInputElement).value })}
+            />
+          </label>
 
-        <label class="field">
-          <span>{t('settings.endpointUrl')}</span>
-          <input
-            type="url"
-            placeholder="https://api.example.com/v1"
-            value={settings.baseUrl}
-            onInput={(e) => update({ baseUrl: (e.target as HTMLInputElement).value })}
-          />
-        </label>
+          <label class="field">
+            <span>{t('settings.model')}</span>
+            <input
+              type="text"
+              placeholder="model-name"
+              value={settings.model}
+              onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+        </Group>
 
-        <label class="field">
-          <span>{t('settings.apiKey')}</span>
-          <input
-            type="password"
-            placeholder="sk-…"
-            value={settings.apiKey}
-            onInput={(e) => update({ apiKey: (e.target as HTMLInputElement).value })}
-          />
-        </label>
-
-        <label class="field">
-          <span>{t('settings.model')}</span>
-          <input
-            type="text"
-            placeholder="model-name"
-            value={settings.model}
-            onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
-          />
-        </label>
+        <Group title={t('settings.groupInterface')} desc={t('settings.languageNote')}>
+          <label class="field">
+            <span>{t('settings.language')}</span>
+            <select
+              value={langPref}
+              onChange={(e) => changeLanguage((e.target as HTMLSelectElement).value as LangPref)}
+            >
+              <option value="auto">{t('settings.languageAuto')}</option>
+              <option value="en">{t('settings.languageEn')}</option>
+              <option value="fr">{t('settings.languageFr')}</option>
+            </select>
+          </label>
+        </Group>
         </>
         )}
 
         {tab === 'advanced' && (
         <>
-        <label class="field">
-          <span>{t('settings.apiVersion')}</span>
-          <input
-            type="text"
-            placeholder="2024-02-01"
-            value={settings.apiVersion ?? ''}
-            onInput={(e) => update({ apiVersion: (e.target as HTMLInputElement).value })}
-          />
-        </label>
-        <p class="settings-note">{t('settings.apiVersionNote')}</p>
-
-        <label class="memory-toggle">
-          <input
-            type="checkbox"
+        <Group title={t('settings.groupBehavior')} desc={t('settings.groupBehaviorDesc')}>
+          <Toggle
             checked={settings.retryOnRateLimit ?? true}
-            onChange={(e) => update({ retryOnRateLimit: (e.target as HTMLInputElement).checked })}
+            onChange={(checked) => update({ retryOnRateLimit: checked })}
+            label={t('settings.retryOnRateLimit')}
+            note={t('settings.retryOnRateLimitNote')}
           />
-          <span>{t('settings.retryOnRateLimit')}</span>
-        </label>
-        <p class="settings-note">{t('settings.retryOnRateLimitNote')}</p>
-
-        <label class="memory-toggle">
-          <input
-            type="checkbox"
+          <Toggle
             checked={settings.verifyAnswers ?? true}
-            onChange={(e) => update({ verifyAnswers: (e.target as HTMLInputElement).checked })}
+            onChange={(checked) => update({ verifyAnswers: checked })}
+            label={t('settings.verifyAnswers')}
+            note={t('settings.verifyAnswersNote')}
           />
-          <span>{t('settings.verifyAnswers')}</span>
-        </label>
-        <p class="settings-note">{t('settings.verifyAnswersNote')}</p>
-
-        <label class="memory-toggle">
-          <input
-            type="checkbox"
+          <Toggle
             checked={settings.summarizeObservations ?? true}
-            onChange={(e) => update({ summarizeObservations: (e.target as HTMLInputElement).checked })}
+            onChange={(checked) => update({ summarizeObservations: checked })}
+            label={t('settings.summarizeObservations')}
+            note={t('settings.summarizeObservationsNote')}
           />
-          <span>{t('settings.summarizeObservations')}</span>
-        </label>
-        <p class="settings-note">{t('settings.summarizeObservationsNote')}</p>
-
-        <div class="field-row">
-          <label class="field">
-            <span>{t('settings.temperature')}</span>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="2"
-              value={settings.temperature ?? ''}
-              onInput={(e) => {
-                const v = (e.target as HTMLInputElement).value;
-                update({ temperature: v === '' ? undefined : Number(v) });
-              }}
-            />
-          </label>
-          <label class="field">
-            <span>{t('settings.maxTokens')}</span>
-            <input
-              type="number"
-              min="1"
-              value={settings.maxTokens ?? ''}
-              onInput={(e) => {
-                const v = (e.target as HTMLInputElement).value;
-                update({ maxTokens: v === '' ? undefined : Number(v) });
-              }}
-            />
-          </label>
-        </div>
-
-        <div class="field-row">
-          <label class="field">
-            <span>{t('settings.embedder')}</span>
-            <select
-              value={settings.embedder ?? 'local'}
-              onChange={(e) => update({ embedder: (e.target as HTMLSelectElement).value as 'local' | 'external' })}
-            >
-              <option value="local">{t('settings.embedder.local')}</option>
-              <option value="external">{t('settings.embedder.external')}</option>
-            </select>
-          </label>
-          <p class="settings-note">{t('settings.embedder.note')}</p>
-        </div>
-
-        <label class="memory-toggle">
-          <input
-            type="checkbox"
-            checked={settings.hybridSearch ?? true}
-            onChange={(e) => update({ hybridSearch: (e.target as HTMLInputElement).checked })}
-          />
-          <span>{t('settings.hybridSearch')}</span>
-        </label>
-        <p class="settings-note">{t('settings.hybridSearchNote')}</p>
-
-        <div class="field-row">
-          <label class="field">
-            <span>{t('settings.embeddingModel')}</span>
-            <input
-              type="text"
-              placeholder={settings.embedder === 'external' ? 'text-embedding-3-small' : 'Xenova/all-MiniLM-L6-v2'}
-              value={settings.embedder === 'external' ? (settings.embeddingModel ?? '') : (settings.localEmbedModel ?? '')}
-              onInput={(e) =>
-                settings.embedder === 'external'
-                  ? update({ embeddingModel: (e.target as HTMLInputElement).value })
-                  : update({ localEmbedModel: (e.target as HTMLInputElement).value })
-              }
-            />
-          </label>
-          <label class="field">
-            <span>{t('settings.repoSearchK')}</span>
-            <input
-              type="number"
-              min="1"
-              placeholder="6"
-              value={settings.repoSearchK ?? ''}
-              onInput={(e) => {
-                const v = (e.target as HTMLInputElement).value;
-                update({ repoSearchK: v === '' ? undefined : Number(v) });
-              }}
-            />
-          </label>
           <label class="field">
             <span>{t('settings.maxSteps')}</span>
             <input
@@ -317,105 +256,199 @@ export function SettingsScreen({ onClose }: Props) {
                 update({ maxSteps: v === '' ? undefined : Number(v) });
               }}
             />
+            <span class="field-note">{t('settings.maxStepsNote')}</span>
           </label>
-        </div>
-        <p class="settings-note">{t('settings.repoSearchKNote')}</p>
-        <p class="settings-note">{t('settings.maxStepsNote')}</p>
+        </Group>
 
-        <div class="field-row">
+        <Group title={t('settings.groupGeneration')} desc={t('settings.groupGenerationDesc')}>
+          <div class="field-row">
+            <label class="field">
+              <span>{t('settings.temperature')}</span>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                max="2"
+                value={settings.temperature ?? ''}
+                onInput={(e) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  update({ temperature: v === '' ? undefined : Number(v) });
+                }}
+              />
+            </label>
+            <label class="field">
+              <span>{t('settings.maxTokens')}</span>
+              <input
+                type="number"
+                min="1"
+                value={settings.maxTokens ?? ''}
+                onInput={(e) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  update({ maxTokens: v === '' ? undefined : Number(v) });
+                }}
+              />
+            </label>
+          </div>
+
           <label class="field">
-            <span>{t('settings.embeddingUrl')}</span>
-            <input
-              type="url"
-              placeholder="https://embeddings.example.com/v1"
-              value={settings.embeddingBaseUrl ?? ''}
-              onInput={(e) => update({ embeddingBaseUrl: (e.target as HTMLInputElement).value })}
+            <span>{t('settings.customInstructions')}</span>
+            <textarea
+              class="chat-input"
+              rows={5}
+              placeholder={t('settings.customInstructionsPlaceholder')}
+              value={settings.systemPrompt ?? ''}
+              onInput={(e) => update({ systemPrompt: (e.target as HTMLTextAreaElement).value })}
             />
           </label>
-          <label class="field">
-            <span>{t('settings.embeddingKey')}</span>
-            <input
-              type="password"
-              placeholder="sk-…"
-              value={settings.embeddingApiKey ?? ''}
-              onInput={(e) => update({ embeddingApiKey: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-        </div>
+        </Group>
 
-        <label class="field">
-          <span>{t('settings.transcriptionModel')}</span>
-          <input
-            type="text"
-            placeholder="whisper-1"
-            value={settings.transcriptionModel ?? ''}
-            onInput={(e) => update({ transcriptionModel: (e.target as HTMLInputElement).value })}
+        <Group title={t('settings.groupRetrieval')} desc={t('settings.groupRetrievalDesc')}>
+          <label class="field">
+            <span>{t('settings.embedder')}</span>
+            <select
+              value={settings.embedder ?? 'local'}
+              onChange={(e) => update({ embedder: (e.target as HTMLSelectElement).value as 'local' | 'external' })}
+            >
+              <option value="local">{t('settings.embedder.local')}</option>
+              <option value="external">{t('settings.embedder.external')}</option>
+            </select>
+            <span class="field-note">{t('settings.embedder.note')}</span>
+          </label>
+
+          <Toggle
+            checked={settings.hybridSearch ?? true}
+            onChange={(checked) => update({ hybridSearch: checked })}
+            label={t('settings.hybridSearch')}
+            note={t('settings.hybridSearchNote')}
           />
-        </label>
 
-        <div class="field-row">
-          <label class="field">
-            <span>{t('settings.transcriptionUrl')}</span>
-            <input
-              type="url"
-              placeholder="https://stt.example.com/v1"
-              value={settings.transcriptionBaseUrl ?? ''}
-              onInput={(e) => update({ transcriptionBaseUrl: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-          <label class="field">
-            <span>{t('settings.transcriptionKey')}</span>
-            <input
-              type="password"
-              placeholder="sk-…"
-              value={settings.transcriptionApiKey ?? ''}
-              onInput={(e) => update({ transcriptionApiKey: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-        </div>
+          <div class="field-row">
+            <label class="field">
+              <span>{t('settings.embeddingModel')}</span>
+              <input
+                type="text"
+                placeholder={settings.embedder === 'external' ? 'text-embedding-3-small' : 'Xenova/all-MiniLM-L6-v2'}
+                value={settings.embedder === 'external' ? (settings.embeddingModel ?? '') : (settings.localEmbedModel ?? '')}
+                onInput={(e) =>
+                  settings.embedder === 'external'
+                    ? update({ embeddingModel: (e.target as HTMLInputElement).value })
+                    : update({ localEmbedModel: (e.target as HTMLInputElement).value })
+                }
+              />
+            </label>
+            <label class="field">
+              <span>{t('settings.repoSearchK')}</span>
+              <input
+                type="number"
+                min="1"
+                placeholder="6"
+                value={settings.repoSearchK ?? ''}
+                onInput={(e) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  update({ repoSearchK: v === '' ? undefined : Number(v) });
+                }}
+              />
+            </label>
+          </div>
+          <p class="settings-note">{t('settings.repoSearchKNote')}</p>
 
-        <label class="field">
-          <span>{t('settings.sharepointUrl')}</span>
-          <input
-            type="url"
-            placeholder="https://contoso.sharepoint.com"
-            value={settings.sharepointBaseUrl ?? ''}
-            onInput={(e) => update({ sharepointBaseUrl: (e.target as HTMLInputElement).value })}
-          />
-        </label>
+          <div class="field-row">
+            <label class="field">
+              <span>{t('settings.embeddingUrl')}</span>
+              <input
+                type="url"
+                placeholder="https://embeddings.example.com/v1"
+                value={settings.embeddingBaseUrl ?? ''}
+                onInput={(e) => update({ embeddingBaseUrl: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+            <label class="field">
+              <span>{t('settings.embeddingKey')}</span>
+              <input
+                type="password"
+                placeholder="sk-…"
+                value={settings.embeddingApiKey ?? ''}
+                onInput={(e) => update({ embeddingApiKey: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+          </div>
+        </Group>
 
-        <div class="field-row">
+        <Group title={t('settings.groupIntegrations')} desc={t('settings.groupIntegrationsDesc')}>
           <label class="field">
-            <span>{t('settings.graphClientId')}</span>
+            <span>{t('settings.apiVersion')}</span>
             <input
               type="text"
-              placeholder="00000000-0000-0000-0000-000000000000"
-              value={settings.graphClientId ?? ''}
-              onInput={(e) => update({ graphClientId: (e.target as HTMLInputElement).value })}
+              placeholder="2024-02-01"
+              value={settings.apiVersion ?? ''}
+              onInput={(e) => update({ apiVersion: (e.target as HTMLInputElement).value })}
             />
+            <span class="field-note">{t('settings.apiVersionNote')}</span>
           </label>
+
           <label class="field">
-            <span>{t('settings.graphTenant')}</span>
+            <span>{t('settings.transcriptionModel')}</span>
             <input
               type="text"
-              placeholder="organizations"
-              value={settings.graphTenant ?? ''}
-              onInput={(e) => update({ graphTenant: (e.target as HTMLInputElement).value })}
+              placeholder="whisper-1"
+              value={settings.transcriptionModel ?? ''}
+              onInput={(e) => update({ transcriptionModel: (e.target as HTMLInputElement).value })}
             />
           </label>
-        </div>
-        <p class="settings-note">{t('settings.graphNote')}</p>
 
-        <label class="field">
-          <span>{t('settings.customInstructions')}</span>
-          <textarea
-            class="chat-input"
-            rows={5}
-            placeholder={t('settings.customInstructionsPlaceholder')}
-            value={settings.systemPrompt ?? ''}
-            onInput={(e) => update({ systemPrompt: (e.target as HTMLTextAreaElement).value })}
-          />
-        </label>
+          <div class="field-row">
+            <label class="field">
+              <span>{t('settings.transcriptionUrl')}</span>
+              <input
+                type="url"
+                placeholder="https://stt.example.com/v1"
+                value={settings.transcriptionBaseUrl ?? ''}
+                onInput={(e) => update({ transcriptionBaseUrl: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+            <label class="field">
+              <span>{t('settings.transcriptionKey')}</span>
+              <input
+                type="password"
+                placeholder="sk-…"
+                value={settings.transcriptionApiKey ?? ''}
+                onInput={(e) => update({ transcriptionApiKey: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>{t('settings.sharepointUrl')}</span>
+            <input
+              type="url"
+              placeholder="https://contoso.sharepoint.com"
+              value={settings.sharepointBaseUrl ?? ''}
+              onInput={(e) => update({ sharepointBaseUrl: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+
+          <div class="field-row">
+            <label class="field">
+              <span>{t('settings.graphClientId')}</span>
+              <input
+                type="text"
+                placeholder="00000000-0000-0000-0000-000000000000"
+                value={settings.graphClientId ?? ''}
+                onInput={(e) => update({ graphClientId: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+            <label class="field">
+              <span>{t('settings.graphTenant')}</span>
+              <input
+                type="text"
+                placeholder="organizations"
+                value={settings.graphTenant ?? ''}
+                onInput={(e) => update({ graphTenant: (e.target as HTMLInputElement).value })}
+              />
+            </label>
+          </div>
+          <p class="settings-note">{t('settings.graphNote')}</p>
+        </Group>
         </>
         )}
 
