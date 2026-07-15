@@ -29,6 +29,7 @@ const CAPABILITIES_KEY = 'ba_capabilities';
 const SKILLS_KEY = 'ba_skills';
 const MEMORY_KEY = 'ba_memory';
 const MEMORY_ENABLED_KEY = 'ba_memory_enabled';
+const MEMORY_MIN_CONFIDENCE_KEY = 'ba_memory_min_confidence';
 const MEMORY_GRAPH_KEY = 'ba_memory_graph';
 const LESSONS_KEY = 'ba_lessons';
 const PROJECTS_KEY = 'ba_projects';
@@ -217,6 +218,23 @@ export async function getMemoryEnabled(): Promise<boolean> {
 
 export async function setMemoryEnabled(enabled: boolean): Promise<void> {
   await chrome.storage.local.set({ [MEMORY_ENABLED_KEY]: enabled });
+}
+
+/**
+ * The minimum confidence (0-1) an automatically-extracted candidate must meet
+ * to be saved by reflection. Does not apply to explicit `save_memory` calls
+ * (e.g. "remember that...") or the environment probe, which always save at
+ * confidence 1. Defaults to 0 (no filtering) so existing installs keep their
+ * current behavior until the user opts into a stricter bar.
+ */
+export async function getMemoryMinConfidence(): Promise<number> {
+  const result = await chrome.storage.local.get(MEMORY_MIN_CONFIDENCE_KEY);
+  const v = result[MEMORY_MIN_CONFIDENCE_KEY];
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
+}
+
+export async function setMemoryMinConfidence(value: number): Promise<void> {
+  await chrome.storage.local.set({ [MEMORY_MIN_CONFIDENCE_KEY]: Math.min(1, Math.max(0, value)) });
 }
 
 export async function getMemories(): Promise<MemoryEntry[]> {

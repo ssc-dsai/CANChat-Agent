@@ -927,7 +927,11 @@ Backup/Restore fallback for one release.
   (`MemoryProvenance.sourceUrl`/`sourceTitle`) so extracted facts stay citable
   — shown as a link on the memory's detail view in the Workspace Memory page.
   `save_memory` accepts the same optional `sourceUrl`/`sourceTitle` for
-  explicit, in-conversation saves. Each candidate is merged into an existing
+  explicit, in-conversation saves. Candidates below the user-configured
+  `ba_memory_min_confidence` (default 0, i.e. off) are dropped before merging
+  (`filterByMinConfidence`) — a knob for users who want automatic saving to be
+  more conservative; it never applies to explicit `save_memory` calls, which
+  always save at confidence 1. Each surviving candidate is merged into an existing
   node (term-overlap or embedding-index match) or inserted fresh; a match
   whose text has drifted enough to look like a contradiction
   (`shouldAdjudicate`) gets one more cheap LLM call deciding supersede-vs-merge

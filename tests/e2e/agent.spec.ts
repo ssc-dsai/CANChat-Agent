@@ -192,4 +192,19 @@ test.describe('agent loop (mock LLM)', () => {
     expect(node?.provenance[0]?.sourceUrl).toContain(`${staticServer.url}/article.html`);
     expect(node?.provenance[0]?.sourceTitle).toBe('The Northwest Passage Reopens');
   });
+
+  test('a minimum-confidence setting above the candidate\'s confidence suppresses automatic saving', async ({ sidebar }) => {
+    await sidebar.evaluate(() => chrome.storage.local.set({ ba_memory_enabled: true, ba_memory_min_confidence: 0.95 }));
+
+    // The REMEMBER_ME_DEMO mock branch returns confidence 0.9 — below the 0.95
+    // floor set above — so reflection must drop it before it ever reaches the graph.
+    await sendChat(sidebar, 'REMEMBER_ME_DEMO: I always use dark mode. Please summarize the current page.');
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' }).last()).toBeVisible();
+    await sidebar.waitForTimeout(3000); // let the fire-and-forget reflection call settle
+
+    const graph = (await sidebar.evaluate(() => chrome.storage.local.get('ba_memory_graph'))) as {
+      ba_memory_graph?: { nodes: { summary: string }[] };
+    };
+    expect(graph.ba_memory_graph?.nodes.some((n) => n.summary.includes('dark mode'))).not.toBe(true);
+  });
 });

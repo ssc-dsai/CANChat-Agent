@@ -131,6 +131,9 @@ const EN: Dict = {
   'memory.note':
     'When enabled, the agent extracts durable facts about you from your conversations — your role, projects, interests, and preferences — and uses them to tailor answers. You can also say "remember that…" or "forget…".',
   'memory.manage': 'Manage memories',
+  'memory.minConfidence': 'Only auto-save facts the agent is at least this confident about',
+  'memory.minConfidenceNote':
+    'Raise this to make automatic saving more conservative. Does not affect things you explicitly ask it to remember.',
   'sharepoint.title': '☁ Index SharePoint / OneDrive documents',
   'sharepoint.hint': 'Indexes a SharePoint or OneDrive document library over your existing browser sign-in. Re-run to add only changed files.',
   'sharepoint.libraryUrl': 'Library URL',
@@ -400,6 +403,9 @@ const FR: Dict = {
   'memory.note':
     'Lorsqu’activée, l’agent extrait des faits durables vous concernant à partir de vos conversations — votre rôle, vos projets, vos intérêts et vos préférences — et les utilise pour adapter ses réponses. Vous pouvez aussi dire « souviens-toi que… » ou « oublie… ».',
   'memory.manage': 'Gérer les souvenirs',
+  'memory.minConfidence': 'Enregistrer automatiquement seulement les faits dont l’agent est au moins aussi confiant',
+  'memory.minConfidenceNote':
+    'Augmentez cette valeur pour rendre l’enregistrement automatique plus prudent. N’affecte pas ce que vous demandez explicitement de retenir.',
   'sharepoint.title': '☁ Indexer les documents SharePoint / OneDrive',
   'sharepoint.hint': 'Indexe une bibliothèque SharePoint ou OneDrive avec votre session navigateur existante. Relancez pour n’ajouter que les fichiers modifiés.',
   'sharepoint.libraryUrl': 'URL de la bibliothèque',

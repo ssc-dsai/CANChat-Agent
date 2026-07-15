@@ -158,6 +158,16 @@ export function parseReflection(raw: string): ParsedMemoryCandidate[] {
   return out.slice(0, 12);
 }
 
+/**
+ * Drop reflection candidates below a user-configured minimum confidence, so a
+ * user who wants tighter control over automatic saving can raise the bar.
+ * Never applied to explicit `save_memory` calls (those always save at
+ * confidence 1, so a sane threshold never filters them).
+ */
+export function filterByMinConfidence(candidates: ParsedMemoryCandidate[], minConfidence: number): ParsedMemoryCandidate[] {
+  return candidates.filter((c) => c.confidence >= minConfidence);
+}
+
 /** Lowercase alnum terms, for cheap overlap-based similarity (no embedding call). */
 function terms(text: string): Set<string> {
   return new Set((text.toLowerCase().match(/[a-z0-9][a-z0-9._-]*/g) ?? []).filter((t) => t.length > 2));

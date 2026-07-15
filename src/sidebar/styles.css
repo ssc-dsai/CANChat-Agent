@@ -1017,6 +1017,26 @@ body {
   opacity: 0.5;
 }
 
+.memory-confidence {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+}
+.memory-confidence-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.memory-confidence-value {
+  font-family: ui-monospace, monospace;
+}
+.memory-confidence input[type='range'] {
+  accent-color: var(--accent);
+  width: 100%;
+}
+
 .memory-text {
   white-space: normal;
   color: var(--text);

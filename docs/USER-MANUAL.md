@@ -555,9 +555,15 @@ Three collapsible sections (collapsed by default — click to expand):
   projects, preferences), and — if you ask it to remember or discuss an article
   or page in depth — the named people, organizations, places, dates, and events
   it read there, linked by relationships (e.g. "Acme Corp —announced→ merger").
-  You can also say "remember that…" or "forget…" directly. Once saved, the agent
-  answers directly from what it already knows instead of re-searching. **Probe
-  environment** (shown only when memory is on) fills memory with what the
+  You can also say "remember that…" or "forget…" directly — that always works
+  regardless of the slider below. Once saved, the agent answers directly from
+  what it already knows instead of re-searching. A slider, **"Only auto-save
+  facts the agent is at least this confident about,"** appears once Memory is
+  on: raise it to make the automatic, opportunistic saving more conservative
+  (0 = save anything the agent judges durable, the default; higher values
+  require it to be surer). It only affects automatic saving — it never blocks
+  something you explicitly ask it to remember. **Probe environment** (shown
+  only when memory is on) fills memory with what the
   extension can detect about you — your Microsoft 365 name / work email / sign-in
   (AD) username from the signed-in session, the work systems you currently have
   open, and your locale/timezone. It runs entirely on-device and adds only new

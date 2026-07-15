@@ -3,6 +3,7 @@ import {
   applyDecay,
   effectiveConfidence,
   emptyMemoryGraph,
+  filterByMinConfidence,
   MEMORY_EDGE_CAP,
   MEMORY_NODE_CAP,
   MEMORY_STALE_THRESHOLD,
@@ -123,6 +124,29 @@ describe('parseReflection', () => {
     expect(out.length).toBe(12);
     expect(out[0].evidence.length).toBe(200);
     expect(out[0].relations.length).toBe(8);
+  });
+});
+
+describe('filterByMinConfidence', () => {
+  const candidate = (confidence: number) => ({
+    kind: 'fact' as const,
+    subject: '',
+    label: 'L',
+    summary: 'S',
+    relations: [],
+    confidence,
+    durability: 0.5,
+    evidence: '',
+  });
+
+  it('keeps candidates at or above the threshold, drops those below', () => {
+    const out = filterByMinConfidence([candidate(0.3), candidate(0.6), candidate(0.6001)], 0.6);
+    expect(out).toHaveLength(2);
+    expect(out.map((c) => c.confidence)).toEqual([0.6, 0.6001]);
+  });
+
+  it('a zero threshold keeps everything (default, unfiltered behavior)', () => {
+    expect(filterByMinConfidence([candidate(0), candidate(1)], 0)).toHaveLength(2);
   });
 });
 

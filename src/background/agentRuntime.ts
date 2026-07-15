@@ -49,6 +49,7 @@ import { bumpSkillVersion } from '../shared/skillImport';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
 import {
   emptyMemoryGraph,
+  filterByMinConfidence,
   MEMORY_NODE_CAP,
   mergeNodes,
   nodeSimilarity,
@@ -93,6 +94,7 @@ import {
   getLessons,
   getMemoryEnabled,
   getMemoryGraph,
+  getMemoryMinConfidence,
   getSessionApprovals,
   getSettings,
   getSkills,
@@ -1153,7 +1155,8 @@ export class AgentRuntime {
     try {
       const reply = await complete({ ...resolveModelForRole(settings, 'reflection'), maxTokens: 700, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
       if (this.taskEpoch !== epoch) return;
-      const candidates = parseReflection(typeof reply.content === 'string' ? reply.content : '');
+      const minConfidence = await getMemoryMinConfidence();
+      const candidates = filterByMinConfidence(parseReflection(typeof reply.content === 'string' ? reply.content : ''), minConfidence);
       if (candidates.length === 0) return;
 
       let graph = this.memoryGraph;
