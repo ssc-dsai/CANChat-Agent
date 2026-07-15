@@ -17,7 +17,7 @@ import {
   type TriggerRun,
 } from '../shared/eventTriggers';
 import { buildWorkflowPrompt, type Workflow } from '../shared/workflows';
-import type { ScheduledRunner } from './scheduler';
+import { notifyRunComplete, type ScheduledRunner } from './scheduler';
 
 const WORKFLOWS_KEY = 'ba_workflows';
 const EVENT_TRIGGERS_KEY = 'ba_event_triggers';
@@ -176,9 +176,13 @@ async function fireTrigger(trigger: EventTrigger, url: string, runner: Scheduled
   let status: TriggerRun['status'] = 'ok';
   let error: string | undefined;
   let summary: string | undefined;
+  let conversationId: string | undefined;
+  let fileArtifactNames: string[] | undefined;
   try {
     const result = await runner.runScheduledTask(trigger.name, prompt);
     summary = result.response;
+    conversationId = result.conversationId;
+    fileArtifactNames = result.fileArtifactNames;
     if (!result.ok) {
       status = result.needsApproval ? 'needs_approval' : 'error';
       error = result.error ?? 'Trigger run failed.';
@@ -187,5 +191,6 @@ async function fireTrigger(trigger: EventTrigger, url: string, runner: Scheduled
     status = 'error';
     error = e instanceof Error ? e.message : String(e);
   }
-  await recordTriggerRun({ ...run, finishedAt: Date.now(), status, summary, error });
+  await recordTriggerRun({ ...run, finishedAt: Date.now(), status, summary, error, conversationId, fileArtifactNames });
+  notifyRunComplete(trigger.name, status, error, fileArtifactNames);
 }

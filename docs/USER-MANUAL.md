@@ -661,7 +661,12 @@ agent does without you watching turn by turn — lives:
 
 - **Scheduled tasks.** Ask the agent to "schedule a task that checks my calendar
   every morning at 8am" and it appears here: pause/resume it, delete it, and see
-  its recent runs (what it found, or what went wrong).
+  its recent runs (what it found, or what went wrong) shown in full, not
+  truncated — no need to hover to read it. When a run finishes you'll get a
+  desktop notification (click it to jump straight to this page) even if the
+  sidebar wasn't open; if that run created a file (e.g. "create a PowerPoint of
+  today's headlines"), it's downloaded automatically to your Downloads folder —
+  its filename is both in the notification and listed under that run here.
 - **Workflows.** A named, ordered chain of your existing skills — e.g. a "Morning
   routine" workflow that runs `/research` then `/search-mail` in sequence.
   Create one from the page (name it, list the skills in order); it's not a new
