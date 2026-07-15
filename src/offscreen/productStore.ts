@@ -120,3 +120,51 @@ export async function productDelete(id: string): Promise<boolean> {
     return false;
   }
 }
+
+// ----- backup / restore -----
+
+/** A single product serialized for backup (blob base64-encoded). */
+export interface ExportedProduct {
+  meta: ProductMeta;
+  dataB64: string;
+}
+
+/** Serialize every product (meta + base64 blob) for backup. */
+export async function productExportAll(): Promise<ExportedProduct[]> {
+  const out: ExportedProduct[] = [];
+  const dir = await productsDir();
+  // @ts-expect-error - entries() exists on FileSystemDirectoryHandle in Chrome
+  for await (const [, handle] of dir.entries()) {
+    if (handle.kind !== 'directory') continue;
+    const d = handle as FileSystemDirectoryHandle;
+    const meta = await readJson<ProductMeta>(d, 'meta.json');
+    if (!meta) continue;
+    const blobHandle = await d.getFileHandle('blob');
+    const bytes = new Uint8Array(await (await blobHandle.getFile()).arrayBuffer());
+    out.push({ meta, dataB64: bytesToBase64(bytes) });
+  }
+  return out;
+}
+
+/** Restore products from a backup, overwriting any with the same id. */
+export async function productImportAll(products: ExportedProduct[]): Promise<{ imported: number }> {
+  const root = await productsDir();
+  let imported = 0;
+  for (const p of products) {
+    if (!p?.meta?.id) continue;
+    try {
+      await root.removeEntry(p.meta.id, { recursive: true });
+    } catch {
+      // no existing product by that id
+    }
+    const dir = await root.getDirectoryHandle(p.meta.id, { create: true });
+    await writeJson(dir, 'meta.json', p.meta);
+    const bytes = base64ToBytes(p.dataB64 ?? '');
+    const blobHandle = await dir.getFileHandle('blob', { create: true });
+    const w = await blobHandle.createWritable();
+    await w.write(bytes as unknown as BufferSource);
+    await w.close();
+    imported++;
+  }
+  return { imported };
+}

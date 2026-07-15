@@ -220,6 +220,16 @@ const APPROVAL_REQUIRED = new Set([
   'cancel_scheduled_task', // deletes persistent automation — confirm first
 ]);
 
+/**
+ * Tools that stay frictionless in an attended chat (not in APPROVAL_REQUIRED)
+ * but must never run unattended: `query_data` executes model-authored SQL
+ * (read-only-enforced in duckDb.ts, but still arbitrary within that), which
+ * is fine when a user is present to see the result, not fine as a silent
+ * scheduled/triggered action. Checked separately from APPROVAL_REQUIRED so it
+ * doesn't add an approval prompt to normal interactive use.
+ */
+const UNATTENDED_BLOCKED_TOOLS = new Set(['query_data']);
+
 /** Read-only / local tools that are safe to run concurrently within one turn. */
 const READ_ONLY_TOOLS = new Set([
   'list_tabs',
@@ -2466,6 +2476,12 @@ export class AgentRuntime {
       };
     }
 
+    if (this.unattended && UNATTENDED_BLOCKED_TOOLS.has(name)) {
+      this.unattendedApprovalBlocked = true;
+      this.finishActivity(activity, 'denied', 'Not permitted to run unattended');
+      return `Error: tool "${name}" is not permitted to run unattended in a scheduled task or trigger.`;
+    }
+
     // Trust gating: low-trust capabilities' tools always require approval,
     // even if the tool is normally read-only.
     const needsApproval = APPROVAL_REQUIRED.has(name) ||
@@ -2860,7 +2876,12 @@ export class AgentRuntime {
             dataExport: { title: qTitle, filename: qFilename, columns: qColumns, rows: qRows },
           });
         }
-        return JSON.stringify({ columns: qColumns, rows: qRows, rowCount: qres.rowCount ?? qRows.length });
+        return JSON.stringify({
+          columns: qColumns,
+          rows: qRows,
+          rowCount: qres.rowCount ?? qRows.length,
+          ...(qres.truncated ? { truncated: true, note: `Only the first ${qRows.length} rows are shown; the true result has ${qres.rowCount} rows. Narrow the query (WHERE/LIMIT/aggregation) rather than treating this as the complete result set.` } : {}),
+        });
       }
       case 'import_data': {
         const tableName = String(args.tableName ?? '').trim();

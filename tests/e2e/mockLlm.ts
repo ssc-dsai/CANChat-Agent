@@ -245,6 +245,15 @@ function decide(req: ChatRequest): ChatMessage {
     return { role: 'assistant', content: FINAL_TEXT };
   }
 
+  // Attempts query_data (unattended runs must have this blocked — see
+  // UNATTENDED_BLOCKED_TOOLS in agentRuntime.ts).
+  if (userMentions('QUERY_DATA_DEMO')) {
+    if (!hasToolResult) {
+      return { role: 'assistant', content: null, tool_calls: [toolCall('query_data', { sql: 'SELECT 1 AS n' })] };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
   if (hasToolResult) return { role: 'assistant', content: FINAL_TEXT };
 
   const prompt = latestUserText(req.messages);

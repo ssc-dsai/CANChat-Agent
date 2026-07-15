@@ -124,7 +124,10 @@ export function DatasetBrowser() {
 
       {result?.ok && result.columns && (
         <section class="ws-ds-result">
-          <div class="ws-dim">{result.rowCount ?? result.rows?.length ?? 0} row(s)</div>
+          <div class="ws-dim">
+            {result.rowCount ?? result.rows?.length ?? 0} row(s)
+            {result.truncated ? ` — showing the first ${result.rows?.length ?? 0}; narrow with WHERE/LIMIT/aggregation` : ''}
+          </div>
           <div class="ws-ds-scroll">
             <table class="ws-ds-table">
               <thead>

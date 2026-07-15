@@ -683,6 +683,9 @@ freely, but a state-changing action (clicking something, filling a form,
 sending mail) still needs your approval, so it simply pauses and waits rather
 than acting without you. Nothing here can do something a normal chat message
 couldn't already do with your approval; these just decide *when* it runs.
+Running a SQL query against loaded data is also switched off unattended, even
+though it can't change anything outside the extension — it's off by default
+until there's someone present to sanity-check the result.
 
 ### Products
 

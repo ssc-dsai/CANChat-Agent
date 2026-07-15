@@ -1,6 +1,7 @@
 import { unzipSync } from 'fflate';
 import type { DuckDbResponse, DuckDbTableInfo } from '../shared/messages';
 import { ARCHIVE_MEMBER_EXT, extOf, tableNameFromFile, uniqueTableName } from '../shared/dataFile';
+import { validateReadOnlySql } from '../shared/sqlGuard';
 
 // Bundle DuckDB-WASM's worker + wasm locally and serve them from the extension
 // origin. The default jsDelivr bundles load a cross-origin Worker, which the MV3
@@ -184,21 +185,45 @@ async function dumpTable(tableName: string): Promise<{ rows: string[][]; columns
   }
 }
 
-async function toResponse(table: any): Promise<DuckDbResponse> {
+// query_data (the agent tool over this) is read-only and unrestricted in what
+// it can ask for, so the response itself must bound how much comes back: cap
+// converted rows so one runaway SELECT can't materialize gigabytes of JS
+// strings or blow out a chat message, and mark the response `truncated` so
+// the model (and the user) knows the true row count exceeded what's shown.
+const MAX_QUERY_ROWS = 500;
+// DuckDB-WASM has no query-cancellation hook exposed here, so this bounds how
+// long a caller waits rather than actually stopping engine-side execution —
+// still worth having so a pathological query can't hang the tool call forever.
+const QUERY_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Query timed out after ${ms / 1000}s.`)), ms)),
+  ]);
+}
+
+async function toResponse(table: any, maxRows = Infinity): Promise<DuckDbResponse> {
+  const rowCount = table.numRows;
+  const truncated = Number.isFinite(maxRows) && rowCount > maxRows;
+  const limited = truncated ? table.slice(0, maxRows) : table;
   return {
     ok: true,
-    columns: columnsFromArrow(table),
-    columnTypes: columnTypesFromArrow(table),
-    rows: rowsFromArrow(table),
-    rowCount: table.numRows,
+    columns: columnsFromArrow(limited),
+    columnTypes: columnTypesFromArrow(limited),
+    rows: rowsFromArrow(limited),
+    rowCount,
+    truncated,
   };
 }
 
 export async function query(sql: string): Promise<DuckDbResponse> {
+  const guard = validateReadOnlySql(sql);
+  if (!guard.ok) return { ok: false, error: guard.error };
   try {
     const c = await ensureDb();
-    const result = await c.query(sql);
-    return toResponse(result);
+    const result = await withTimeout(c.query(sql), QUERY_TIMEOUT_MS);
+    return toResponse(result, MAX_QUERY_ROWS);
   } catch (e) {
     return { ok: false, error: String(e) };
   }

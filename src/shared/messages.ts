@@ -158,6 +158,8 @@ export type RuntimeRequest =
   | { type: 'products_list' }
   | { type: 'product_get'; id: string }
   | { type: 'product_delete'; id: string }
+  | { type: 'products_export' }
+  | { type: 'products_import'; products: ExportedProduct[] }
   // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
   // service worker owns the offscreen document, so it routes the op for them.
   | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };
@@ -427,11 +429,19 @@ export interface ProductMeta {
   conversationId?: string;
 }
 
+/** A single product serialized for backup (blob base64-encoded). */
+export interface ExportedProduct {
+  meta: ProductMeta;
+  dataB64: string;
+}
+
 export type ProductRequest =
   | { target: 'offscreen-product'; op: 'save'; filename: string; mimeType: string; dataBase64: string; sourceTitle?: string; conversationId?: string }
   | { target: 'offscreen-product'; op: 'list' }
   | { target: 'offscreen-product'; op: 'get'; id: string }
-  | { target: 'offscreen-product'; op: 'delete'; id: string };
+  | { target: 'offscreen-product'; op: 'delete'; id: string }
+  | { target: 'offscreen-product'; op: 'export' }
+  | { target: 'offscreen-product'; op: 'import'; products: ExportedProduct[] };
 
 export interface ProductResponse {
   ok: boolean;
@@ -471,6 +481,8 @@ export interface DuckDbResponse {
   columnTypes?: string[];
   rows?: string[][];
   rowCount?: number;
+  /** True when `rows` was capped below the query's true `rowCount` (see MAX_QUERY_ROWS in duckDb.ts). */
+  truncated?: boolean;
   tables?: DuckDbTableInfo[];
 }
 

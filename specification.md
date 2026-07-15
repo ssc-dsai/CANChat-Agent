@@ -426,6 +426,15 @@ A turn-based loop over the OpenAI chat API with tool calling.
   stateful-but-benign: sequential, no approval card. (The `map_*` tools and
   `create_*` act on the extension's own sandboxed surfaces — not the user's session —
   so they are non-gated.)
+- `UNATTENDED_BLOCKED_TOOLS` = `query_data` — a narrower gate than
+  `APPROVAL_REQUIRED`, checked separately in `executeToolCall` before the
+  normal approval logic: stays frictionless in attended chat (not
+  approval-gated interactively — it only touches the local DuckDB engine, per
+  the read-only enforcement below) but is refused outright
+  (`this.unattendedApprovalBlocked = true`, same signal as a denied approval)
+  when `this.unattended` is true, since a scheduled task or event trigger
+  running model-authored SQL with nobody watching is a materially different
+  risk than the same call in an attended turn.
 
 ---
 
@@ -590,6 +599,21 @@ classification, non-gated; datasets persist to OPFS)
   table (auto-persisted).
 - `query_data {sql}` — run DuckDB SQL (SELECT/WHERE/GROUP BY/JOIN/window fns…),
   returns rows as JSON. The model translates natural-language questions to SQL.
+  **Read-only enforced**: `shared/sqlGuard.ts`'s `validateReadOnlySql` (pure,
+  unit-tested) rejects anything but a single `SELECT`/`WITH…SELECT` statement
+  before it reaches DuckDB — no semicolon-separated multi-statements, no
+  `INSERT`/`UPDATE`/`DELETE`/DDL/`ATTACH`/`COPY`/`PRAGMA`/etc, checked by
+  word-boundary keyword matching (a string literal containing a keyword as a
+  whole word can false-positive; this is defense-in-depth, not a real SQL
+  parser). Results are capped at 500 rows (`MAX_QUERY_ROWS`, via `Table.slice`
+  on the Arrow result before conversion, so an oversized result isn't fully
+  materialized into JS) and the query is wrapped in a 15s timeout
+  (`QUERY_TIMEOUT_MS`) — DuckDB-WASM exposes no engine-side cancellation here,
+  so this bounds the caller's wait rather than truly stopping execution. A
+  truncated response is flagged (`truncated: true` + a note telling the model
+  to narrow the query, not treat the sample as complete) and surfaced in the
+  Datasets workspace page too. See `UNATTENDED_BLOCKED_TOOLS` above for why
+  this tool is additionally refused outright in scheduled tasks/triggers.
 - `list_datasets` — list loaded tables. `describe_dataset {tableName}` — schema + row
   count.
 - `persist_dataset {tableName}` / `load_dataset {tableName}` / `drop_dataset {tableName}`
@@ -1120,7 +1144,12 @@ untouched by any of this):
   bridge) and listed newest-first. UI: `src/workspace/ProductsPage.tsx` — a
   flat list (filename, timestamp, size, source task/trigger name) with
   Download (via the existing `saveFile` Save-As flow) and Delete per row; no
-  expiry, capacity, or auto-pruning — deletion is manual.
+  expiry, capacity, or auto-pruning — deletion is manual. Included in
+  **Backup & Restore** (`sidebar/BackupRestoreSection.tsx`), mirroring repos:
+  `productExportAll`/`productImportAll` (base64-encoded blobs) round-trip
+  through `products_export`/`products_import` messages and an `ExportedProduct
+  {meta, dataB64}` array in the backup JSON, overwriting any product with the
+  same id on restore.
 - **Workflows** (`shared/workflows.ts` `Workflow {name, skillNames[]}`) — a
   named, ordered chain of *existing* skills. Running one is not a new
   execution engine: `buildWorkflowPrompt` just writes an explicit

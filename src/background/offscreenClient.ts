@@ -11,6 +11,7 @@ import type {
   DuckDbOp,
   EmbedLocalRequest,
   EmbedLocalResponse,
+  ExportedProduct,
   ExportedRepo,
   ExtractOfficeRequest,
   ExtractOfficeResponse,
@@ -257,6 +258,14 @@ export async function productGet(id: string): Promise<{ meta: ProductMeta; dataB
 
 export function productDelete(id: string): Promise<ProductResponse> {
   return productRequest({ target: 'offscreen-product', op: 'delete', id });
+}
+
+export function productExport(): Promise<ProductResponse> {
+  return productRequest({ target: 'offscreen-product', op: 'export' });
+}
+
+export function productImport(products: ExportedProduct[]): Promise<ProductResponse> {
+  return productRequest({ target: 'offscreen-product', op: 'import', products });
 }
 
 // ----- DuckDB data engine -----

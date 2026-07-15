@@ -43,7 +43,7 @@ import {
   repoList,
   repoSearch,
 } from './repoStore';
-import { productDelete, productGet, productList, productSave } from './productStore';
+import { productDelete, productExportAll, productGet, productImportAll, productList, productSave } from './productStore';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -418,6 +418,10 @@ async function handleProduct(req: ProductRequest): Promise<ProductResponse> {
         return { ok: true, result: await productGet(req.id) };
       case 'delete':
         return { ok: true, result: await productDelete(req.id) };
+      case 'export':
+        return { ok: true, result: await productExportAll() };
+      case 'import':
+        return { ok: true, result: await productImportAll(req.products) };
     }
   } catch (e) {
     return { ok: false, error: String(e) };

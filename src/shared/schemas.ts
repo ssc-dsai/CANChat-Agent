@@ -1098,7 +1098,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'query_data',
-      description: 'Run an SQL query on the in-memory DuckDB dataset. Use after importing data or when you need to filter, aggregate, join, or sort structured data. Returns rows as a JSON array. Supports full DuckDB SQL syntax (SELECT, WHERE, GROUP BY, ORDER BY, LIMIT, JOIN, UNION, window functions, etc).',
+      description: 'Run a read-only SQL query (SELECT or WITH...SELECT only — one statement, no INSERT/UPDATE/DELETE/DDL) on the in-memory DuckDB dataset. Use after importing data or when you need to filter, aggregate, join, or sort structured data. Returns rows as a JSON array, capped at 500 rows (the response flags when results were truncated — add your own LIMIT/aggregation to narrow it instead of relying on the cap). Not available in scheduled tasks or event triggers (unattended runs) — only in an attended conversation.',
       parameters: {
         type: 'object',
         properties: {
