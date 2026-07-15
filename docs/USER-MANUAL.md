@@ -639,6 +639,30 @@ it never deletes anything. Deleting a project does not delete its conversations,
 memory, skills, or capabilities; they simply become invisible until you either
 switch back or reassign them.
 
+### Automations
+
+The **Automations** page in the Workspace is where background work — anything the
+agent does without you watching turn by turn — lives:
+
+- **Scheduled tasks.** Ask the agent to "schedule a task that checks my calendar
+  every morning at 8am" and it appears here: pause/resume it, delete it, and see
+  its recent runs (what it found, or what went wrong).
+- **Workflows.** A named, ordered chain of your existing skills — e.g. a "Morning
+  routine" workflow that runs `/research` then `/search-mail` in sequence.
+  Create one from the page (name it, list the skills in order); it's not a new
+  capability, just a saved shortcut through skills you already have.
+- **Event triggers.** "When I open a page on this site, run this skill or
+  workflow" — e.g. automatically triage a ticket queue whenever you open your
+  Jira board. Set the site, what to run, and (optionally) a cooldown so it
+  doesn't refire every time you're back on that tab within the same session.
+
+**Every one of these — scheduled, workflow, or triggered — runs under the exact
+same safety rule as anything else unattended:** it can read, search, and gather
+freely, but a state-changing action (clicking something, filling a form,
+sending mail) still needs your approval, so it simply pauses and waits rather
+than acting without you. Nothing here can do something a normal chat message
+couldn't already do with your approval; these just decide *when* it runs.
+
 ---
 
 ## 7. Common workflows

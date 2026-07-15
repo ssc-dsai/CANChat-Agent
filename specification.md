@@ -287,6 +287,8 @@ collapsed accordion on load), **Models** (`ModelSection.tsx` — a self-containe
 endpoint/key/model/temperature/max-tokens editor, independent of `SettingsScreen` so
 it can't regress onboarding — plus `ModelProfilesSection.tsx` below it for named
 alternate-endpoint profiles and role routing; see §9 *Model orchestration*),
+**Automations** (`AutomationsPage.tsx` — scheduled tasks, workflows, and
+event triggers; see §9 *Agent platform*),
 **Datasets** (`DatasetBrowser.tsx` — DuckDB: list/preview
 tables, import CSV/JSON, run SQL via the `duckdb` `RuntimeRequest`), **Data**
 (`DataViewer.tsx`, over `export_data` results), **Image** (`ImageViewer.tsx`, full-size
@@ -1055,6 +1057,60 @@ new agent-callable **`save_as_skill`** tool (approval-gated, like
 instead of waiting for the task to end and clicking a button. Re-packaging
 an already-saved same-name skill patch-bumps its version
 (`bumpSkillVersion`) rather than leaving it untracked or duplicating it.
+
+**Agent platform: scheduled tasks, workflows, and event triggers**
+(`background/scheduler.ts`, `background/automation.ts`,
+`shared/scheduledTasks.ts`, `shared/workflows.ts`, `shared/eventTriggers.ts`).
+Three ways to run a task without the user driving it turn by turn, all
+funneling through the same unattended path — `AgentRuntime.runScheduledTask`
+(`unattended = true`, so any state-changing tool call returns `needs_approval`
+instead of running silently; the existing unattended-approval gate is
+untouched by any of this):
+- **Scheduled tasks** (pre-existing since an earlier phase, previously
+  tool-only with **no management UI at all** — a real gap closed here). A
+  `ScheduledTask {title, prompt, recurrence, nextRunAt}` created via the
+  agent's own `schedule_task`/`cancel_scheduled_task` tools, driven by
+  `chrome.alarms` (one alarm per task, named `scheduled_task:<id>`,
+  reconciled on install/settings-change so MV3 eviction never loses a
+  schedule), with a capped `ScheduledRun[]` history
+  (`getScheduledRuns`/100-entry cap) per run.
+- **Workflows** (`shared/workflows.ts` `Workflow {name, skillNames[]}`) — a
+  named, ordered chain of *existing* skills. Running one is not a new
+  execution engine: `buildWorkflowPrompt` just writes an explicit
+  numbered instruction ("call `use_skill` for X, finish it, then Y, then
+  Z…") and hands that to the normal loop, so a workflow is a saved shortcut
+  through tools the agent already has, not a new capability.
+- **Event triggers** (`shared/eventTriggers.ts` `EventTrigger {hostPattern,
+  target: skill|workflow, cooldownMinutes}`) — "when I open a page on this
+  site, run this unattended." Firing is driven by a single top-level
+  `chrome.tabs.onUpdated` listener in `serviceWorker.ts` (registered
+  synchronously so MV3 eviction can't lose it) that calls
+  `automation.maybeFireEventTriggers(url, runtime)`: matches enabled
+  triggers by hostname (`hostMatches` — subdomain-aware, the same rule an
+  app playbook's origin uses) and cooldown (`isInCooldown`, default 60
+  minutes), skips entirely when `runtime.isRunning()` (never interrupts or
+  interleaves with the user's own task — retried on the next matching
+  navigation), and fires strictly one at a time (each `fireTrigger` call is
+  awaited to completion before considering the next candidate). A
+  `TriggerRun[]` history mirrors `ScheduledRun` (own 100-entry cap). Costs
+  nothing per navigation beyond one empty storage read when no triggers are
+  configured.
+
+UI: `src/workspace/AutomationsPage.tsx` — the first-ever view into scheduled
+tasks (list, pause/resume, delete, recent runs) alongside Workflow CRUD and
+Event trigger CRUD (site, target skill/workflow, cooldown, recent runs).
+RuntimeRequests (`scheduled_tasks_get`, `scheduled_task_set_enabled`,
+`workflow_create`, `event_trigger_create`, etc., `serviceWorker.ts`) mirror
+the established one-shot-message pattern used throughout (Projects, memory
+graph, repos).
+
+**Explainability, scoped down.** A dedicated "explainability page" surfacing
+findings/approval-reasons/memory-provenance in one place was in the original
+plan for this phase but folded into the Automations page's run history
+(status/summary/error per run, and each run's originating task/trigger/
+workflow) rather than built as a separate page — the existing
+`ToolActivityPanel` (per-conversation) and Memory page (per-fact provenance)
+already cover the rest without duplicating them here.
 
 **Auth auto-pause.** When page extraction detects a login wall, the task pauses,
 the panel shows a sign-in notice, and resuming re-fetches the page.

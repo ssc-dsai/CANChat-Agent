@@ -48,7 +48,18 @@ import {
   type SharePointSyncProgress,
 } from './sharepointIngest';
 import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAuth';
-import { reconcileScheduledAlarms, runScheduledTaskById, taskIdFromAlarm } from './scheduler';
+import { cancelScheduledTask, getScheduledRuns, getScheduledTasks, reconcileScheduledAlarms, runScheduledTaskById, setScheduledTaskEnabled, taskIdFromAlarm } from './scheduler';
+import {
+  createEventTrigger,
+  createWorkflow,
+  deleteEventTrigger,
+  deleteWorkflow,
+  getEventTriggers,
+  getTriggerRuns,
+  getWorkflows,
+  maybeFireEventTriggers,
+  updateEventTrigger,
+} from './automation';
 import {
   getActiveProjectId,
   getMemoryEnabled,
@@ -145,6 +156,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === MEMORY_DECAY_ALARM) void runMemoryDecaySweep();
   const scheduledTaskId = taskIdFromAlarm(alarm.name);
   if (scheduledTaskId) void runScheduledTaskById(scheduledTaskId, runtime);
+});
+
+// Event triggers: a completed navigation is the only signal we watch for now
+// (no WebMCP/DOM-event bridge yet). maybeFireEventTriggers no-ops fast when
+// there are no triggers configured, so this costs nothing for the common
+// (unused) case.
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete' || !tab.url) return;
+  void maybeFireEventTriggers(tab.url, runtime);
 });
 
 function broadcastMailProgress(p: MailSyncProgress, last: { at: number }): void {
@@ -570,6 +590,74 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
   }
   if (request.type === 'project_set_active') {
     setActiveProjectId(request.id).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (request.type === 'scheduled_tasks_get') {
+    getScheduledTasks().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'scheduled_runs_get') {
+    getScheduledRuns().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'scheduled_task_set_enabled') {
+    setScheduledTaskEnabled(request.id, request.enabled).then((task) => sendResponse({ ok: Boolean(task) }));
+    return true;
+  }
+  if (request.type === 'scheduled_task_delete') {
+    cancelScheduledTask(request.id).then((ok) => sendResponse({ ok }));
+    return true;
+  }
+  if (request.type === 'workflow_list') {
+    getWorkflows().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'workflow_create') {
+    (async () => {
+      try {
+        const workflow = await createWorkflow(request.name, request.skillNames, request.description);
+        return { ok: true, workflow };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'workflow_delete') {
+    deleteWorkflow(request.id).then((ok) => sendResponse({ ok }));
+    return true;
+  }
+  if (request.type === 'event_trigger_list') {
+    getEventTriggers().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'event_trigger_create') {
+    (async () => {
+      try {
+        const trigger = await createEventTrigger({
+          name: request.name,
+          hostPattern: request.hostPattern,
+          target: request.target,
+          cooldownMinutes: request.cooldownMinutes,
+          enabled: true,
+        });
+        return { ok: true, trigger };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'event_trigger_update') {
+    updateEventTrigger(request.id, request.patch).then((trigger) => sendResponse({ ok: Boolean(trigger) }));
+    return true;
+  }
+  if (request.type === 'event_trigger_delete') {
+    deleteEventTrigger(request.id).then((ok) => sendResponse({ ok }));
+    return true;
+  }
+  if (request.type === 'trigger_runs_get') {
+    getTriggerRuns().then(sendResponse);
     return true;
   }
   if (request.type === 'duckdb') {
