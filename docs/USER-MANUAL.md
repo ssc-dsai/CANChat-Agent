@@ -562,11 +562,15 @@ Three collapsible sections (collapsed by default — click to expand):
   (AD) username from the signed-in session, the work systems you currently have
   open, and your locale/timezone. It runs entirely on-device and adds only new
   facts. Click **Manage memories** to open the full editor (in its own tab):
-  filter by status or kind, edit a memory's text, **Confirm** it to clear a
-  "stale" flag, or delete it — each entry shows the excerpt it was learned from,
-  plus a link to the source article/page when the fact was extracted from one. A
-  memory that hasn't been reconfirmed in a while is marked stale automatically
-  (never deleted) so you know it might be out of date. Capacity is 500 entries;
+  search by text, filter by status or kind, edit a memory's text, **Confirm** it
+  to clear a "stale" flag, or delete it — each entry shows the excerpt it was
+  learned from, plus a link to the source article/page when the fact was
+  extracted from one. Its **Relationships** list is clickable — click either end
+  of a relationship to jump the detail view to that node, so you can walk the
+  graph hop by hop (e.g. from an article's event to the organization it names,
+  then to another event that organization is linked to). A memory that hasn't
+  been reconfirmed in a while is marked stale automatically (never deleted) so
+  you know it might be out of date. Capacity is 500 entries;
   secrets are never saved.
 
   The same toggle also enables **automatic lessons**: after a substantial or

@@ -15,6 +15,7 @@ export function MemoryPage() {
   const [editSummary, setEditSummary] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [kindFilter, setKindFilter] = useState<string>('all');
+  const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
 
   const reload = () => {
@@ -26,8 +27,12 @@ export function MemoryPage() {
   useEffect(reload, []);
 
   const nodes = graph?.nodes ?? [];
+  const q = query.trim().toLowerCase();
   const filtered = nodes.filter(
-    (n) => (statusFilter === 'all' || n.status === statusFilter) && (kindFilter === 'all' || n.kind === kindFilter),
+    (n) =>
+      (statusFilter === 'all' || n.status === statusFilter) &&
+      (kindFilter === 'all' || n.kind === kindFilter) &&
+      (!q || n.label.toLowerCase().includes(q) || n.summary.toLowerCase().includes(q)),
   );
   const current = nodes.find((n) => n.id === selected) ?? null;
   const edgesFor = (id: string) => (graph?.edges ?? []).filter((e) => e.status === 'active' && (e.from === id || e.to === id));
@@ -36,6 +41,14 @@ export function MemoryPage() {
   const select = (n: MemoryNode) => {
     setSelected(n.id);
     setEditSummary(n.summary);
+  };
+
+  // Jump the detail view to a related node by id — used for relationship
+  // traversal, so it works regardless of the current search/status/kind
+  // filters (the list pane's filtering never limits what you can navigate to).
+  const selectById = (id: string) => {
+    const n = nodes.find((x) => x.id === id);
+    if (n) select(n);
   };
 
   const save = async () => {
@@ -73,6 +86,13 @@ export function MemoryPage() {
   return (
     <div class="ws-memory-page">
       <aside class="ws-memory-list-pane">
+        <input
+          class="ws-memory-search"
+          type="search"
+          placeholder="Search memories…"
+          value={query}
+          onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+        />
         <div class="ws-memory-filters">
           <select value={statusFilter} onChange={(e) => setStatusFilter((e.target as HTMLSelectElement).value as StatusFilter)}>
             <option value="active">Active</option>
@@ -145,7 +165,11 @@ export function MemoryPage() {
                 <ul>
                   {edgesFor(current.id).map((e) => (
                     <li key={e.id} class="ws-dim">
-                      {labelOf(e.from)} —{e.relation}→ {labelOf(e.to)}
+                      <button class="ws-link" onClick={() => selectById(e.from)}>{labelOf(e.from)}</button>
+                      {' —'}
+                      {e.relation}
+                      {'→ '}
+                      <button class="ws-link" onClick={() => selectById(e.to)}>{labelOf(e.to)}</button>
                     </li>
                   ))}
                 </ul>
