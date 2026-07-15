@@ -715,6 +715,7 @@ Each is a request you type into the composer; the agent handles the steps.
 | **Write a document** | "Draft a one-page summary as a Word document." | Produces a downloadable `.docx`. |
 | **Save pages to ask later** | "Save this page to a knowledge base called research." then "#research what did they say about pricing?" | Stores on-device; answers with citations. |
 | **Use a tab group as a source** | After it opens several tabs: "Summarize the Wolf group." | Reads every tab in that named group. |
+| **Combine data with documents** | "Which projects went over budget, and what do their status reports say?" | Queries the loaded dataset for the exact answer, then searches saved pages for matching narrative, and cites both. |
 | **Run browser automation** | "Open the compose window and start a draft to …" | Maps the page, then asks approval before each click/type/submit. |
 | **Teach a new app** | "/learn" on a site you use often. | Explores the app and saves an app playbook for next time. |
 | **Connect an MCP service** | Add the MCP server under Known sites, then "Use the <name> tools to …" | Lists the server's tools and calls them (with approval). |

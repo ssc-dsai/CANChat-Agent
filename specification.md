@@ -645,6 +645,20 @@ classification, non-gated; datasets persist to OPFS)
   per-query enforcement is a known gap, not solved here. The Datasets
   workspace page applies the same filter client-side, reading
   `ba_active_project` the same way `ProjectSwitcher.tsx` does.
+- **Hybrid structured + document retrieval** (Structured Data RAG MVP item
+  #4) — no new tool, no new orchestration code: a system-prompt rule (next to
+  the NL→SQL guidance above) tells the model to answer a question spanning
+  both a dataset and narrative documents (e.g. "which projects exceeded
+  budget, and what do their status reports say?") by running `query_data`
+  first for the exact filtered answer, then `search_repo` (or `add_to_repo`
+  first, if the pages aren't captured yet) using identifiers/names *from that
+  result* as the query, and citing both — never substituting one source's
+  numbers for the other's prose. Dataset/repo selection stays name-based (no
+  schema/column embeddings — out of MVP scope per §25 of the feature spec this
+  phase implements). Proven end-to-end by a mock-driven E2E test that opens a
+  document as the active tab, asks a hybrid question, and asserts the tool
+  trace contains both the SQL result (`Alpha`) and retrieved document text
+  (`vendor delays`) — not just that a plausible-sounding answer came back.
 
 **Knowledge & output**
 - `save_app_playbook {origin, name, description, content, reason}` — persist a
