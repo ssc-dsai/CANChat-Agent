@@ -23,6 +23,8 @@ export interface CapabilityRegistryEntry {
   mcpUrl?: string;
   mcpToken?: string;
   searchUrlTemplate?: string;
+  /** Optional project scope. Unset = global (visible under every project). */
+  projectId?: string;
 }
 
 /**

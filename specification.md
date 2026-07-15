@@ -165,8 +165,10 @@ discriminator, exactly like the offscreen document:
 **`src/shared/`** (imported by every context)
 - `types.ts` — all data types: `Settings`, `TabSummary`, `PageContent`,
   `ElementRef`, `AuthState`, `NavigationResult`, `AgentStatus`, `ChatMessageView`,
-  `ToolActivity`, `PlanView`/`PlanStepStatus`, `MemoryEntry`, `Skill`, `DataExport`,
-  etc.
+  `ToolActivity`, `PlanView`/`PlanStepStatus`, `MemoryEntry` (legacy flat memory,
+  migration source), `Skill`, `DataExport`, etc.
+- `memoryGraph.ts` — durable graph memory: `MemoryNode`/`MemoryEdge` types and
+  pure logic (reflection parsing, merge, decay, pruning, prompt rendering).
 - `messages.ts` — the wire protocol: `SidebarCommand`, `BackgroundEvent`,
   `RuntimeRequest` (one-shot), the offscreen request/response unions
   (`ExtractPdfRequest/Response`, `ExtractOfficeRequest/Response`,
@@ -214,9 +216,11 @@ discriminator, exactly like the offscreen document:
 - `mapClient.ts` — `ensureMapTab()` (singleton map tab + `map_ready` handshake) +
   `mapCommand(cmd)`; mirrors `offscreenClient`.
 - `llmProvider.ts` — `complete(settings, messages, tools?, signal?, onRetry?)`,
-  `embed(settings, texts)`, `transcribe(settings, audio)`, `testConnection(settings)`.
-  OpenAI-compatible HTTP with an **Azure mode** keyed off `apiVersion`; multimodal
-  `image_url` content parts; transient-failure auto-retry; throws a typed `LlmError`.
+  `embed(settings, texts)`, `transcribe(settings, audio)`, `testConnection(settings)`,
+  `resolveModelForRole(settings, role)` (model orchestration — see §9 *Model
+  orchestration*). OpenAI-compatible HTTP with an **Azure mode** keyed off
+  `apiVersion`; multimodal `image_url` content parts; transient-failure
+  auto-retry; throws a typed `LlmError`.
 - `browserToolAdapter.ts` — thin wrappers over Chrome APIs and the content script:
   `listTabs`, `getActiveTab`, `getTabContent`, `getAllTabContents`, `navigate`,
   `openUrl`, `readTabGroup`, `searchWeb`, `getElementMap`, `click/fill/submit`,
@@ -271,12 +275,28 @@ state), persists/restores its view to `chrome.storage.session`, and posts the
 **`src/microphone/`** — `microphone.ts`: a hidden page that records a voice prompt
 via `getUserMedia` and returns the audio for `/audio/transcriptions`.
 
-**`src/workspace/`** — the full-tab work environment (`workspace.html` → `main.tsx`):
-`Workspace.tsx` (shell + tabs, mirrors the conversation state over the `Port`),
-`ToolManager.tsx` (browse the unified tool catalog), `SkillEditor.tsx` (edit skills),
-`DataViewer.tsx` (table viewer over `export_data` results), `DatasetBrowser.tsx`
-(DuckDB: list/preview tables, import CSV/JSON, run SQL — via the `duckdb`
-`RuntimeRequest`), `ImageViewer.tsx` (full-size generated images); `workspace.css`.
+**`src/workspace/`** — the full-tab management console (`workspace.html` → `main.tsx`,
+which imports both `../sidebar/styles.css` and `workspace.css` so pages built from
+reused sidebar sections render styled): `Workspace.tsx` (shell + nav, mirrors the
+conversation state over the `Port`). Nav pages: **Chat** (composer, same as the side
+panel), **Projects** (`ProjectsPage.tsx` — full CRUD + active-project switch;
+see §9 *Projects*), **Knowledge** (`RepositoriesSection`, reused from the
+sidebar), **Memory** (`MemoryPage.tsx` — see §9), **Skills** (`SkillsSection`, reused), **Tools**
+(`CapabilitiesSection`, reused, opened with `defaultOpen` so the console isn't a
+collapsed accordion on load), **Models** (`ModelSection.tsx` — a self-contained
+endpoint/key/model/temperature/max-tokens editor, independent of `SettingsScreen` so
+it can't regress onboarding — plus `ModelProfilesSection.tsx` below it for named
+alternate-endpoint profiles and role routing; see §9 *Model orchestration*),
+**Datasets** (`DatasetBrowser.tsx` — DuckDB: list/preview
+tables, import CSV/JSON, run SQL via the `duckdb` `RuntimeRequest`), **Data**
+(`DataViewer.tsx`, over `export_data` results), **Image** (`ImageViewer.tsx`, full-size
+generated images), and **Settings** (`ConsoleSettingsPage.tsx` — language switcher +
+reused `BackupRestoreSection`, also opened with `defaultOpen`). The reused sidebar
+sections (`CapabilitiesSection`, `BackupRestoreSection`) take an optional
+`defaultOpen` prop so the same component collapses in the sidebar's stacked accordion
+but starts expanded as a dedicated console page. The sidebar's `SettingsScreen` is
+unchanged — the console pages are additive, not a replacement, so onboarding and its
+E2E coverage stay untouched.
 
 **`src/sidebar/`** — `main.tsx` (bootstrap + UI scale), `Sidebar.tsx` (shell,
 header, text-size control, **Undo** + **History** controls), `ChatPanel.tsx` (composer,
@@ -286,7 +306,8 @@ capture), `ConversationsScreen.tsx` (the **History** list with title+summary, la
 load/delete/import/export), `OnboardingScreen.tsx` (first-run setup), `SettingsScreen.tsx`,
 the Settings sub-sections `CapabilitiesSection.tsx` (the Capability Registry editor;
 supersedes `KnownSitesSection.tsx`), `SkillsSection.tsx`,
-`MemorySection.tsx`, `RepositoriesSection.tsx`, `BackupRestoreSection.tsx`, the shared
+`MemorySection.tsx`, `RepositoriesSection.tsx`, `BackupRestoreSection.tsx`,
+`ProjectSwitcher.tsx` (compact active-project dropdown in the header), the shared
 `RepoUpload.tsx` + `UploadBanner.tsx` uploader and `LabelPicker.tsx`; helpers
 `repoUploadClient.ts`, `conversationExport.ts`, `download.ts`, `links.ts`,
 `i18n.tsx` (EN/FR); `styles.css`.
@@ -575,8 +596,9 @@ classification, non-gated; datasets persist to OPFS)
 - `use_skill {name}` — load a named skill's instructions.
 - `export_data {title, columns, rows}` — produce a downloadable CSV/JSON table.
 - `set_plan {steps}`, `update_plan {step, status, note?}`, `record_finding {text}`.
-- `save_memory {text, …}`, `update_memory {id, text}`, `delete_memory {id}` —
-  persistent memory (only when the memory feature is enabled).
+- `save_memory {text, kind?, subject?}`, `update_memory {id, text}`,
+  `delete_memory {id}` — durable graph memory (only when the memory feature
+  is enabled). See §16.6.
 
 ---
 
@@ -854,15 +876,144 @@ name, so the "me" filter isn't a perfect identity match.
   an `origin`; the matching site's playbook auto-appears in the prompt. The user
   teaches one with `/learn` (the agent explores and calls `save_app_playbook`;
   re-running upserts by origin).
-- **Memory** — optional persistent facts (off by default, toggled in Settings). When
-  on, the agent may `save/update/delete_memory`; entries are injected into the
-  prompt. A **Probe environment** button (Memory settings, shown only when memory is
-  enabled) sends a `probe_environment` `RuntimeRequest`; `background/envProbe.ts`
-  gathers on-device facts about the signed-in user — Microsoft 365 identity (name /
-  work email / AD sign-in username via SharePoint `/_api/web/currentuser` over the
-  session cookie), the enterprise systems currently open (an allowlist of work hosts),
-  and locale/timezone — and the UI appends them as memory entries (dedup, capped 100).
-  The service worker refuses the probe when memory is off. Nothing leaves the device.
+- **Memory** — see "Durable graph memory" below for the full design (graph
+  model, reflection, retrieval tiers). Optional (off by default, toggled in
+  Settings). A **Probe environment** button (Memory settings, shown only when
+  memory is enabled) sends a `probe_environment` `RuntimeRequest`;
+  `background/envProbe.ts` gathers on-device facts about the signed-in user —
+  Microsoft 365 identity (name / work email / AD sign-in username via
+  SharePoint `/_api/web/currentuser` over the session cookie), the enterprise
+  systems currently open (an allowlist of work hosts), and locale/timezone —
+  and the UI adds each as a graph memory node via `memory_graph_add`
+  (exact-text dedup, capped at `MEMORY_NODE_CAP`). The service worker refuses
+  the probe when memory is off. Nothing leaves the device.
+
+**Durable graph memory** (`shared/memoryGraph.ts`, `background/memoryIndex.ts`,
+`chrome.storage.local` key `ba_memory_graph`): entities/facts (`MemoryNode`) and
+relationships (`MemoryEdge`), each with `kind` (entity/fact/preference/event),
+`confidence`, `durability`, `status` (active/stale/superseded), `provenance`
+(conversation id + verbatim excerpt), and timestamps. Replaces the earlier flat
+`MemoryEntry[]` (`ba_memory`), which is lazily, non-destructively migrated into
+graph nodes on first read (`storage.ts:getMemoryGraph`) and left in place as a
+Backup/Restore fallback for one release.
+- **Embedding index** — a reserved OPFS repo (`__memory__`, `RepoKind:'memory'`)
+  holds one chunk per node (`label: summary` text), reusing the RAG store's
+  hybrid BM25+vector search wholesale (`memoryIndex.ts`'s
+  upsert/remove/search/rebuild wrap the existing `repoAdd`/`repoSearch`/
+  `repoDeleteDoc` — no parallel search engine). `repoList` excludes this repo
+  from every user-facing knowledge-base UI (it is retrieval plumbing, not a
+  knowledge base the user created). Embeddings are an index only — the graph's
+  `summary` text is the source of truth, so an embed-model switch just
+  triggers a cheap full rebuild rather than data loss.
+- **Reflection** — `AgentRuntime.reflectMemories` fires after every settled
+  turn (alongside the existing `maybeLearnLesson`, same trigger conditions): one
+  plain `complete()` call (no tools — unattended-safe) extracts durable facts
+  from the turn as strict JSON (`parseReflection`); an empty result is the
+  common case. Each candidate is merged into an existing node (term-overlap or
+  embedding-index match) or inserted fresh; a match whose text has drifted
+  enough to look like a contradiction (`shouldAdjudicate`) gets one more cheap
+  LLM call deciding supersede-vs-merge (`adjudicateSupersede`) — a superseded
+  node is kept (`status:'superseded'`, `supersededBy`) rather than deleted. The
+  graph is persisted before any embedding-index call, so an index/embedder
+  failure never loses an extracted fact.
+- **Retrieval — two tiers, prompt-cache safe.** *Core tier*: the top ~15 active
+  nodes ranked by `durability × effectiveConfidence` (time-decayed — see
+  below), rendered into the byte-stable `systemBase` once per conversation
+  (`renderCoreMemoryBlock`) alongside the memory-first answering rule ("if the
+  known facts already answer the question, answer directly — don't reach for
+  tools"). *Relevant-subgraph tier*: computed once per user turn (not per
+  agent step) — an embedding-index search over the message plus one hop of
+  active edges, excluding whatever is already in the core tier — appended to
+  the mutable trailing working-state message (`computeRelevantMemoryBlock`),
+  so per-turn retrieval never invalidates the provider's prompt cache on the
+  fixed prefix.
+- **Decay** — `applyDecay` marks a node/edge `stale` (never deletes) once its
+  time-decayed effective confidence drops below `MEMORY_STALE_THRESHOLD`; the
+  decay half-life scales with `durability` (a preference decays far slower
+  than a situational fact). Runs lazily on load and via a daily
+  `chrome.alarms` sweep (`serviceWorker.ts`, `memory_decay_sweep`) that also
+  prunes the graph back under its caps (`MEMORY_NODE_CAP`/`MEMORY_EDGE_CAP`,
+  superseded records evicted first) and reconciles the embedding index for
+  anything dropped.
+- **Management UI** — `src/workspace/MemoryPage.tsx` (reachable from
+  Workspace's nav or `workspace.html#memory`): filterable list (status/kind) +
+  detail pane to edit a node's summary, confirm it (clears staleness, bumps
+  `lastConfirmedAt`), or delete it, with evidence excerpts and relationships
+  shown per node. The sidebar's `MemorySection.tsx` is a thin summary (count +
+  enabled toggle + Probe environment + a link into the Workspace page) backed
+  by new `RuntimeRequest`s (`memory_graph_get/add/confirm/update/delete`,
+  `serviceWorker.ts`) that operate on the graph store directly — the same
+  one-shot-message pattern already used for repo/mailbox/SharePoint
+  management.
+
+**Projects** (`shared/types.ts` `Project`, `chrome.storage.local` keys
+`ba_projects` + `ba_active_project`): a named workspace that scopes
+conversations, durable memory, skills, and capabilities. Scoping is a **filter,
+not a partition** — a record's `projectId` is optional; unset means global and
+stays visible under every project, so introducing Projects required no
+migration anywhere. `AgentRuntime` reads the active project once per user turn
+(`this.activeProjectId`, set at the top of `handleUserMessage`) and:
+- filters what's *read* — `scopedCapabilities`/`scopedSkills` wrap every
+  `getCapabilities()`/`getSkills()` call site (systemBase assembly,
+  `search_known_sites`, `list_mcp_tools`/`call_mcp_tool`, `use_skill`,
+  `/learn`), and `visibleToProject` (`shared/memoryGraph.ts`) gates both memory
+  tiers (`rankCoreMemoryNodes`/`renderCoreMemoryBlock` and the relevant-subgraph
+  tier's hits and one-hop edge expansion in `computeRelevantMemoryBlock`);
+- stamps what's *written* — `save_memory`, reflection-created/merged memory
+  nodes, `save_app_playbook`, `distillSkill`, and a newly-created conversation
+  (stamped once at creation via `currentConversationProjectId`, preserved
+  verbatim by `saveConversation` the same way labels are) all inherit the
+  active project id. Same-origin/name "replace existing" lookups (app
+  playbook re-learning, skill distillation) only ever match a record already
+  visible under the active project, so project A can never silently overwrite
+  project B's same-named skill or playbook.
+Project CRUD and the active-project pointer go through dedicated
+`RuntimeRequest`s (`project_list/create/update/delete/set_active/get_active`,
+`serviceWorker.ts`) mirroring the memory-graph request pattern; deleting a
+project just clears the active pointer if it was active — scoped records are
+never deleted, only hidden from view until the project is switched back to.
+UI: a compact `ProjectSwitcher` dropdown in the sidebar header, a full CRUD
+`src/workspace/ProjectsPage.tsx`, and an optional project selector added to the
+`CapabilitiesSection`/`SkillsSection` forms (shown only once at least one
+project exists).
+
+**Model orchestration** (`shared/types.ts` `ModelRole`/`ModelProfile`,
+`background/llmProvider.ts` `resolveModelForRole`): routes background/utility
+LLM calls to a different named endpoint than the main chat model, without
+touching `complete()` itself or its ~11 existing call sites' positional
+arguments. `ModelRole` is `'main' | 'utility' | 'reflection' | 'plan' |
+'vision'`; `'main'` (the user-facing chat loop and its final answer,
+`agentRuntime.ts` lines ~1766/1973) is never routed. `Settings.modelProfiles`
+holds named alternate endpoints (baseUrl/apiKey/model/apiVersion/temperature/
+maxTokens/`privacyTier`); `Settings.roleProfiles` maps a role to a profile id.
+`resolveModelForRole(settings, role)` is pure and total — no chrome.* deps,
+never throws, and returns `settings` unchanged whenever there's nothing to
+route to (no mapping, no matching profile, or the profile is gated out), so a
+deployment with zero profiles behaves exactly as before roles existed. Every
+call site simply wraps its `settings` argument, e.g.
+`complete(resolveModelForRole(settings, 'reflection'), ...)`; the tagging by
+role:
+- `'utility'` — conversation title/summary, self-check verify gate, skill
+  distillation, old-tool-output compaction (`summarizeEvicted`), RAG query
+  paraphrase and rerank.
+- `'reflection'` — lesson-learning (`maybeLearnLesson`), memory extraction
+  (`reflectMemories`), the merge-vs-supersede adjudication call.
+- `'plan'` — scoped multi-step research subtasks (`runScopedSubtask`).
+- `'vision'` — OCR transcription of page screenshots (`repoIngest.ts`
+  `ocrTabText`).
+
+**Rule-based routing only** — no classifier LLM decides where a call goes;
+the mapping is static settings config, so it's also naturally **stable across
+a task's steps** for prompt-cache purposes (nothing here reads per-message
+state). **Privacy gate**: `Settings.restrictBackgroundToLocal`, when on,
+skips any profile not explicitly tagged `privacyTier: 'local'` (untagged
+profiles are conservatively treated as needing the same protection) and
+falls back to the main model instead — background work never leaves the
+device to a hosted service even if a cloud profile is assigned to that role.
+UI: `src/workspace/ModelProfilesSection.tsx`, rendered below the existing
+`ModelSection` on the Workspace's Models page — profile CRUD, a role
+assignment table, and the restrict-to-local toggle, all writing directly into
+`ba_settings` (the main connection fields above are untouched by this UI).
 
 **Auth auto-pause.** When page extraction detects a login wall, the task pauses,
 the panel shows a sign-in notice, and resuming re-fetches the page.
@@ -941,13 +1092,15 @@ service worker — which owns the offscreen document — routes the op. Everythi
 on-device.
 
 **Workspace (full tab).** An "Open workspace" header button opens `workspace.html`
-(`chrome.tabs.create`) — a roomy work environment that mirrors the conversation state
+(`chrome.tabs.create`) — a management console that mirrors the conversation state
 over the same `Port` **and** is interactive: a **composer** sends `user_message`s like
-the side panel. It adds panels too cramped for the side panel: a tool browser
-(`ToolManager`), a skill editor (`SkillEditor`), a **DuckDB dataset browser**
-(`DatasetBrowser` — list/preview tables, import pasted CSV/JSON, run SQL), a
-data/table viewer (`DataViewer`, over `export_data` results), and a full-size image
-viewer (`ImageViewer`). It shares the side panel's **brand theme**: the palette +
+the side panel. Its nav gives every management surface a dedicated page — Knowledge,
+Memory, Skills, Tools, Models, Settings — largely by reusing the sidebar's own section
+components rather than duplicating their logic (see `src/workspace/` above), plus
+panels too cramped for the side panel: a **DuckDB dataset browser** (`DatasetBrowser`
+— list/preview tables, import pasted CSV/JSON, run SQL), a data/table viewer
+(`DataViewer`, over `export_data` results), and a full-size image viewer
+(`ImageViewer`). It shares the side panel's **brand theme**: the palette +
 light/dark variables live in `src/shared/theme.css`, imported by both `styles.css` and
 `workspace.css`, so the workspace renders in the same colours (gradient header, purple
 accents) and follows the OS light/dark setting.
@@ -1226,8 +1379,10 @@ all `CapabilityRegistryEntry` *kinds* (see §9). What remains is mostly **automa
 discovery** to populate that registry, plus deeper data/output handling.
 
 ### Shipped (now in the body)
-- **✅ 15.1 Expandable workspace** — the **Open workspace** button opens `workspace.html`
-  (tool/skill/data/image panels) sharing conversation state. See §9 *Workspace* and §10.
+- **✅ 15.1 Expandable workspace** — the **Open workspace** button opens `workspace.html`,
+  a full management console (Chat/Knowledge/Memory/Skills/Tools/Models/Datasets/Data/
+  Image/Settings pages, most built by reusing the sidebar's own section components)
+  sharing conversation state. See §9 *Workspace* and §10.
 - **✅ 15.2 Capability Registry** — replaces Known Sites; `ba_capabilities`,
   `CapabilitiesSection`, legacy-site migration. See §9 *Capability Registry*.
 - **✅ 15.12 Built-in DuckDB data engine** — DuckDB-WASM in the offscreen document, OPFS

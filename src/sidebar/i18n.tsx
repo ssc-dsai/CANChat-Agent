@@ -33,6 +33,9 @@ const EN: Dict = {
   'common.edit': 'Edit',
   'common.add': 'Add',
   'common.dismiss': 'Dismiss',
+  // projects
+  'projects.switcher': 'Active project',
+  'projects.none': 'No project',
   // header
   'header.history': 'Conversation history',
   'header.saveConversation': 'Save conversation as HTML',
@@ -123,6 +126,11 @@ const EN: Dict = {
     'Keeps the mailbox current in the background over your existing Outlook session — no need to click Index again. Off by default; only refreshes a mailbox you’ve indexed at least once.',
   'mail.autoRefreshLast': 'Last auto-refresh: {when} — {added} new message(s).',
   'mail.autoRefreshLastError': 'Last auto-refresh failed ({when}): {msg}',
+  'memory.title': 'Memory',
+  'memory.toggle': 'Remember things about me (stored only on this device)',
+  'memory.note':
+    'When enabled, the agent extracts durable facts about you from your conversations — your role, projects, interests, and preferences — and uses them to tailor answers. You can also say "remember that…" or "forget…".',
+  'memory.manage': 'Manage memories',
   'sharepoint.title': '☁ Index SharePoint / OneDrive documents',
   'sharepoint.hint': 'Indexes a SharePoint or OneDrive document library over your existing browser sign-in. Re-run to add only changed files.',
   'sharepoint.libraryUrl': 'Library URL',
@@ -174,6 +182,18 @@ const EN: Dict = {
   'settings.tabKnowledge': 'Knowledge bases',
   'settings.tabData': 'Data & privacy',
   'settings.help': 'Help & docs',
+  // workspace console — nav
+  'workspace.nav.chat': 'Chat',
+  'workspace.nav.projects': 'Projects',
+  'workspace.nav.knowledge': 'Knowledge',
+  'workspace.nav.memory': 'Memory',
+  'workspace.nav.skills': 'Skills',
+  'workspace.nav.tools': 'Tools',
+  'workspace.nav.models': 'Models',
+  'workspace.nav.datasets': 'Datasets',
+  'workspace.nav.data': 'Data',
+  'workspace.nav.image': 'Image',
+  'workspace.nav.settings': 'Settings',
   'onboarding.title': 'Welcome to CANChat Agent',
   'onboarding.intro':
     'An AI agent that uses your browser as its tools — ask about the current page, your open tabs, or the web. To begin, connect a model. The key is stored only on this device and never synced.',
@@ -281,6 +301,9 @@ const FR: Dict = {
   'common.edit': 'Modifier',
   'common.add': 'Ajouter',
   'common.dismiss': 'Ignorer',
+  // projects
+  'projects.switcher': 'Projet actif',
+  'projects.none': 'Aucun projet',
   // header
   'header.history': 'Historique des conversations',
   'header.saveConversation': 'Enregistrer la conversation en HTML',
@@ -371,6 +394,11 @@ const FR: Dict = {
     'Garde la boîte à jour en arrière-plan avec votre session Outlook existante — plus besoin de cliquer sur Indexer. Désactivé par défaut; n’actualise qu’une boîte déjà indexée au moins une fois.',
   'mail.autoRefreshLast': 'Dernière actualisation automatique : {when} — {added} nouveau(x) message(s).',
   'mail.autoRefreshLastError': 'Échec de la dernière actualisation automatique ({when}) : {msg}',
+  'memory.title': 'Mémoire',
+  'memory.toggle': 'Se souvenir de moi (stocké uniquement sur cet appareil)',
+  'memory.note':
+    'Lorsqu’activée, l’agent extrait des faits durables vous concernant à partir de vos conversations — votre rôle, vos projets, vos intérêts et vos préférences — et les utilise pour adapter ses réponses. Vous pouvez aussi dire « souviens-toi que… » ou « oublie… ».',
+  'memory.manage': 'Gérer les souvenirs',
   'sharepoint.title': '☁ Indexer les documents SharePoint / OneDrive',
   'sharepoint.hint': 'Indexe une bibliothèque SharePoint ou OneDrive avec votre session navigateur existante. Relancez pour n’ajouter que les fichiers modifiés.',
   'sharepoint.libraryUrl': 'URL de la bibliothèque',
@@ -423,6 +451,18 @@ const FR: Dict = {
   'settings.tabKnowledge': 'Bases de connaissances',
   'settings.tabData': 'Données et confidentialité',
   'settings.help': 'Aide et docs',
+  // workspace console — nav
+  'workspace.nav.chat': 'Discussion',
+  'workspace.nav.projects': 'Projets',
+  'workspace.nav.knowledge': 'Connaissances',
+  'workspace.nav.memory': 'Mémoire',
+  'workspace.nav.skills': 'Compétences',
+  'workspace.nav.tools': 'Outils',
+  'workspace.nav.models': 'Modèles',
+  'workspace.nav.datasets': 'Jeux de données',
+  'workspace.nav.data': 'Données',
+  'workspace.nav.image': 'Image',
+  'workspace.nav.settings': 'Paramètres',
   'onboarding.title': 'Bienvenue dans CANChat Agent',
   'onboarding.intro':
     'Un agent IA qui utilise votre navigateur comme outils — posez des questions sur la page actuelle, vos onglets ouverts ou le Web. Pour commencer, connectez un modèle. La clé est stockée uniquement sur cet appareil et n’est jamais synchronisée.',

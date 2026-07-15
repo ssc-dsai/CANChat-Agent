@@ -8,6 +8,7 @@
 import { pruneIndex } from '../shared/conversationMeta';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import { migrateSitesToCapabilities } from '../shared/capabilities';
+import { emptyMemoryGraph, migrateFlatEntries, pruneGraph, type MemoryGraph } from '../shared/memoryGraph';
 import type {
   ChatMessageView,
   ConversationLabel,
@@ -15,6 +16,7 @@ import type {
   LessonEntry,
   MemoryEntry,
   PlanStepStatus,
+  Project,
   Settings,
   SiteEntry,
   Skill,
@@ -27,7 +29,10 @@ const CAPABILITIES_KEY = 'ba_capabilities';
 const SKILLS_KEY = 'ba_skills';
 const MEMORY_KEY = 'ba_memory';
 const MEMORY_ENABLED_KEY = 'ba_memory_enabled';
+const MEMORY_GRAPH_KEY = 'ba_memory_graph';
 const LESSONS_KEY = 'ba_lessons';
+const PROJECTS_KEY = 'ba_projects';
+const ACTIVE_PROJECT_KEY = 'ba_active_project';
 
 export const MEMORY_MAX_ENTRIES = 100;
 export const LESSON_MAX_ENTRIES = 50;
@@ -72,6 +77,8 @@ export interface StoredConversation {
   groupName?: string;
   /** Pages in the conversation's tab group, reopened on restore so they stay queryable. */
   groupUrls?: { url: string; title: string }[];
+  /** Project this conversation was started under, stamped once at creation. */
+  projectId?: string;
 }
 
 // chrome.storage.local only — the API key must never sync across devices.
@@ -182,6 +189,27 @@ export async function saveSkills(skills: Skill[]): Promise<void> {
   await chrome.storage.local.set({ [SKILLS_KEY]: skills });
 }
 
+export async function getProjects(): Promise<Project[]> {
+  const result = await chrome.storage.local.get(PROJECTS_KEY);
+  const projects = result[PROJECTS_KEY];
+  return Array.isArray(projects) ? (projects as Project[]) : [];
+}
+
+export async function saveProjects(projects: Project[]): Promise<void> {
+  await chrome.storage.local.set({ [PROJECTS_KEY]: projects });
+}
+
+/** The one active project, or null when no project is active (everything global-only). */
+export async function getActiveProjectId(): Promise<string | null> {
+  const result = await chrome.storage.local.get(ACTIVE_PROJECT_KEY);
+  const id = result[ACTIVE_PROJECT_KEY];
+  return typeof id === 'string' && id ? id : null;
+}
+
+export async function setActiveProjectId(id: string | null): Promise<void> {
+  await chrome.storage.local.set({ [ACTIVE_PROJECT_KEY]: id });
+}
+
 export async function getMemoryEnabled(): Promise<boolean> {
   const result = await chrome.storage.local.get(MEMORY_ENABLED_KEY);
   return result[MEMORY_ENABLED_KEY] === true; // off by default
@@ -199,6 +227,29 @@ export async function getMemories(): Promise<MemoryEntry[]> {
 
 export async function saveMemories(entries: MemoryEntry[]): Promise<void> {
   await chrome.storage.local.set({ [MEMORY_KEY]: entries });
+}
+
+/**
+ * Load the graph memory store, lazily migrating the legacy flat `MemoryEntry[]`
+ * (`ba_memory`) into graph nodes the first time this is called. `ba_memory`
+ * itself is left untouched (read-only fallback for Backup/Restore compat with
+ * older exports) — only `ba_memory_graph` is written going forward.
+ */
+export async function getMemoryGraph(): Promise<MemoryGraph> {
+  const result = await chrome.storage.local.get([MEMORY_GRAPH_KEY, MEMORY_KEY]);
+  const existing = result[MEMORY_GRAPH_KEY] as MemoryGraph | undefined;
+  if (existing && Array.isArray(existing.nodes) && Array.isArray(existing.edges)) return existing;
+
+  const flat = result[MEMORY_KEY];
+  const graph: MemoryGraph = Array.isArray(flat) && flat.length > 0
+    ? pruneGraph({ nodes: migrateFlatEntries(flat as MemoryEntry[]), edges: [], version: 1 })
+    : emptyMemoryGraph();
+  await chrome.storage.local.set({ [MEMORY_GRAPH_KEY]: graph });
+  return graph;
+}
+
+export async function saveMemoryGraph(graph: MemoryGraph): Promise<void> {
+  await chrome.storage.local.set({ [MEMORY_GRAPH_KEY]: pruneGraph(graph) });
 }
 
 export async function getLessons(): Promise<LessonEntry[]> {
@@ -246,6 +297,9 @@ export async function saveConversation(
     // whatever is already on the index entry (or the record) so a per-turn
     // autosave of the active conversation never wipes them.
     labels: existing?.labels ?? record.labels ?? [],
+    // The project a conversation was started under is stamped once and never
+    // changes on later autosaves, same reasoning as labels above.
+    projectId: existing?.projectId ?? record.projectId,
   };
   const next = [...index.filter((c) => c.id !== record.id), entry];
   const { kept, evicted } = pruneIndex(next, MAX_SAVED_CONVERSATIONS);

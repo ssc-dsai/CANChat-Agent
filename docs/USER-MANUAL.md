@@ -222,6 +222,7 @@ Short, plain definitions for the terms used throughout this manual.
 | **Context** | The pages/tabs currently included for the agent to consider. | Controls what the agent "sees" by default. |
 | **Memory** | Durable facts about you the agent may save (opt-in). | Personalizes answers; stored only on your device. |
 | **Lesson** | A behavioral tip the agent saves from a past task (opt-in, shares the Memory toggle) — e.g. "use the Outlook tool before clicking around Outlook.com." | The agent gets better at *how* it works over time, without you teaching it explicitly. |
+| **Project** | A named workspace that scopes conversations, memory, skills, and known sites. | Switch between client work, personal use, etc. without them mixing — nothing not assigned to a project is ever hidden. |
 
 ---
 
@@ -537,13 +538,19 @@ Three collapsible sections (collapsed by default — click to expand):
   (a URL with `{query}` in it), and optionally a **tool server (MCP endpoint)**
   with a token. The agent consults this before falling back to a web search.
 - **Memory** — toggle **"Remember things about me (stored only on this device)."**
-  When on, the agent saves durable facts about you (work, projects, preferences)
-  to tailor answers; **Add memory**, import/export, and **Clear all** are here.
-  Capacity is 100 entries; secrets are never saved. **Probe environment** (shown
-  only when memory is on) fills memory with what the extension can detect about you
-  — your Microsoft 365 name / work email / sign-in (AD) username from the signed-in
+  When on, the agent notices durable facts you mention in conversation — work,
+  projects, preferences — and saves them automatically after each turn (as well as
+  when you say "remember that…" or "forget…"); it answers directly from what it
+  already knows instead of re-searching. **Probe environment** (shown only when
+  memory is on) fills memory with what the extension can detect about you — your
+  Microsoft 365 name / work email / sign-in (AD) username from the signed-in
   session, the work systems you currently have open, and your locale/timezone. It
-  runs entirely on-device and adds only new facts.
+  runs entirely on-device and adds only new facts. Click **Manage memories** to open
+  the full editor (in its own tab): filter by status or kind, edit a memory's text,
+  **Confirm** it to clear a "stale" flag, or delete it — each entry shows the excerpt
+  it was learned from. A memory that hasn't been reconfirmed in a while is marked
+  stale automatically (never deleted) so you know it might be out of date. Capacity
+  is 500 entries; secrets are never saved.
 
   The same toggle also enables **automatic lessons**: after a substantial or
   corrected task (one with a real plan, several tool calls, or a self-correction),
@@ -556,6 +563,69 @@ Three collapsible sections (collapsed by default — click to expand):
   or on another machine. Options: **Include API key** (warned — plain text) and
   **Include conversations** (warned). Restore overwrites current settings, hints,
   skills, memory, and lessons, and replaces same-named knowledge bases.
+
+### The Workspace console
+
+For more room than the side panel offers, click **Open workspace** to open a full
+browser tab with the same conversation plus a dedicated page per management area:
+**Chat**, **Projects**, **Knowledge**, **Memory**, **Skills**, **Tools**, **Models**,
+**Datasets**, and **Settings** (language + Backup & Restore), alongside result
+viewers for data tables and images. Knowledge, Skills, and Tools are the same
+editors described above, just given a full page instead of a collapsible section;
+**Models** is a focused connection editor (endpoint, key, model, API version,
+temperature, max tokens) for when you just need to swap or test a model without
+opening the rest of Settings, plus a **Model profiles & routing** section below
+it (see next) for routing background work to a different model. Changes made
+in the workspace and the side panel share the same on-device storage, so
+either surface always reflects the latest state.
+
+### Model profiles and routing
+
+By default every model call — the main chat, plus background work like
+generating a conversation title, learning from a task, or extracting a
+memory — uses the one model configured at the top of the Models page. If you
+want background work to run on something cheaper or fully local (e.g. Ollama)
+while keeping the main conversation on your strongest model, add a **profile**
+(a second named endpoint) on the Models page and assign it to one or more
+roles:
+
+| Role | Covers |
+|---|---|
+| **Utility** | Conversation titles/summaries, the self-check pass on a draft answer, skill creation, compacting old tool output, and improving knowledge-base search queries. |
+| **Reflection** | Learning a behavioral lesson from a task, and extracting/merging durable memory facts. |
+| **Plan** | The scoped research subtasks a multi-step plan spins up. |
+| **Vision** | Reading text out of a page screenshot when normal extraction fails (OCR). |
+
+A role with no profile assigned just uses the main model — nothing changes
+until you explicitly assign one. Tag a profile **Local** only if it's
+genuinely private (e.g. running on your own machine); the **"Restrict
+background tasks to local-tagged profiles"** toggle, when on, refuses to
+route any role to a profile that isn't tagged Local, falling back to the main
+model instead — so a mistaken cloud assignment can never send background work
+off-device.
+
+### Projects
+
+Projects let you keep separate lines of work from mixing — client A's saved facts
+never leak into client B's answers, and vice versa. Create one from the
+**Projects** page in the Workspace, then switch between them from the small
+dropdown in the sidebar header (or the Projects page itself). Whichever project
+is active governs:
+
+- **Conversations** — a new chat is tagged with the active project when you send
+  its first message; the History list only shows conversations for the active
+  project (plus any never assigned to one).
+- **Memory** — facts you (or the agent) save while a project is active are tagged
+  to it, and stay invisible while a different project is active.
+- **Skills and known sites/capabilities** — anything you explicitly assign to a
+  project (an optional field on the add/edit form, shown once you have at least
+  one project) behaves the same way.
+
+Nothing outside a project is ever hidden — records you never assign to a project
+stay visible everywhere, and switching projects only ever *filters* what's shown,
+it never deletes anything. Deleting a project does not delete its conversations,
+memory, skills, or capabilities; they simply become invisible until you either
+switch back or reassign them.
 
 ---
 
@@ -922,8 +992,10 @@ state-changing step.
 - SharePoint search via signed-in session ✅ (`schemas.ts`, runtime)
 - Skills, app playbooks, `/learn`, curated playbook library (Outlook OWA/Live,
   Gmail, MarineTraffic, Jira Cloud) ✅ (`SkillsSection.tsx`, `curatedPlaybooks.ts`)
-- Memory (opt-in, ≤100 entries) and automatic lessons (opt-in, ≤50 entries) ✅
-  (`MemorySection.tsx`, `storage.ts`)
+- Durable graph memory (opt-in, ≤500 nodes): post-conversation reflection,
+  embedding-indexed retrieval, staleness decay, and a full management page; and
+  automatic lessons (opt-in, ≤50 entries) ✅ (`memoryGraph.ts`, `memoryIndex.ts`,
+  `MemoryPage.tsx`, `MemorySection.tsx`, `storage.ts`)
 
 **Input/output**
 - Voice prompts via `/audio/transcriptions` ✅ (`ChatPanel.tsx`, `llmProvider.ts`)

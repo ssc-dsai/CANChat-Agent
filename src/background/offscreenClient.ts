@@ -172,7 +172,7 @@ export function repoAdd(
   doc: { name: string; url: string },
   chunks: string[],
   vectors: number[][],
-  opts: { embedModel?: string; kind?: RepoKind; docExtra?: { path?: string; mtime?: number; size?: number } } = {},
+  opts: { embedModel?: string; kind?: RepoKind; docExtra?: { path?: string; mtime?: number; size?: number }; docId?: string } = {},
 ): Promise<RepoResponse> {
   return repoRequest({ target: 'offscreen-repo', op: 'add', repo, doc, chunks, vectors, ...opts });
 }

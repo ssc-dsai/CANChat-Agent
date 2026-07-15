@@ -130,7 +130,7 @@ export async function repoAdd(
   doc: { name: string; url: string },
   chunks: string[],
   vectors: number[][],
-  opts: { embedModel?: string; kind?: RepoKind; docExtra?: DocExtra } = {},
+  opts: { embedModel?: string; kind?: RepoKind; docExtra?: DocExtra; docId?: string } = {},
 ): Promise<{ docId: string; chunkCount: number }> {
   if (chunks.length === 0 || vectors.length !== chunks.length) {
     throw new Error('repoAdd: chunk/vector count mismatch.');
@@ -172,7 +172,7 @@ export async function repoAdd(
 
   const allChunks = await readJson<ChunkRec[]>(dir, 'chunks.json', []);
   const previousChunkCount = allChunks.length;
-  const docId = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const docId = opts.docId ?? `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const newChunks = chunks.map((text) => ({ docId, name: doc.name, url: doc.url, text }));
   allChunks.push(...newChunks);
   await writeJson(dir, 'chunks.json', allChunks);
@@ -234,6 +234,12 @@ export async function repoSearch(
   return { results };
 }
 
+/**
+ * List every repository except the reserved `kind:'memory'` embedding index
+ * (`__memory__`) — that repo is internal plumbing for graph memory retrieval,
+ * not a user-created knowledge base, and must never appear in (or be
+ * deletable from) the repo-management UIs.
+ */
 export async function repoList(): Promise<
   Array<{ name: string; docs: number; chunks: number; kind?: RepoKind; embedModel?: string }>
 > {
@@ -243,6 +249,7 @@ export async function repoList(): Promise<
   for await (const [name, handle] of dir.entries()) {
     if (handle.kind !== 'directory') continue;
     const meta = await readJson<RepoMeta | null>(handle as FileSystemDirectoryHandle, 'meta.json', null);
+    if (meta?.kind === 'memory') continue;
     out.push({
       name,
       docs: meta?.docs.length ?? 0,

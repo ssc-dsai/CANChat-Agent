@@ -138,4 +138,33 @@ test.describe('agent loop (mock LLM)', () => {
     expect(last.markers).toHaveLength(1);
     expect(last.markers[0].lat).toBeCloseTo(43.65, 1);
   });
+
+  test('reflection extracts a durable fact and the next turn answers from it', async ({ sidebar, mockLlm }) => {
+    await sidebar.evaluate(() => chrome.storage.local.set({ ba_memory_enabled: true }));
+
+    await sendChat(sidebar, 'REMEMBER_ME_DEMO: I always use dark mode. Please summarize the current page.');
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' }).last()).toBeVisible();
+
+    // Reflection is fire-and-forget after the turn settles — poll storage for the
+    // extracted node rather than assuming it landed before the assistant reply did.
+    const graph = () =>
+      sidebar.evaluate(
+        () =>
+          chrome.storage.local.get('ba_memory_graph').then((r) => (r as { ba_memory_graph?: { nodes: { summary: string }[] } }).ba_memory_graph),
+      );
+    await expect.poll(async () => (await graph())?.nodes.some((n) => n.summary.includes('dark mode')), { timeout: 15000 }).toBe(true);
+
+    // A second, unrelated turn should see the fact in its (byte-stable) system
+    // prefix — the core memory tier — without any new tool call being needed.
+    const start = mockLlm.requests.length;
+    const repliesBefore = await sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' }).count();
+    await sendChat(sidebar, 'Please summarize the current page again.');
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toHaveCount(repliesBefore + 1);
+
+    const mainReqs = mockLlm.requests
+      .slice(start)
+      .filter((r) => typeof r.messages[0]?.content === 'string' && (r.messages[0].content as string).includes('You are a browser agent'));
+    expect(mainReqs.length).toBeGreaterThan(0);
+    expect(mainReqs[0].messages[0].content as string).toContain('dark mode');
+  });
 });

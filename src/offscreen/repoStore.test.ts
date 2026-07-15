@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { repoAdd, repoDeleteDoc, repoSearch } from './repoStore';
+import { repoAdd, repoDeleteDoc, repoList, repoSearch } from './repoStore';
 
 // ---- minimal in-memory OPFS fake (only the surface repoStore uses) ----
 
@@ -135,5 +135,14 @@ describe('repoStore folder metadata', () => {
     });
     const list = await repoSearch('f', vec(8, 1), 1, 'local:minilm');
     expect(list.results.length).toBe(1);
+  });
+});
+
+describe('repoList', () => {
+  it('excludes the reserved kind:memory repo (internal plumbing, not a user knowledge base)', async () => {
+    await repoAdd('notes', { name: 'a', url: 'file:///a' }, ['hello'], [vec(8, 1)], { embedModel: 'local:minilm', kind: 'page' });
+    await repoAdd('__memory__', { name: 'Fact', url: 'memory:m1' }, ['fact'], [vec(8, 2)], { embedModel: 'local:minilm', kind: 'memory' });
+    const list = await repoList();
+    expect(list.map((r) => r.name)).toEqual(['notes']);
   });
 });

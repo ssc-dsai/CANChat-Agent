@@ -14,7 +14,7 @@ import type { Settings } from '../shared/types';
 import { resolveOfficeUrl, resolvePdfUrl } from '../shared/url';
 import * as browser from './browserToolAdapter';
 import { captureFullPage } from './fullPageCapture';
-import { complete, embedChunks, embedderId, type ContentPart } from './llmProvider';
+import { complete, embedChunks, embedderId, resolveModelForRole, type ContentPart } from './llmProvider';
 import { extractOffice, extractPdf, repoAdd } from './offscreenClient';
 
 // OCR fallback: screenshot the whole (active) tab and have the vision model
@@ -30,7 +30,7 @@ async function ocrTabText(settings: Settings, tabId: number): Promise<string> {
     ...cap.frames.map((url): ContentPart => ({ type: 'image_url', image_url: { url } })),
   ];
   try {
-    const reply = await complete(settings, [{ role: 'user', content: parts }]);
+    const reply = await complete(resolveModelForRole(settings, 'vision'), [{ role: 'user', content: parts }]);
     return (reply.content ?? '').trim();
   } catch {
     return '';

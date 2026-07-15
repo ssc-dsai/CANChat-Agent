@@ -49,8 +49,21 @@ import {
 } from './sharepointIngest';
 import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAuth';
 import { reconcileScheduledAlarms, runScheduledTaskById, taskIdFromAlarm } from './scheduler';
-import { getMemoryEnabled, getSettings, migrateLegacySites, seedSkillsIfEmpty } from './storage';
+import {
+  getActiveProjectId,
+  getMemoryEnabled,
+  getMemoryGraph,
+  getProjects,
+  getSettings,
+  migrateLegacySites,
+  saveMemoryGraph,
+  saveProjects,
+  seedSkillsIfEmpty,
+  setActiveProjectId,
+} from './storage';
 import { probeEnvironment } from './envProbe';
+import { applyDecay, MEMORY_NODE_CAP, pruneGraph } from '../shared/memoryGraph';
+import { memoryIndexRemove, memoryIndexUpsert } from './memoryIndex';
 
 // ----- Mailbox auto-refresh (chrome.alarms, opt-in) -----
 //
@@ -85,15 +98,51 @@ async function syncMailAlarm(): Promise<void> {
     chrome.alarms.clear(MAILBOX_ALARM);
   }
 }
+
+// ----- Memory decay sweep (chrome.alarms, daily, opt-in via memory itself) -----
+//
+// Applies time-based staleness to graph memory (never deletes — see
+// applyDecay's docstring) and prunes the graph back under its caps, then
+// reconciles the embedding index for anything pruneGraph dropped. Runs once
+// a day; cheap since the graph lives in chrome.storage.local, not OPFS.
+
+const MEMORY_DECAY_ALARM = 'memory_decay_sweep';
+
+async function syncMemoryDecayAlarm(): Promise<void> {
+  if (await getMemoryEnabled()) {
+    chrome.alarms.create(MEMORY_DECAY_ALARM, { periodInMinutes: 1440 });
+  } else {
+    chrome.alarms.clear(MEMORY_DECAY_ALARM);
+  }
+}
+
+async function runMemoryDecaySweep(): Promise<void> {
+  try {
+    if (!(await getMemoryEnabled())) return;
+    const graph = await getMemoryGraph();
+    const swept = pruneGraph(applyDecay(graph));
+    await saveMemoryGraph(swept);
+    const keptIds = new Set(swept.nodes.map((n) => n.id));
+    const droppedIds = graph.nodes.filter((n) => !keptIds.has(n.id)).map((n) => n.id);
+    if (droppedIds.length > 0) await memoryIndexRemove(droppedIds);
+  } catch {
+    // Best-effort maintenance; a failed sweep just retries on the next alarm.
+  }
+}
+
 void syncMailAlarm();
+void syncMemoryDecayAlarm();
 void reconcileScheduledAlarms();
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.ba_settings) void syncMailAlarm();
+  if (area !== 'local') return;
+  if (changes.ba_settings) void syncMailAlarm();
+  if (changes.ba_memory_enabled) void syncMemoryDecayAlarm();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === MAILBOX_ALARM) void runAutoMailboxRefresh();
+  if (alarm.name === MEMORY_DECAY_ALARM) void runMemoryDecaySweep();
   const scheduledTaskId = taskIdFromAlarm(alarm.name);
   if (scheduledTaskId) void runScheduledTaskById(scheduledTaskId, runtime);
 });
@@ -151,6 +200,7 @@ chrome.runtime.onInstalled.addListener(() => {
   void seedSkillsIfEmpty();
   void migrateLegacySites();
   void syncMailAlarm();
+  void syncMemoryDecayAlarm();
   void reconcileScheduledAlarms();
 });
 
@@ -375,6 +425,151 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
         mailIndexBusy = false;
       }
     })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_get') {
+    getMemoryGraph().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_add') {
+    (async () => {
+      const text = request.text.trim();
+      if (!text) return { ok: false, error: 'Empty memory text.' };
+      const graph = await getMemoryGraph();
+      if (graph.nodes.some((n) => n.status !== 'superseded' && n.summary === text)) {
+        return { ok: true, added: false }; // already known — quietly skip rather than duplicate
+      }
+      if (graph.nodes.length >= MEMORY_NODE_CAP) {
+        return { ok: false, error: `Memory is full (${MEMORY_NODE_CAP} entries). Delete entries before adding more.` };
+      }
+      const now = new Date().toISOString();
+      const node = {
+        id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        kind: 'fact' as const,
+        label: text.split(/\s+/).slice(0, 6).join(' '),
+        summary: text,
+        confidence: 1,
+        durability: 0.7,
+        status: 'active' as const,
+        createdAt: now,
+        updatedAt: now,
+        lastConfirmedAt: now,
+        provenance: request.source ? [{ conversationId: '', excerpt: request.source, at: now }] : [],
+      };
+      const next = { ...graph, nodes: [...graph.nodes, node] };
+      await saveMemoryGraph(next);
+      const settings = await getSettings();
+      if (settings) {
+        try {
+          await memoryIndexUpsert(settings, [node]);
+        } catch {
+          // Graph write already succeeded; the index self-heals on the next decay sweep or reflection upsert.
+        }
+      }
+      return { ok: true, added: true, id: node.id };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_confirm') {
+    (async () => {
+      const graph = await getMemoryGraph();
+      const now = new Date().toISOString();
+      const next = {
+        ...graph,
+        nodes: graph.nodes.map((n) => (n.id === request.id ? { ...n, status: 'active' as const, lastConfirmedAt: now, updatedAt: now } : n)),
+      };
+      await saveMemoryGraph(next);
+      return { ok: true };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_update') {
+    (async () => {
+      const graph = await getMemoryGraph();
+      const existing = graph.nodes.find((n) => n.id === request.id);
+      if (!existing) return { ok: false, error: `No memory entry with id ${request.id}.` };
+      const now = new Date().toISOString();
+      const updated = { ...existing, summary: request.text.trim(), status: 'active' as const, updatedAt: now, lastConfirmedAt: now };
+      const next = { ...graph, nodes: graph.nodes.map((n) => (n.id === request.id ? updated : n)) };
+      await saveMemoryGraph(next);
+      const settings = await getSettings();
+      if (settings) {
+        try {
+          await memoryIndexUpsert(settings, [updated]);
+        } catch {
+          // The graph write already succeeded; a stale index entry self-heals on the next decay sweep or reflection upsert.
+        }
+      }
+      return { ok: true };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'memory_graph_delete') {
+    (async () => {
+      const graph = await getMemoryGraph();
+      const next = {
+        ...graph,
+        nodes: graph.nodes.filter((n) => n.id !== request.id),
+        edges: graph.edges.filter((e) => e.from !== request.id && e.to !== request.id),
+      };
+      await saveMemoryGraph(next);
+      await memoryIndexRemove([request.id]);
+      return { ok: true };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_list') {
+    getProjects().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_get_active') {
+    getActiveProjectId().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_create') {
+    (async () => {
+      const name = request.name.trim();
+      if (!name) return { ok: false, error: 'Project name is required.' };
+      const projects = await getProjects();
+      const project = {
+        id: `proj-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        color: request.color,
+        createdAt: new Date().toISOString(),
+      };
+      await saveProjects([...projects, project]);
+      return { ok: true, project };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_update') {
+    (async () => {
+      const projects = await getProjects();
+      if (!projects.some((p) => p.id === request.id)) return { ok: false, error: `No project with id ${request.id}.` };
+      const next = projects.map((p) =>
+        p.id === request.id
+          ? { ...p, name: request.name?.trim() || p.name, color: request.color ?? p.color }
+          : p,
+      );
+      await saveProjects(next);
+      return { ok: true };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_delete') {
+    (async () => {
+      const projects = await getProjects();
+      await saveProjects(projects.filter((p) => p.id !== request.id));
+      // Deleting the active project falls back to "no project" — scoped records
+      // (conversations, memory, capabilities, skills) simply become invisible
+      // under the new active scope rather than being deleted themselves.
+      if ((await getActiveProjectId()) === request.id) await setActiveProjectId(null);
+      return { ok: true };
+    })().then(sendResponse);
+    return true;
+  }
+  if (request.type === 'project_set_active') {
+    setActiveProjectId(request.id).then(() => sendResponse({ ok: true }));
     return true;
   }
   if (request.type === 'duckdb') {

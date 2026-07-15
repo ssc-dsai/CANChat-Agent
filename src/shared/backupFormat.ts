@@ -6,6 +6,7 @@
 
 import type { CapabilityRegistryEntry } from './capabilities';
 import type { ExportedRepo } from './messages';
+import { emptyMemoryGraph, type MemoryGraph } from './memoryGraph';
 import type { LessonEntry, MemoryEntry, Settings, SiteEntry, Skill } from './types';
 
 /** A repository with its vectors decoded back into an Int8Array. */
@@ -29,6 +30,8 @@ export interface ParsedBackup {
   sites: SiteEntry[];
   capabilities: CapabilityRegistryEntry[];
   memory: MemoryEntry[];
+  /** Graph memory (ba_memory_graph). Falls back to an empty graph for a backup taken before this existed. */
+  memoryGraph: MemoryGraph;
   lessons: LessonEntry[];
   repos: ParsedRepo[];
 }
@@ -39,6 +42,10 @@ export function bytesFromBase64(b64: string): Uint8Array {
   const u8 = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
   return u8;
+}
+
+function isMemoryGraph(v: unknown): v is MemoryGraph {
+  return !!v && typeof v === 'object' && Array.isArray((v as MemoryGraph).nodes) && Array.isArray((v as MemoryGraph).edges);
 }
 
 function parseRepo(r: ExportedRepo): ParsedRepo {
@@ -70,6 +77,7 @@ export function parseBackup(input: unknown): ParsedBackup {
     sites: Array.isArray(storage.ba_sites) ? (storage.ba_sites as SiteEntry[]) : [],
     capabilities: Array.isArray(storage.ba_capabilities) ? (storage.ba_capabilities as CapabilityRegistryEntry[]) : [],
     memory: Array.isArray(storage.ba_memory) ? (storage.ba_memory as MemoryEntry[]) : [],
+    memoryGraph: isMemoryGraph(storage.ba_memory_graph) ? storage.ba_memory_graph : emptyMemoryGraph(),
     lessons: Array.isArray(storage.ba_lessons) ? (storage.ba_lessons as LessonEntry[]) : [],
     repos: Array.isArray(b.repos) ? b.repos.map(parseRepo) : [],
   };

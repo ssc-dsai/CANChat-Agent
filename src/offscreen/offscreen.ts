@@ -364,6 +364,7 @@ async function handleRepo(req: RepoRequest): Promise<RepoResponse> {
             embedModel: req.embedModel,
             kind: req.kind,
             docExtra: req.docExtra,
+            docId: req.docId,
           }),
         };
       case 'search':

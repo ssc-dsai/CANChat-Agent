@@ -1,4 +1,4 @@
-import { DEFAULT_LOCAL_EMBED_MODEL, type Settings } from '../shared/types';
+import { DEFAULT_LOCAL_EMBED_MODEL, type ModelRole, type Settings } from '../shared/types';
 import { embedLocal } from './offscreenClient';
 
 // =============================================================================
@@ -161,6 +161,44 @@ function resolve(settings: Settings, kind: 'chat' | 'embedding' | 'transcription
   return {
     base: (base?.trim() || settings.baseUrl).replace(/\/+$/, ''),
     key: key?.trim() || settings.apiKey,
+  };
+}
+
+/**
+ * Model orchestration: route a background/utility call to a different
+ * `ModelProfile` than the main chat model, by swapping the connection fields
+ * on a `Settings` copy — every call site just does
+ * `complete(resolveModelForRole(settings, 'reflection'), ...)` rather than
+ * `complete(settings, ...)`, so `complete()` itself never needs to know about
+ * roles. `'main'` is never routed (it's always the top-level Settings as-is)
+ * since it's the primary user-facing chat loop.
+ *
+ * Pure and total: no chrome.* deps, never throws, and degrades to `settings`
+ * unchanged whenever there's nothing to route to (no role mapping, no
+ * matching profile, or the profile is gated out) — so a deployment with zero
+ * profiles configured behaves exactly as it did before roles existed.
+ *
+ * `restrictBackgroundToLocal` is the privacy gate: a profile tagged
+ * `privacyTier: 'cloud'` is skipped (falling back to main) rather than
+ * routing background work off-device. `'local'` profiles and profiles with
+ * no tier at all are conservatively treated as needing this same protection
+ * — only an explicit `'local'` tag is exempt.
+ */
+export function resolveModelForRole(settings: Settings, role: ModelRole): Settings {
+  if (role === 'main') return settings;
+  const profileId = settings.roleProfiles?.[role];
+  if (!profileId) return settings;
+  const profile = settings.modelProfiles?.find((p) => p.id === profileId);
+  if (!profile) return settings;
+  if (settings.restrictBackgroundToLocal && profile.privacyTier !== 'local') return settings;
+  return {
+    ...settings,
+    baseUrl: profile.baseUrl,
+    apiKey: profile.apiKey,
+    model: profile.model,
+    apiVersion: profile.apiVersion,
+    temperature: profile.temperature ?? settings.temperature,
+    maxTokens: profile.maxTokens ?? settings.maxTokens,
   };
 }
 

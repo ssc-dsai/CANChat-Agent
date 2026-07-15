@@ -119,6 +119,21 @@ export type RuntimeRequest =
   // Probe the signed-in environment (M365 identity, open work systems, locale) to
   // populate memory; only honored when the memory feature is enabled.
   | { type: 'probe_environment' }
+  // Graph memory management for the Workspace Memory page and the sidebar's
+  // Memory section (add covers manual entries and the environment probe).
+  | { type: 'memory_graph_get' }
+  | { type: 'memory_graph_add'; text: string; source?: string }
+  | { type: 'memory_graph_confirm'; id: string }
+  | { type: 'memory_graph_update'; id: string; text: string }
+  | { type: 'memory_graph_delete'; id: string }
+  // Project CRUD + the single active-project pointer. Scoping is a filter, not a
+  // partition — see shared/types.ts Project and shared/memoryGraph.ts visibleToProject.
+  | { type: 'project_list' }
+  | { type: 'project_get_active' }
+  | { type: 'project_create'; name: string; color?: string }
+  | { type: 'project_update'; id: string; name?: string; color?: string }
+  | { type: 'project_delete'; id: string }
+  | { type: 'project_set_active'; id: string | null }
   // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
   // service worker owns the offscreen document, so it routes the op for them.
   | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };
@@ -215,7 +230,7 @@ export interface RepoInfo {
   embedModel?: string;
 }
 
-export type RepoKind = 'page' | 'folder' | 'mail' | 'sharepoint';
+export type RepoKind = 'page' | 'folder' | 'mail' | 'sharepoint' | 'memory';
 
 export interface RepoDoc {
   id: string;
@@ -343,6 +358,8 @@ export type RepoRequest =
       embedModel?: string;
       kind?: RepoKind;
       docExtra?: { path?: string; mtime?: number; size?: number };
+      /** Explicit doc id (instead of an auto-generated one) — lets a caller upsert by a stable external id. */
+      docId?: string;
     }
   | {
       target: 'offscreen-repo';
