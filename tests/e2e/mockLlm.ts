@@ -91,13 +91,21 @@ function decide(req: ChatRequest): ChatMessage {
     };
   }
   // Memory reflection: empty by default (the common case); REMEMBER_ME_DEMO in
-  // the turn's user text drives one extracted fact so a test can assert it lands
-  // in the graph.
-  if (system.includes('Extract durable facts about the USER')) {
-    const wantsMemory = latestUserText(req.messages).includes('REMEMBER_ME_DEMO');
+  // the turn's user text drives one extracted user-preference fact, and
+  // REMEMBER_ARTICLE_DEMO drives one extracted entity/event from a page read
+  // this turn, so a test can assert either lands in the graph.
+  if (system.includes('Extract durable knowledge from this exchange')) {
+    const userText = latestUserText(req.messages);
+    if (userText.includes('REMEMBER_ARTICLE_DEMO')) {
+      return {
+        role: 'assistant',
+        content:
+          '{"memories":[{"kind":"event","subject":"Northwest Passage","label":"Northwest Passage reopens","summary":"The Northwest Passage reopened to commercial shipping earlier than usual after Arctic sea ice retreated.","relations":[],"confidence":0.8,"durability":0.6,"evidence":"Arctic sea ice retreated earlier than usual this year, opening the Northwest Passage"}]}',
+      };
+    }
     return {
       role: 'assistant',
-      content: wantsMemory
+      content: userText.includes('REMEMBER_ME_DEMO')
         ? '{"memories":[{"kind":"preference","subject":"Test User","label":"Editor preference","summary":"Test User prefers dark mode in every app.","relations":[],"confidence":0.9,"durability":0.8,"evidence":"REMEMBER_ME_DEMO: I always use dark mode"}]}'
         : '{"memories":[]}',
     };
@@ -153,6 +161,22 @@ function decide(req: ChatRequest): ChatMessage {
           toolCall('set_plan', { steps: ['Search the strategy', 'Read passages', 'Summarize and cite'] }),
         ],
       };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
+  // Reads the active tab's content (get_active_tab, then get_tab_content with
+  // the resolved tabId) so reflection sees a real page to extract from — for
+  // the article-knowledge-graph reflection test.
+  if (userMentions('REMEMBER_ARTICLE_DEMO')) {
+    if (!hasToolCall(req.messages, 'get_active_tab')) {
+      return { role: 'assistant', content: null, tool_calls: [toolCall('get_active_tab', {})] };
+    }
+    if (!hasToolCall(req.messages, 'get_tab_content')) {
+      const activeTabResult = req.messages.find((m) => m.role === 'tool');
+      const match = textOf(activeTabResult).match(/"tabId":(\d+)/);
+      const tabId = match ? Number(match[1]) : 0;
+      return { role: 'assistant', content: null, tool_calls: [toolCall('get_tab_content', { tabId })] };
     }
     return { role: 'assistant', content: FINAL_TEXT };
   }
@@ -275,7 +299,7 @@ export async function startMockLlm(): Promise<MockLlm> {
         systemText.includes('strict reviewer') ||
         systemText.includes('compress a browser agent') ||
         systemText.includes('label a conversation') ||
-        systemText.includes('Extract durable facts about the USER') ||
+        systemText.includes('Extract durable knowledge from this exchange') ||
         systemText.includes('Two memory facts about the same subject') ||
         systemText.includes('convert a completed browser task into a reusable skill')
       ) {

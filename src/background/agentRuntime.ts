@@ -1081,12 +1081,44 @@ export class AgentRuntime {
   }
 
   /**
-   * Post-conversation reflection: extract durable facts the user stated this
-   * turn into graph memory. Fires after every settled turn alongside
-   * `maybeLearnLesson` (same trigger conditions) — the common case is an
-   * empty candidate list, so most turns cost one cheap LLM call and nothing
-   * else. Every call here is a plain `complete()` with no tools, so this is
-   * safe to run unattended in principle; it currently shares
+   * The most recent page read during this task (via get_tab_content /
+   * read_app_content), for citing a source when reflection extracts
+   * article/page knowledge. `role:'tool'` conversation entries carry no tool
+   * name of their own, so each is cross-referenced against the assistant
+   * tool_call that produced it (matched by `tool_call_id`).
+   */
+  private findRecentPageSource(sinceIndex: number): { url: string; title: string; text: string } | null {
+    const slice = this.conversation.slice(sinceIndex);
+    const callNames = new Map<string, string>();
+    for (const m of slice) {
+      if (m.role === 'assistant' && m.tool_calls) {
+        for (const c of m.tool_calls) callNames.set(c.id, c.function.name);
+      }
+    }
+    let found: { url: string; title: string; text: string } | null = null;
+    for (const m of slice) {
+      if (m.role !== 'tool' || typeof m.content !== 'string' || !m.tool_call_id) continue;
+      const toolName = callNames.get(m.tool_call_id);
+      if (toolName !== 'get_tab_content' && toolName !== 'read_app_content') continue;
+      try {
+        const parsed = JSON.parse(m.content) as { url?: string; title?: string; text?: string };
+        if (parsed.text) found = { url: parsed.url ?? '', title: parsed.title ?? '', text: parsed.text };
+      } catch {
+        // Not JSON (an error string, etc.) — skip.
+      }
+    }
+    return found;
+  }
+
+  /**
+   * Post-conversation reflection: extract durable knowledge from this turn
+   * into graph memory — both facts about the user, and named entities/facts/
+   * events/relationships from any page the user asked to remember or
+   * discussed substantively (e.g. an article). Fires after every settled
+   * turn alongside `maybeLearnLesson` (same trigger conditions) — the common
+   * case is an empty candidate list, so most turns cost one cheap LLM call
+   * and nothing else. Every call here is a plain `complete()` with no tools,
+   * so this is safe to run unattended in principle; it currently shares
    * `maybeLearnLesson`'s `!this.unattended` guard for consistency with the
    * existing lesson-learning behavior.
    */
@@ -1094,25 +1126,32 @@ export class AgentRuntime {
     if (this.taskEpoch !== epoch || this.stopRequested || this.unattended) return;
     if (!(await getMemoryEnabled())) return;
     const finalAnswer = [...this.messages].reverse().find((m) => m.role === 'assistant')?.text ?? '';
-    if (!this.lastUserText.trim() && !finalAnswer.trim()) return;
+    const pageSource = this.findRecentPageSource(this.taskConversationStart);
+    if (!this.lastUserText.trim() && !finalAnswer.trim() && !pageSource) return;
 
+    const pageBlock = pageSource
+      ? `\n\nPage read this turn:\nTitle: ${pageSource.title}\nURL: ${pageSource.url}\nContent:\n${pageSource.text.slice(0, 3000)}`
+      : '';
     const prompt: LlmMessage[] = [
       {
         role: 'system',
         content:
-          'Extract durable facts about the USER from this exchange — identity, role, projects, interests, preferences, ongoing work. ' +
-          'Not: task minutiae, page content, secrets, credentials, or anything situational to this one task. ' +
-          'Empty is the common, correct answer for most exchanges — only extract what will still be true and useful weeks from now. ' +
+          'Extract durable knowledge from this exchange for a personal knowledge graph. Capture two kinds of things: ' +
+          '(1) durable facts about the USER — identity, role, projects, interests, preferences, ongoing work; ' +
+          '(2) if a page was read and the user asked to remember it or discussed it substantively, named entities, facts, events, and relationships FROM THAT PAGE — people, organizations, places, dates, what happened, and how things relate (e.g. "works_at", "announced", "located_in"). ' +
+          'Use "entity" for people/organizations/places, "event" for things that happened, "fact" for standalone claims, "preference" for user opinions/likes. ' +
+          'Not durable: task minutiae (which button was clicked, tool mechanics), secrets, credentials, or page content the user only glanced at without asking to remember. ' +
+          'Empty is the common, correct answer for most exchanges — only extract what is worth recalling weeks from now. ' +
           'Reply ONLY JSON: {"memories":[{"kind":"entity"|"fact"|"preference"|"event","subject":"<who/what, short>","label":"<short name>","summary":"<the fact, third person>","relations":[{"to":"<related subject>","relation":"<verb phrase>"}],"confidence":0-1,"durability":0-1,"evidence":"<verbatim excerpt, max 200 chars>"}]}. ' +
-          'durability: identity/preference facts ~0.7-0.9; situational/one-off facts ~0.2-0.4.',
+          'durability: identity/preference facts and well-sourced article facts ~0.6-0.9; situational/one-off facts ~0.2-0.4.',
       },
       {
         role: 'user',
-        content: `User said:\n${this.lastUserText.slice(0, 1200)}\n\nAssistant replied:\n${finalAnswer.slice(0, 1200)}`,
+        content: `User said:\n${this.lastUserText.slice(0, 1200)}\n\nAssistant replied:\n${finalAnswer.slice(0, 1200)}${pageBlock}`,
       },
     ];
     try {
-      const reply = await complete({ ...resolveModelForRole(settings, 'reflection'), maxTokens: 400, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
+      const reply = await complete({ ...resolveModelForRole(settings, 'reflection'), maxTokens: 700, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
       if (this.taskEpoch !== epoch) return;
       const candidates = parseReflection(typeof reply.content === 'string' ? reply.content : '');
       if (candidates.length === 0) return;
@@ -1126,7 +1165,12 @@ export class AgentRuntime {
 
       for (const cand of candidates) {
         if (this.taskEpoch !== epoch) return; // aborted mid-reflection (new task started)
-        const prov = { conversationId, excerpt: cand.evidence || cand.summary.slice(0, 200), at: now };
+        const prov = {
+          conversationId,
+          excerpt: cand.evidence || cand.summary.slice(0, 200),
+          at: now,
+          ...(pageSource ? { sourceUrl: pageSource.url, sourceTitle: pageSource.title } : {}),
+        };
         // Only merge into a node visible under the active project — reflection in
         // project A must never silently absorb project B's similarly-worded node.
         let target = graph.nodes.find(
@@ -2884,6 +2928,8 @@ export class AgentRuntime {
         const now = new Date().toISOString();
         const text = String(args.text).trim();
         const subject = typeof args.subject === 'string' ? args.subject.trim() : '';
+        const sourceUrl = typeof args.sourceUrl === 'string' ? args.sourceUrl.trim() : '';
+        const sourceTitle = typeof args.sourceTitle === 'string' ? args.sourceTitle.trim() : '';
         const kind: MemoryNodeKind = ['entity', 'fact', 'preference', 'event'].includes(String(args.kind))
           ? (args.kind as MemoryNodeKind)
           : 'fact';
@@ -2900,7 +2946,15 @@ export class AgentRuntime {
           updatedAt: now,
           lastConfirmedAt: now,
           provenance: this.currentConversationId
-            ? [{ conversationId: this.currentConversationId, excerpt: text.slice(0, 200), at: now }]
+            ? [
+                {
+                  conversationId: this.currentConversationId,
+                  excerpt: text.slice(0, 200),
+                  at: now,
+                  ...(sourceUrl ? { sourceUrl } : {}),
+                  ...(sourceTitle ? { sourceTitle } : {}),
+                },
+              ]
             : [],
         };
         this.memoryGraph = { ...this.memoryGraph, nodes: [...this.memoryGraph.nodes, node] };

@@ -151,6 +151,15 @@ describe('mergeNodes', () => {
     expect(merged.lastConfirmedAt).toBe('2026-02-01T00:00:00.000Z');
   });
 
+  it('carries an optional source citation through provenance', () => {
+    const existing = node({ provenance: [] });
+    const incoming = { kind: 'entity' as const, subject: 'Acme Corp', label: 'Acme Corp', summary: 'Acme Corp announced a merger.', relations: [], confidence: 0.7, durability: 0.6, evidence: '' };
+    const prov = { conversationId: 'c1', excerpt: 'Acme Corp announced a merger.', at: 't1', sourceUrl: 'https://example.com/article', sourceTitle: 'Acme merges with Globex' };
+    const merged = mergeNodes(existing, incoming, prov, 'now');
+    expect(merged.provenance[0].sourceUrl).toBe('https://example.com/article');
+    expect(merged.provenance[0].sourceTitle).toBe('Acme merges with Globex');
+  });
+
   it('caps provenance at the last 10 entries', () => {
     const existing = node({ provenance: Array.from({ length: 10 }, (_, i) => ({ conversationId: `c${i}`, excerpt: 'e', at: 't' })) });
     const incoming = { kind: 'fact' as const, subject: '', label: 'x', summary: 'y', relations: [], confidence: 0.5, durability: 0.5, evidence: '' };

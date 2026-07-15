@@ -13,6 +13,9 @@ export interface MemoryProvenance {
   conversationId: string;
   excerpt: string;
   at: string;
+  /** URL/title of the page this fact was read from, when reflection or save_memory captured a source (e.g. an article). */
+  sourceUrl?: string;
+  sourceTitle?: string;
 }
 
 export interface MemoryNode {
@@ -352,9 +355,11 @@ export function renderCoreMemoryBlock(
   now: Date = new Date(),
 ): string {
   const guidance =
-    `\n\nMemory — the user has enabled persistent memory on this device. ` +
-    `Save genuinely durable facts about the user (their role, projects, interests, preferences, ongoing work) with save_memory as you learn them — one fact per call. ` +
-    `Never save secrets, credentials, or sensitive page content. ` +
+    `\n\nMemory — the user has enabled persistent memory on this device, building a personal knowledge graph. ` +
+    `Save genuinely durable facts with save_memory as you learn them — one fact per call. Two kinds count: ` +
+    `(1) facts about the user (their role, projects, interests, preferences, ongoing work); ` +
+    `(2) named entities, facts, events, and relationships from articles or pages the user asks you to remember or discusses substantively — people, organizations, places, dates, what happened, and how things relate. Cite sourceUrl/sourceTitle when it came from a page. ` +
+    `Never save secrets, credentials, or other sensitive personal data. ` +
     `Use update_memory/delete_memory to keep entries current, and honor "forget ..." requests immediately with delete_memory. ` +
     `If the known facts below already answer the user's question, answer directly from them — do not run searches or tools to re-derive what memory already states. ` +
     `Only reach for live tools when the question concerns live or time-sensitive data (calendar, mail, page contents, anything that changes) or the remembered fact could plausibly be stale. ` +

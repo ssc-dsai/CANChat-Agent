@@ -34,7 +34,7 @@ export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'save_memory',
       description:
-        'Save one durable fact about the user (their work, projects, interests, preferences, ongoing activities) to persistent memory. One fact per call. Never save secrets, credentials, or sensitive page content.',
+        'Save one durable fact or entity to persistent memory, building a personal knowledge graph. Covers two cases: (1) a fact about the user (their work, projects, interests, preferences, ongoing activities); (2) a named entity, fact, event, or relationship from an article or page the user asked you to remember — cite sourceUrl/sourceTitle when it came from a page. One fact per call. Never save secrets, credentials, or other sensitive personal data.',
       parameters: {
         type: 'object',
         properties: {
@@ -42,9 +42,11 @@ export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
           kind: {
             type: 'string',
             enum: ['entity', 'fact', 'preference', 'event'],
-            description: 'What sort of memory this is. Defaults to "fact" if omitted.',
+            description: 'What sort of memory this is. Use "entity" for a person/organization/place, "event" for something that happened. Defaults to "fact" if omitted.',
           },
-          subject: { type: 'string', description: 'Optional short name of who/what this fact is about, e.g. "Scott".' },
+          subject: { type: 'string', description: 'Optional short name of who/what this fact is about, e.g. "Scott" or "Acme Corp".' },
+          sourceUrl: { type: 'string', description: 'Optional URL of the article/page this fact came from, if any.' },
+          sourceTitle: { type: 'string', description: 'Optional title of the article/page this fact came from, if any.' },
         },
         required: ['text'],
       },

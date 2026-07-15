@@ -550,19 +550,24 @@ Three collapsible sections (collapsed by default — click to expand):
   (a URL with `{query}` in it), and optionally a **tool server (MCP endpoint)**
   with a token. The agent consults this before falling back to a web search.
 - **Memory** — toggle **"Remember things about me (stored only on this device)."**
-  When on, the agent notices durable facts you mention in conversation — work,
-  projects, preferences — and saves them automatically after each turn (as well as
-  when you say "remember that…" or "forget…"); it answers directly from what it
-  already knows instead of re-searching. **Probe environment** (shown only when
-  memory is on) fills memory with what the extension can detect about you — your
-  Microsoft 365 name / work email / sign-in (AD) username from the signed-in
-  session, the work systems you currently have open, and your locale/timezone. It
-  runs entirely on-device and adds only new facts. Click **Manage memories** to open
-  the full editor (in its own tab): filter by status or kind, edit a memory's text,
-  **Confirm** it to clear a "stale" flag, or delete it — each entry shows the excerpt
-  it was learned from. A memory that hasn't been reconfirmed in a while is marked
-  stale automatically (never deleted) so you know it might be out of date. Capacity
-  is 500 entries; secrets are never saved.
+  When on, the agent builds a small personal knowledge graph. Two kinds of things
+  get saved automatically after each turn: durable facts about you (work,
+  projects, preferences), and — if you ask it to remember or discuss an article
+  or page in depth — the named people, organizations, places, dates, and events
+  it read there, linked by relationships (e.g. "Acme Corp —announced→ merger").
+  You can also say "remember that…" or "forget…" directly. Once saved, the agent
+  answers directly from what it already knows instead of re-searching. **Probe
+  environment** (shown only when memory is on) fills memory with what the
+  extension can detect about you — your Microsoft 365 name / work email / sign-in
+  (AD) username from the signed-in session, the work systems you currently have
+  open, and your locale/timezone. It runs entirely on-device and adds only new
+  facts. Click **Manage memories** to open the full editor (in its own tab):
+  filter by status or kind, edit a memory's text, **Confirm** it to clear a
+  "stale" flag, or delete it — each entry shows the excerpt it was learned from,
+  plus a link to the source article/page when the fact was extracted from one. A
+  memory that hasn't been reconfirmed in a while is marked stale automatically
+  (never deleted) so you know it might be out of date. Capacity is 500 entries;
+  secrets are never saved.
 
   The same toggle also enables **automatic lessons**: after a substantial or
   corrected task (one with a real plan, several tool calls, or a self-correction),

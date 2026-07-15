@@ -126,6 +126,14 @@ export function MemoryPage() {
                   {current.provenance.slice(-5).map((p, i) => (
                     <li key={i} class="ws-dim">
                       "{p.excerpt}" — {new Date(p.at).toLocaleString()}
+                      {p.sourceUrl && (
+                        <>
+                          {' — '}
+                          <a href={p.sourceUrl} target="_blank" rel="noreferrer">
+                            {p.sourceTitle || p.sourceUrl}
+                          </a>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>

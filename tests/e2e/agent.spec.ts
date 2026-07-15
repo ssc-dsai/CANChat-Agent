@@ -167,4 +167,29 @@ test.describe('agent loop (mock LLM)', () => {
     expect(mainReqs.length).toBeGreaterThan(0);
     expect(mainReqs[0].messages[0].content as string).toContain('dark mode');
   });
+
+  test('reflection extracts an entity from an article and cites its source', async ({ context, staticServer, sidebar, mockLlm }) => {
+    await sidebar.evaluate(() => chrome.storage.local.set({ ba_memory_enabled: true }));
+    await openFixtureTab(context, staticServer, 'article.html');
+
+    await sendChat(sidebar, 'REMEMBER_ARTICLE_DEMO: read the current page and remember the key facts from it.');
+    await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' }).last()).toBeVisible();
+
+    const graph = () =>
+      sidebar.evaluate(
+        () =>
+          chrome.storage.local.get('ba_memory_graph').then(
+            (r) =>
+              (r as { ba_memory_graph?: { nodes: { kind: string; summary: string; provenance: { sourceUrl?: string; sourceTitle?: string }[] }[] } })
+                .ba_memory_graph,
+          ),
+      );
+    await expect.poll(async () => (await graph())?.nodes.some((n) => n.kind === 'event' && n.summary.includes('Northwest Passage')), {
+      timeout: 15000,
+    }).toBe(true);
+
+    const node = (await graph())?.nodes.find((n) => n.summary.includes('Northwest Passage'));
+    expect(node?.provenance[0]?.sourceUrl).toContain(`${staticServer.url}/article.html`);
+    expect(node?.provenance[0]?.sourceTitle).toBe('The Northwest Passage Reopens');
+  });
 });
