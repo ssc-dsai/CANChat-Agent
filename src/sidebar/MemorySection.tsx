@@ -4,6 +4,7 @@ import { useT } from './i18n';
 export function MemorySection() {
   const t = useT();
   const [enabled, setEnabled] = useState(false);
+  const [minConfidence, setMinConfidence] = useState(0);
   const [count, setCount] = useState(0);
   const [probing, setProbing] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
@@ -15,13 +16,21 @@ export function MemorySection() {
     });
 
   useEffect(() => {
-    chrome.storage.local.get('ba_memory_enabled').then((r) => setEnabled(r.ba_memory_enabled === true));
+    chrome.storage.local.get(['ba_memory_enabled', 'ba_memory_min_confidence']).then((r) => {
+      setEnabled(r.ba_memory_enabled === true);
+      setMinConfidence(typeof r.ba_memory_min_confidence === 'number' ? r.ba_memory_min_confidence : 0);
+    });
     void loadCount();
   }, []);
 
   const toggle = async (on: boolean) => {
     setEnabled(on);
     await chrome.storage.local.set({ ba_memory_enabled: on });
+  };
+
+  const changeMinConfidence = async (value: number) => {
+    setMinConfidence(value);
+    await chrome.storage.local.set({ ba_memory_min_confidence: value });
   };
 
   // Populate memory from what the extension can detect about the signed-in user
@@ -73,6 +82,24 @@ export function MemorySection() {
       </label>
 
       <p class="settings-note">{t('memory.note')}</p>
+
+      {enabled && (
+        <div class="memory-confidence">
+          <label class="memory-confidence-label">
+            {t('memory.minConfidence')}
+            <span class="memory-confidence-value">{minConfidence.toFixed(2)}</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={minConfidence}
+            onInput={(e) => changeMinConfidence(Number((e.target as HTMLInputElement).value))}
+          />
+          <p class="settings-note">{t('memory.minConfidenceNote')}</p>
+        </div>
+      )}
 
       <div class="context-actions">
         <button

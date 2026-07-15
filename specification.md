@@ -602,9 +602,9 @@ classification, non-gated; datasets persist to OPFS)
 - `use_skill {name}` — load a named skill's instructions.
 - `export_data {title, columns, rows}` — produce a downloadable CSV/JSON table.
 - `set_plan {steps}`, `update_plan {step, status, note?}`, `record_finding {text}`.
-- `save_memory {text, kind?, subject?}`, `update_memory {id, text}`,
-  `delete_memory {id}` — durable graph memory (only when the memory feature
-  is enabled). See §16.6.
+- `save_memory {text, kind?, subject?, sourceUrl?, sourceTitle?}`,
+  `update_memory {id, text}`, `delete_memory {id}` — durable graph memory
+  (only when the memory feature is enabled). See §16.6.
 
 ---
 
@@ -913,15 +913,32 @@ Backup/Restore fallback for one release.
   triggers a cheap full rebuild rather than data loss.
 - **Reflection** — `AgentRuntime.reflectMemories` fires after every settled
   turn (alongside the existing `maybeLearnLesson`, same trigger conditions): one
-  plain `complete()` call (no tools — unattended-safe) extracts durable facts
-  from the turn as strict JSON (`parseReflection`); an empty result is the
-  common case. Each candidate is merged into an existing node (term-overlap or
-  embedding-index match) or inserted fresh; a match whose text has drifted
-  enough to look like a contradiction (`shouldAdjudicate`) gets one more cheap
-  LLM call deciding supersede-vs-merge (`adjudicateSupersede`) — a superseded
-  node is kept (`status:'superseded'`, `supersededBy`) rather than deleted. The
-  graph is persisted before any embedding-index call, so an index/embedder
-  failure never loses an extracted fact.
+  plain `complete()` call (no tools — unattended-safe) extracts durable
+  knowledge from the turn as strict JSON (`parseReflection`); an empty result
+  is the common case. Two kinds of memory count: facts about the user, and —
+  when a page was read this turn via `get_tab_content`/`read_app_content` and
+  the user asked to remember it or discussed it substantively — named
+  entities, facts, events, and relationships extracted FROM that page (e.g. an
+  article's people, organizations, and what happened), building a personal
+  knowledge graph rather than only a preference list.
+  `AgentRuntime.findRecentPageSource` cross-references the task's tool-call
+  results (matched by `tool_call_id`) to find the most recent page read, and
+  its `{url, title}` is attached to every candidate's provenance
+  (`MemoryProvenance.sourceUrl`/`sourceTitle`) so extracted facts stay citable
+  — shown as a link on the memory's detail view in the Workspace Memory page.
+  `save_memory` accepts the same optional `sourceUrl`/`sourceTitle` for
+  explicit, in-conversation saves. Candidates below the user-configured
+  `ba_memory_min_confidence` (default 0, i.e. off) are dropped before merging
+  (`filterByMinConfidence`) — a knob for users who want automatic saving to be
+  more conservative; it never applies to explicit `save_memory` calls, which
+  always save at confidence 1. Each surviving candidate is merged into an existing
+  node (term-overlap or embedding-index match) or inserted fresh; a match
+  whose text has drifted enough to look like a contradiction
+  (`shouldAdjudicate`) gets one more cheap LLM call deciding supersede-vs-merge
+  (`adjudicateSupersede`) — a superseded node is kept (`status:'superseded'`,
+  `supersededBy`) rather than deleted. The graph is persisted before any
+  embedding-index call, so an index/embedder failure never loses an extracted
+  fact.
 - **Retrieval — two tiers, prompt-cache safe.** *Core tier*: the top ~15 active
   nodes ranked by `durability × effectiveConfidence` (time-decayed — see
   below), rendered into the byte-stable `systemBase` once per conversation

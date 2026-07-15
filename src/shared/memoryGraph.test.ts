@@ -3,6 +3,7 @@ import {
   applyDecay,
   effectiveConfidence,
   emptyMemoryGraph,
+  filterByMinConfidence,
   MEMORY_EDGE_CAP,
   MEMORY_NODE_CAP,
   MEMORY_STALE_THRESHOLD,
@@ -126,6 +127,29 @@ describe('parseReflection', () => {
   });
 });
 
+describe('filterByMinConfidence', () => {
+  const candidate = (confidence: number) => ({
+    kind: 'fact' as const,
+    subject: '',
+    label: 'L',
+    summary: 'S',
+    relations: [],
+    confidence,
+    durability: 0.5,
+    evidence: '',
+  });
+
+  it('keeps candidates at or above the threshold, drops those below', () => {
+    const out = filterByMinConfidence([candidate(0.3), candidate(0.6), candidate(0.6001)], 0.6);
+    expect(out).toHaveLength(2);
+    expect(out.map((c) => c.confidence)).toEqual([0.6, 0.6001]);
+  });
+
+  it('a zero threshold keeps everything (default, unfiltered behavior)', () => {
+    expect(filterByMinConfidence([candidate(0), candidate(1)], 0)).toHaveLength(2);
+  });
+});
+
 describe('nodeSimilarity', () => {
   it('scores identical text as fully similar', () => {
     const a = { label: 'Scott role', summary: 'Scott is a data scientist' };
@@ -149,6 +173,15 @@ describe('mergeNodes', () => {
     expect(merged.status).toBe('active');
     expect(merged.provenance).toEqual([existing.provenance[0], prov]);
     expect(merged.lastConfirmedAt).toBe('2026-02-01T00:00:00.000Z');
+  });
+
+  it('carries an optional source citation through provenance', () => {
+    const existing = node({ provenance: [] });
+    const incoming = { kind: 'entity' as const, subject: 'Acme Corp', label: 'Acme Corp', summary: 'Acme Corp announced a merger.', relations: [], confidence: 0.7, durability: 0.6, evidence: '' };
+    const prov = { conversationId: 'c1', excerpt: 'Acme Corp announced a merger.', at: 't1', sourceUrl: 'https://example.com/article', sourceTitle: 'Acme merges with Globex' };
+    const merged = mergeNodes(existing, incoming, prov, 'now');
+    expect(merged.provenance[0].sourceUrl).toBe('https://example.com/article');
+    expect(merged.provenance[0].sourceTitle).toBe('Acme merges with Globex');
   });
 
   it('caps provenance at the last 10 entries', () => {

@@ -55,8 +55,47 @@ test('workspace Memory page lists, edits, confirms, and deletes a node', async (
               lastConfirmedAt: iso,
               provenance: [{ conversationId: 'c1', excerpt: 'I always use dark mode', at: iso }],
             },
+            {
+              id: 'mem-test-2',
+              kind: 'entity',
+              label: 'Acme Corp',
+              summary: 'Acme Corp is a logistics company.',
+              confidence: 0.8,
+              durability: 0.6,
+              status: 'active',
+              createdAt: iso,
+              updatedAt: iso,
+              lastConfirmedAt: iso,
+              provenance: [{ conversationId: 'c2', excerpt: 'Acme Corp announced a merger', at: iso, sourceUrl: 'https://example.com/a', sourceTitle: 'Acme merges' }],
+            },
+            {
+              id: 'mem-test-3',
+              kind: 'event',
+              label: 'Acme merger',
+              summary: 'Acme Corp announced a merger with Globex.',
+              confidence: 0.8,
+              durability: 0.6,
+              status: 'active',
+              createdAt: iso,
+              updatedAt: iso,
+              lastConfirmedAt: iso,
+              provenance: [],
+            },
           ],
-          edges: [],
+          edges: [
+            {
+              id: 'edge-test-1',
+              from: 'mem-test-2',
+              to: 'mem-test-3',
+              relation: 'announced',
+              confidence: 0.8,
+              status: 'active',
+              createdAt: iso,
+              updatedAt: iso,
+              lastConfirmedAt: iso,
+              provenance: [],
+            },
+          ],
         },
       }),
     now,
@@ -65,6 +104,21 @@ test('workspace Memory page lists, edits, confirms, and deletes a node', async (
   await page.goto(`chrome-extension://${extensionId}/workspace.html#memory`);
 
   await expect(page.locator('.ws-memory-item', { hasText: 'Editor preference' })).toBeVisible();
+
+  // Free-text search narrows the list to matching label/summary text only.
+  await page.locator('.ws-memory-search').fill('Acme');
+  await expect(page.locator('.ws-memory-item', { hasText: 'Editor preference' })).toHaveCount(0);
+  await expect(page.locator('.ws-memory-item', { hasText: 'Acme Corp' })).toBeVisible();
+
+  // Clicking a relationship endpoint jumps the detail view to that node —
+  // multi-hop graph traversal, independent of the search box's filtering.
+  await page.locator('.ws-memory-item', { hasText: 'Acme Corp' }).click();
+  await expect(page.locator('.ws-memory-detail h2')).toHaveText('Acme Corp');
+  await expect(page.locator('.ws-memory-provenance a', { hasText: 'Acme merges' })).toHaveAttribute('href', 'https://example.com/a');
+  await page.locator('.ws-memory-edges .ws-link', { hasText: 'Acme merger' }).click();
+  await expect(page.locator('.ws-memory-detail h2')).toHaveText('Acme merger');
+
+  await page.locator('.ws-memory-search').fill('');
   await page.locator('.ws-memory-item', { hasText: 'Editor preference' }).click();
   await expect(page.locator('.ws-memory-detail h2')).toHaveText('Editor preference');
   await expect(page.locator('.ws-memory-provenance')).toContainText('I always use dark mode');
@@ -88,15 +142,15 @@ test('workspace Memory page lists, edits, confirms, and deletes a node', async (
     return g.ba_memory_graph?.nodes[0]?.lastConfirmedAt;
   }).not.toBe(now);
 
-  // Delete removes the node.
+  // Delete removes the node (the other two seeded nodes are untouched).
   await page.getByRole('button', { name: 'Delete' }).click();
   await expect.poll(async () => {
     const g = (await page.evaluate(() => chrome.storage.local.get('ba_memory_graph'))) as {
-      ba_memory_graph?: { nodes: unknown[] };
+      ba_memory_graph?: { nodes: { id: string }[] };
     };
-    return g.ba_memory_graph?.nodes.length;
-  }).toBe(0);
-  await expect(page.locator('.ws-memory-empty')).toBeVisible();
+    return g.ba_memory_graph?.nodes.map((n) => n.id);
+  }).not.toContain('mem-test-1');
+  await expect(page.locator('.ws-memory-item', { hasText: 'Editor preference' })).toHaveCount(0);
 
   await page.close();
 });

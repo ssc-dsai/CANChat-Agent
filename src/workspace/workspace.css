@@ -159,6 +159,7 @@ html, body, #app { margin: 0; height: 100%; font-family: -apple-system, BlinkMac
 /* ===== Memory page ===== */
 .ws-memory-page { display: flex; height: 100%; gap: 16px; }
 .ws-memory-list-pane { width: 280px; display: flex; flex-direction: column; gap: 8px; }
+.ws-memory-search { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); color: var(--text); font-size: 12px; }
 .ws-memory-filters { display: flex; gap: 6px; }
 .ws-memory-filters select { flex: 1; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); color: var(--text); font-size: 12px; }
 .ws-memory-list { list-style: none; padding: 0; margin: 0; overflow-y: auto; }
