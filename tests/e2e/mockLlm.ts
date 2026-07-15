@@ -107,6 +107,14 @@ function decide(req: ChatRequest): ChatMessage {
   if (system.includes('Two memory facts about the same subject')) {
     return { role: 'assistant', content: '{"supersedes": false}' };
   }
+  // Skill distillation (packageTaskAsSkill, shared by the "Save as skill"
+  // button and the save_as_skill tool): a fixed skill JSON.
+  if (system.includes('convert a completed browser task into a reusable skill')) {
+    return {
+      role: 'assistant',
+      content: '{"name":"demo-skill","description":"A distilled demo skill","body":"1. Do the demo thing."}',
+    };
+  }
 
   const hasToolResult = req.messages.some((m) => m.role === 'tool');
   const userMentions = (needle: string) =>
@@ -226,6 +234,13 @@ function decide(req: ChatRequest): ChatMessage {
   if (prompt.includes('INSPECT_TABS')) {
     return { role: 'assistant', content: null, tool_calls: [toolCall('list_tabs', {})] };
   }
+  if (prompt.includes('SAVE_SKILL_DEMO')) {
+    return {
+      role: 'assistant',
+      content: null,
+      tool_calls: [toolCall('save_as_skill', { reason: 'demo: save this task as a reusable skill' })],
+    };
+  }
   return { role: 'assistant', content: FINAL_TEXT };
 }
 
@@ -261,7 +276,8 @@ export async function startMockLlm(): Promise<MockLlm> {
         systemText.includes('compress a browser agent') ||
         systemText.includes('label a conversation') ||
         systemText.includes('Extract durable facts about the USER') ||
-        systemText.includes('Two memory facts about the same subject')
+        systemText.includes('Two memory facts about the same subject') ||
+        systemText.includes('convert a completed browser task into a reusable skill')
       ) {
         const message = decide(parsed);
         res.end(JSON.stringify({ id: 'chatcmpl-mock', choices: [{ index: 0, message, finish_reason: 'stop' }] }));

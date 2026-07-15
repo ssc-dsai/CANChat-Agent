@@ -668,6 +668,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'save_as_skill',
+      description:
+        "Turn the current task into a reusable skill: the model generalizes the request, plan, and findings into named, invokable instructions (saved to Settings → Skills, invoked later by typing /name). Use when the user explicitly asks to save/turn this into a skill — don't call this speculatively for ordinary tasks. Re-running it on an already-saved skill of the same name updates and version-bumps it rather than duplicating.",
+      parameters: {
+        type: 'object',
+        properties: {
+          ...reasonParam,
+        },
+        required: ['reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'save_app_playbook',
       description:
         "Persist a reusable playbook for operating a specific web app, scoped to its site origin. The body auto-loads whenever the user returns to that site. Use at the end of a /learn exploration to record how to drive the app (navigation, search, reading data) with concrete code snippets or element references. Requires user approval.",

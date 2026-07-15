@@ -331,8 +331,8 @@ Skills**.
 *What you're seeing:* the **seeded skills** — **`/research`**,
 **`/search-sharepoint`**, **`/search-mail`**, and **`/map`** — each editable (✎) or
 removable (✕), and the toolbar: **Add
-skill**, **Import from URL**, **Import JSON**, **Export JSON**, and **App playbook
-library**.
+skill**, **Import from URL**, **Import JSON**, **Export JSON**, **Import zip**, and
+**App playbook library**.
 
 - **Run a skill:** type `/name` in the chat, or let the agent apply one
   automatically when your request matches its description.
@@ -344,13 +344,25 @@ library**.
   (when the agent should use it), **Site** (optional — makes it an *app playbook*
   that auto-loads on that host), **Button label** + **Show as a button** (pin it
   to the toolbar), and **Instructions** (markdown steps).
-- **Import** from a GitHub `SKILL.md` link, from pasted JSON, or install a
+- **Import** from a GitHub `SKILL.md` link, from pasted JSON, from a **zip**
+  file (a single skill or a "pack" of several bundled together), or install a
   **curated App playbook** for Outlook on the web, Outlook.com, Gmail,
-  MarineTraffic, or Jira Cloud.
+  MarineTraffic, or Jira Cloud. A `SKILL.md` can declare a `version:` in its
+  frontmatter; re-installing the same skill only replaces it when the
+  incoming version is equal or newer, so an older bundle can't overwrite a
+  newer local edit and re-installing the identical file twice is a no-op.
 - **`/learn` (built-in):** type `/learn` on a site and the agent explores it and
   saves an app playbook so it can operate that app next time.
-- **Auto-offer:** after a substantial task the agent offers to **distill** the
-  workflow into a new skill (the chip in §5.3).
+- **Ask the agent to save a skill:** say "save this as a skill" (during or
+  right after a task) and the agent turns the request into one itself — no
+  new sandbox, no new code-execution ability; it's the same instruction-only
+  skill format, and the task that produced it still ran through the normal
+  approval-gated tool loop. Like any state-changing action, it asks you to
+  approve before saving. Re-saving an already-saved skill bumps its version
+  instead of creating a duplicate.
+- **Auto-offer:** after a substantial task the agent also offers to **distill**
+  the workflow into a new skill via a button (the chip in §5.3) — the same
+  packaging step as above, just triggered from the UI instead of by asking.
 
 ### 5.7 Knowledge bases (save pages and ask later)
 
@@ -1054,7 +1066,7 @@ approval each time.** Memory tools appear only when Memory is enabled.
 **Producing output:** `export_data` (CSV/JSON), `create_word_document` (.docx).
 
 **Agent meta:** `set_plan`, `update_plan`, `record_finding`, `use_skill`,
-`save_app_playbook` 🔒.
+`save_app_playbook` 🔒, `save_as_skill` 🔒.
 
 **Memory (opt-in only):** `save_memory`, `update_memory`, `delete_memory`.
 

@@ -43,7 +43,9 @@ import type {
   LessonEntry,
   Settings,
   Skill,
+  SkillSource,
 } from '../shared/types';
+import { bumpSkillVersion } from '../shared/skillImport';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
 import {
   emptyMemoryGraph,
@@ -207,6 +209,7 @@ const APPROVAL_REQUIRED = new Set([
   'click_at', // coordinate click can commit actions — gated
   'drag', // drag can reorder/drop — gated
   'save_app_playbook', // persists a reusable playbook — confirm before storing
+  'save_as_skill', // persists a new reusable skill from this task — confirm before storing
   'get_all_tab_contents', // reading all tabs needs explicit approval per spec
   'call_mcp_tool', // invokes an external MCP method — gated like any outbound action
   'call_webmcp_tool', // invokes an in-page tool with the user's session — gated
@@ -359,6 +362,7 @@ Working method:
 - If get_tab_content returns little on an app page (canvas-rendered apps like Google Docs/Sheets), call read_app_content; if that also returns nothing, use snapshot + vision.
 - As a last resort for an opaque page whose content none of the text tools can reach, call capture_full_page to screenshot the whole page top-to-bottom and read the frames visually. It needs a vision-capable model and is token-heavy, so try the text tools first.
 - App playbooks: when you are on a site the user has taught you, its playbook appears automatically above as an "Active app playbook" — follow it to operate that app. The user teaches a new app by typing /learn, which has you explore the site and save a playbook with save_app_playbook.
+- If the user explicitly asks you to save/turn the current (or a just-completed) task into a reusable skill, call save_as_skill once the task itself is done — don't call it speculatively for ordinary tasks that weren't asked to become a skill.
 - If a page requires login, the task pauses automatically and the user is asked to sign in. After they resume, re-fetch the page content.
 - The user may attach snapshots (screenshots of tabs). Read charts, tables, and figures directly from those images — they usually exist because DOM extraction could not see that content.
 - To read a PDF — including one open in the current tab — call read_pdf, not get_tab_content; the page tools cannot see PDF text.
@@ -1527,13 +1531,21 @@ export class AgentRuntime {
     this.setDistill(false);
   }
 
-  /** Generalize the just-completed task into a reusable skill and save it. */
-  async distillSkill(): Promise<void> {
-    if (this.running || !this.canDistill) return;
+  /**
+   * Turn the current task's transcript (request/plan/findings) into a reusable
+   * skill and save it — the one packaging step shared by the UI's "Save as
+   * skill" button (`distillSkill`, below) and the agent-callable `save_as_skill`
+   * tool (so a user asking mid-task "make this a skill" doesn't need to wait
+   * for the task to end and click a button). Never checks `this.running`: the
+   * tool path calls this *during* a run, which is the whole point.
+   *
+   * Re-distilling an existing skill of the same name patch-bumps its version
+   * (`bumpSkillVersion`) rather than leaving it untracked, so a
+   * version-aware re-install later knows this local copy has moved on.
+   */
+  private async packageTaskAsSkill(source: SkillSource): Promise<{ ok: boolean; name?: string; error?: string }> {
     const settings = await getSettings();
-    if (!settings) return;
-    this.setDistill(false);
-    this.setStatus('thinking', 'Distilling a skill…');
+    if (!settings) return { ok: false, error: 'No model configured.' };
     try {
       const planText = this.plan?.map((s, i) => `${i + 1}. ${s.text}`).join('\n') ?? '(no explicit plan)';
       const prompt: LlmMessage[] = [
@@ -1566,19 +1578,30 @@ export class AgentRuntime {
         description: parsed.description.trim(),
         body: parsed.body.trim(),
         projectId: this.activeProjectId ?? undefined,
+        version: bumpSkillVersion(existing?.version),
+        source,
       };
       if (idx >= 0) skills[idx] = skill;
       else skills.push(skill);
       await saveSkills(skills);
-      this.notice(`Saved skill /${name} — edit it in Settings → Skills.`);
+      return { ok: true, name };
     } catch (err) {
-      this.emit({
-        type: 'error',
-        message: `Could not distill a skill: ${err instanceof Error ? err.message : String(err)}`,
-      });
-    } finally {
-      if (this.status !== 'error') this.setStatus('idle');
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  /** UI entry point for the "Save as skill" button shown after a substantial task. */
+  async distillSkill(): Promise<void> {
+    if (this.running || !this.canDistill) return;
+    this.setDistill(false);
+    this.setStatus('thinking', 'Distilling a skill…');
+    const result = await this.packageTaskAsSkill({ kind: 'generated', installedAt: new Date().toISOString() });
+    if (result.ok) {
+      this.notice(`Saved skill /${result.name} — edit it in Settings → Skills.`);
+    } else {
+      this.emit({ type: 'error', message: `Could not distill a skill: ${result.error}` });
+    }
+    if (this.status !== 'error') this.setStatus('idle');
   }
 
   pause(): void {
@@ -2910,6 +2933,12 @@ export class AgentRuntime {
         await memoryIndexRemove([id]);
         return `Deleted memory [${id}].`;
       }
+      case 'save_as_skill': {
+        const result = await this.packageTaskAsSkill({ kind: 'generated', installedAt: new Date().toISOString() });
+        if (!result.ok) return `Error: could not save a skill from this task: ${result.error}`;
+        this.setDistill(false); // the "Save as skill" button would now duplicate this
+        return `Saved skill /${result.name} from this task — edit it in Settings → Skills.`;
+      }
       case 'save_app_playbook': {
         const origin = normalizeHost(String(args.origin));
         if (!origin) return 'Error: a site origin is required to save an app playbook.';
@@ -3459,6 +3488,8 @@ export class AgentRuntime {
         return `Drag (${args.fromX}, ${args.fromY}) → (${args.toX}, ${args.toY}) on tab ${args.tabId}`;
       case 'save_app_playbook':
         return `Save app playbook "${args.name}" for ${normalizeHost(String(args.origin))}:\n${String(args.body).slice(0, 200)}`;
+      case 'save_as_skill':
+        return 'Save this task as a reusable skill (generalized instructions the agent can reuse for similar tasks).';
       case 'call_mcp_tool':
         return `Call MCP method "${args.name}" on server "${args.server}" with ${JSON.stringify(args.arguments ?? {}).slice(0, 200)}`;
       case 'call_webmcp_tool':

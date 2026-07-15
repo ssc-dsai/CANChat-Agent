@@ -5,7 +5,15 @@ import {
   parsePlaybookIndex,
   type RemotePlaybook,
 } from '../shared/playbookIndex';
-import { detectIncompatibility, parseSkillFrontmatter, rawGithubUrl, slugifySkillName } from '../shared/skillImport';
+import {
+  detectIncompatibility,
+  parseSkillFrontmatter,
+  parseSkillZip,
+  rawGithubUrl,
+  shouldReplaceSkill,
+  slugifySkillName,
+  type ParsedSkill,
+} from '../shared/skillImport';
 import type { Project, Skill } from '../shared/types';
 import { normalizeHost } from '../shared/url';
 
@@ -47,6 +55,40 @@ function newId(): string {
 async function loadSkills(): Promise<Skill[]> {
   const r = await chrome.storage.local.get('ba_skills');
   return Array.isArray(r.ba_skills) ? (r.ba_skills as Skill[]) : [];
+}
+
+interface MergeResult {
+  skills: Skill[];
+  outcome: 'added' | 'updated' | 'skipped-older';
+  name: string;
+}
+
+/**
+ * Merge one parsed SKILL.md into the skill list by name, honoring version
+ * precedence (`shouldReplaceSkill`) rather than always overwriting — so
+ * re-installing the same bundle twice is a no-op and an older bundle can't
+ * clobber a newer local edit. Used by the URL, zip, and remote-playbook
+ * install paths (JSON import/export keeps its own bulk-restore semantics).
+ */
+function mergeParsedSkill(skills: Skill[], parsed: ParsedSkill, source: Skill['source'], origin?: string): MergeResult {
+  const name = parsed.name || slugifySkillName('imported-skill');
+  const existing = skills.find((s) => s.name === name);
+  if (existing && !shouldReplaceSkill(existing.version, parsed.version)) {
+    return { skills, outcome: 'skipped-older', name };
+  }
+  const entry: Skill = {
+    id: existing?.id ?? newId(),
+    name,
+    description: parsed.description.trim() || `Imported skill: ${name}`,
+    body: parsed.body.trim(),
+    origin,
+    version: parsed.version,
+    declaredTools: parsed.declaredTools,
+    source,
+    projectId: existing?.projectId,
+  };
+  const next = existing ? skills.map((s) => (s.id === existing.id ? entry : s)) : [...skills, entry];
+  return { skills: next, outcome: existing ? 'updated' : 'added', name };
 }
 
 async function persistSkills(skills: Skill[]): Promise<void> {
@@ -125,25 +167,25 @@ export function SkillsSection() {
       }
       const name = parsed.name || slugifySkillName(p.name);
       const origin = p.origin ? normalizeHost(p.origin) : undefined;
+      const byOrigin = origin ? skills.find((s) => s.origin === origin) : undefined;
+      const byName = skills.find((s) => s.name === name);
+      const existing = byOrigin ?? byName;
+      if (existing && !shouldReplaceSkill(existing.version, parsed.version)) {
+        setFeedback({ ok: false, text: `/${name} is already installed at an equal or newer version — skipped.` });
+        return;
+      }
       const entry: Skill = {
-        id: newId(),
+        id: existing?.id ?? newId(),
         name,
         description: (parsed.description || p.description || `Imported skill: ${name}`).trim(),
         body: parsed.body.trim(),
         origin,
+        version: parsed.version,
+        declaredTools: parsed.declaredTools,
+        source: { kind: 'url', installedAt: new Date().toISOString() },
+        projectId: existing?.projectId,
       };
-      let next: Skill[];
-      const byOrigin = origin ? skills.find((s) => s.origin === origin) : undefined;
-      const byName = skills.find((s) => s.name === name);
-      if (byOrigin) {
-        entry.id = byOrigin.id;
-        next = skills.map((s) => (s.id === byOrigin.id ? entry : s));
-      } else if (byName) {
-        entry.id = byName.id;
-        next = skills.map((s) => (s.id === byName.id ? entry : s));
-      } else {
-        next = [...skills, entry];
-      }
+      const next = existing ? skills.map((s) => (s.id === existing.id ? entry : s)) : [...skills, entry];
       await save(next);
       const warn = detectIncompatibility(text);
       setFeedback({ ok: true, text: warn ? `Installed /${name}. Note: ${warn}` : `Installed /${name}.` });
@@ -262,6 +304,9 @@ export function SkillsSection() {
         origin: typeof e.origin === 'string' && e.origin.trim() ? normalizeHost(e.origin) : undefined,
         showButton: e.showButton ? true : undefined,
         buttonLabel: typeof e.buttonLabel === 'string' && e.buttonLabel.trim() ? e.buttonLabel.trim() : undefined,
+        version: typeof e.version === 'string' && e.version.trim() ? e.version.trim() : undefined,
+        declaredTools: Array.isArray(e.declaredTools) ? e.declaredTools : undefined,
+        source: e.source,
       });
     }
     // Merge by name: imported skills replace same-named existing ones.
@@ -296,27 +341,62 @@ export function SkillsSection() {
         setFeedback({ ok: false, text: 'That file has no skill instructions.' });
         return;
       }
-      const name = parsed.name || 'imported-skill';
-      const entry: Skill = {
-        id: skills.find((s) => s.name === name)?.id ?? newId(),
-        name,
-        description: parsed.description.trim() || `Imported skill: ${name}`,
-        body: parsed.body.trim(),
-      };
-      // Replace any same-named skill (merge by name, like JSON import).
-      const next = skills.some((s) => s.name === name)
-        ? skills.map((s) => (s.name === name ? entry : s))
-        : [...skills, entry];
-      await save(next);
+      const result = mergeParsedSkill(skills, parsed, { kind: 'url', installedAt: new Date().toISOString() });
+      if (result.outcome === 'skipped-older') {
+        setFeedback({ ok: false, text: `/${result.name} is already installed at an equal or newer version — skipped.` });
+        return;
+      }
+      await save(result.skills);
       const warn = detectIncompatibility(text);
       setFeedback({
         ok: true,
-        text: warn ? `Added /${name}. Note: ${warn}` : `Added /${name}.`,
+        text: warn ? `${result.outcome === 'added' ? 'Added' : 'Updated'} /${result.name}. Note: ${warn}` : `${result.outcome === 'added' ? 'Added' : 'Updated'} /${result.name}.`,
       });
       setUrlText('');
       setShowUrl(false);
     } catch (e) {
       setFeedback({ ok: false, text: `Import failed: ${String(e)}` });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Import a zip: either a single SKILL.md at the root, or a "pack" of several
+  // under subdirectories. Each member is merged independently (by name,
+  // version-aware via mergeParsedSkill) so a pack with one already-installed,
+  // unchanged skill doesn't block the rest.
+  const importZip = async (file: File) => {
+    setFeedback(null);
+    setImporting(true);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const parsedSkills = parseSkillZip(bytes);
+      if (parsedSkills.length === 0) {
+        setFeedback({ ok: false, text: 'No SKILL.md-shaped files found in that zip.' });
+        return;
+      }
+      let current = skills;
+      let added = 0;
+      let updated = 0;
+      let skipped = 0;
+      const warnings: string[] = [];
+      for (const parsed of parsedSkills) {
+        const result = mergeParsedSkill(current, parsed, { kind: 'zip', installedAt: new Date().toISOString() });
+        current = result.skills;
+        if (result.outcome === 'added') added++;
+        else if (result.outcome === 'updated') updated++;
+        else skipped++;
+        const warn = detectIncompatibility(parsed.body);
+        if (warn) warnings.push(`/${result.name}: ${warn}`);
+      }
+      await save(current);
+      const parts = [added && `${added} added`, updated && `${updated} updated`, skipped && `${skipped} already up to date`].filter(Boolean);
+      setFeedback({
+        ok: true,
+        text: `${parts.join(', ')}.${warnings.length ? ` Note: ${warnings.join('; ')}` : ''}`,
+      });
+    } catch (e) {
+      setFeedback({ ok: false, text: `Zip import failed: ${String(e)}` });
     } finally {
       setImporting(false);
     }
@@ -340,6 +420,8 @@ export function SkillsSection() {
           {skills.map((s) => (
             <li key={s.id} class="site-row" title={s.body}>
               <span class="site-name">/{s.name}</span>
+              {s.version && <span class="stale-tag">v{s.version}</span>}
+              {s.source?.kind === 'generated' && <span class="stale-tag">generated</span>}
               {s.origin && <span class="stale-tag">app: {s.origin}</span>}
               {s.showButton && <span class="stale-tag">button</span>}
               <span class="site-desc">{s.description}</span>
@@ -472,6 +554,21 @@ export function SkillsSection() {
           <button class="btn btn-small" onClick={exportJson} disabled={skills.length === 0}>
             Export JSON
           </button>
+          <label class={`btn btn-small ${importing ? 'btn-disabled' : ''}`}>
+            Import zip
+            <input
+              type="file"
+              accept="application/zip,.zip"
+              style="display:none"
+              disabled={importing}
+              onChange={(e) => {
+                const input = e.target as HTMLInputElement;
+                const f = input.files?.[0];
+                if (f) void importZip(f);
+                input.value = '';
+              }}
+            />
+          </label>
           <button
             class="btn btn-small"
             onClick={() => {

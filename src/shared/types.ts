@@ -126,6 +126,34 @@ export interface Skill {
   buttonLabel?: string;
   /** Optional project scope. Unset = global (visible regardless of active project). */
   projectId?: string;
+  /**
+   * Semver (e.g. "1.2.0"), so a re-install (JSON/URL/zip) or a re-distillation
+   * of an already-saved skill can decide whether the incoming copy is actually
+   * newer rather than always blindly overwriting. Absent = untracked (the
+   * historical behavior: any re-install of the same name just replaces it).
+   */
+  version?: string;
+  /**
+   * Tools/capabilities this skill's instructions call for (parsed from a
+   * SKILL.md `allowed-tools:` frontmatter field, or set by the agent when it
+   * distills a skill from its own tool-use transcript). Informational only —
+   * shown in the editor so a user can judge a skill before trusting it; not
+   * enforced as an actual permission gate (the browser's normal approval flow
+   * on state-changing tools is the real gate, unaffected by this list).
+   */
+  declaredTools?: string[];
+  /** Where this skill came from, and (reserved) a future hosted registry. */
+  source?: SkillSource;
+}
+
+export interface SkillSource {
+  kind: 'manual' | 'url' | 'zip' | 'generated';
+  /**
+   * Reserved for a future hosted skill registry — no server exists yet
+   * (Phase 5 is local-install only: SKILL.md URL, zip, or agent-generated).
+   */
+  registryUrl?: string;
+  installedAt?: string;
 }
 
 /**

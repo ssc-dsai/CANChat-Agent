@@ -405,7 +405,8 @@ A turn-based loop over the OpenAI chat API with tool calling.
 
 - `APPROVAL_REQUIRED` = `click_element`, `fill_input`, `submit_form`,
   `run_javascript`, `press_keys`, `click_at`, `drag`, `save_app_playbook`,
-  `get_all_tab_contents`, `call_mcp_tool`, `call_webmcp_tool`. Each takes a required
+  `save_as_skill`, `get_all_tab_contents`, `call_mcp_tool`, `call_webmcp_tool`,
+  `draft_email`, `schedule_task`, `cancel_scheduled_task`. Each takes a required
   `reason` string (plain language, user-facing).
 - `READ_ONLY_TOOLS` (safe to run in parallel) = `list_tabs`, `get_active_tab`,
   `get_tab_content`, `get_element_map`, `detect_auth_state`, `wait_for_element`,
@@ -593,6 +594,9 @@ classification, non-gated; datasets persist to OPFS)
 **Knowledge & output**
 - `save_app_playbook {origin, name, description, content, reason}` — persist a
   per-site playbook (gated); upsert by origin.
+- `save_as_skill {reason}` — package the current task into a reusable skill
+  (gated); upsert by name, patch-bumping the version on re-save. See §9
+  *Generate a skill from a prompt*.
 - `use_skill {name}` — load a named skill's instructions.
 - `export_data {title, columns, rows}` — produce a downloadable CSV/JSON table.
 - `set_plan {steps}`, `update_plan {step, status, note?}`, `record_finding {text}`.
@@ -1014,6 +1018,43 @@ UI: `src/workspace/ModelProfilesSection.tsx`, rendered below the existing
 `ModelSection` on the Workspace's Models page — profile CRUD, a role
 assignment table, and the restrict-to-local toggle, all writing directly into
 `ba_settings` (the main connection fields above are untouched by this UI).
+
+**Skill manifest v2 & install (local-only, v1)** (`shared/types.ts` `Skill`
+`version`/`declaredTools`/`source`, `shared/skillImport.ts`
+`compareSkillVersions`/`shouldReplaceSkill`/`bumpSkillVersion`/`parseSkillZip`):
+skills carry a dotted version (compared numerically, not strict semver — no
+pre-release handling, since skill versions are free text a user or the model
+writes, not npm packages), an optional `declaredTools` list parsed from a
+SKILL.md `allowed-tools:` frontmatter field (informational only — shown in
+the editor, not an enforced permission gate; the real gate is still the
+per-call approval flow), and a `source` (`manual`/`url`/`zip`/`generated` +
+`installedAt`, with `registryUrl` **reserved** for a future hosted registry —
+no server exists yet, so every install path here is local: paste a SKILL.md
+URL, upload a zip, or have the agent generate one). Every non-manual install
+path (URL, zip, remote-playbook-library) goes through version-aware merge
+(`shouldReplaceSkill`) instead of always overwriting by name: absent-version
+skills keep the historical always-replace behavior, but once both sides carry
+a version, an older incoming bundle is skipped rather than clobbering a newer
+local edit, and re-installing the identical bundle twice is a no-op.
+`parseSkillZip` (pure, `fflate.unzipSync` — no DOM/network) extracts every
+SKILL.md-shaped `.md` member from an archive, so one zip can be a single
+skill or a "pack" of several under subdirectories; `SkillsSection.tsx`'s
+**Import zip** button wires it up, reporting an added/updated/skipped-older
+count per zip.
+
+**Generate a skill from a prompt.** Explicitly **not** a new
+sandboxed-execution surface — skills stay LLM-interpreted markdown, never
+executable code, and the task that produces one still runs through the
+normal, already-approval-gated tool loop (a real sandboxed typed-API runtime
+for skill-declared *executable* tools was scoped out of this phase pending a
+dedicated security review; see the plan). `AgentRuntime.packageTaskAsSkill`
+is the one packaging step shared by two entry points: the existing UI "Save
+as skill" button (`distillSkill`, offered after a substantial task) and the
+new agent-callable **`save_as_skill`** tool (approval-gated, like
+`save_app_playbook`) — so a user can say "save this as a skill" mid-task
+instead of waiting for the task to end and clicking a button. Re-packaging
+an already-saved same-name skill patch-bumps its version
+(`bumpSkillVersion`) rather than leaving it untracked or duplicating it.
 
 **Auth auto-pause.** When page extraction detects a login wall, the task pauses,
 the panel shows a sign-in notice, and resuming re-fetches the page.
