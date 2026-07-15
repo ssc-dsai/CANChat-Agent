@@ -574,9 +574,35 @@ viewers for data tables and images. Knowledge, Skills, and Tools are the same
 editors described above, just given a full page instead of a collapsible section;
 **Models** is a focused connection editor (endpoint, key, model, API version,
 temperature, max tokens) for when you just need to swap or test a model without
-opening the rest of Settings. Changes made in the workspace and the side panel
-share the same on-device storage, so either surface always reflects the latest
-state.
+opening the rest of Settings, plus a **Model profiles & routing** section below
+it (see next) for routing background work to a different model. Changes made
+in the workspace and the side panel share the same on-device storage, so
+either surface always reflects the latest state.
+
+### Model profiles and routing
+
+By default every model call — the main chat, plus background work like
+generating a conversation title, learning from a task, or extracting a
+memory — uses the one model configured at the top of the Models page. If you
+want background work to run on something cheaper or fully local (e.g. Ollama)
+while keeping the main conversation on your strongest model, add a **profile**
+(a second named endpoint) on the Models page and assign it to one or more
+roles:
+
+| Role | Covers |
+|---|---|
+| **Utility** | Conversation titles/summaries, the self-check pass on a draft answer, skill creation, compacting old tool output, and improving knowledge-base search queries. |
+| **Reflection** | Learning a behavioral lesson from a task, and extracting/merging durable memory facts. |
+| **Plan** | The scoped research subtasks a multi-step plan spins up. |
+| **Vision** | Reading text out of a page screenshot when normal extraction fails (OCR). |
+
+A role with no profile assigned just uses the main model — nothing changes
+until you explicitly assign one. Tag a profile **Local** only if it's
+genuinely private (e.g. running on your own machine); the **"Restrict
+background tasks to local-tagged profiles"** toggle, when on, refuses to
+route any role to a profile that isn't tagged Local, falling back to the main
+model instead — so a mistaken cloud assignment can never send background work
+off-device.
 
 ### Projects
 

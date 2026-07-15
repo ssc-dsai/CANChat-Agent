@@ -277,6 +277,55 @@ export interface Settings {
    * on; set false to skip the extra call and accept the first answer.
    */
   verifyAnswers?: boolean;
+  /**
+   * Named alternate endpoints for background/utility model calls — the main
+   * chat loop always uses the top-level baseUrl/apiKey/model above. Optional;
+   * absent = every role falls back to the main model (today's behavior).
+   */
+  modelProfiles?: ModelProfile[];
+  /** Maps a non-'main' role to a `ModelProfile.id`. Absent role = falls back to main. */
+  roleProfiles?: Partial<Record<Exclude<ModelRole, 'main'>, string>>;
+  /**
+   * Privacy gate: when true, role resolution skips any profile tagged
+   * `privacyTier: 'cloud'` and falls back to the main model instead — so
+   * background/reflection work never leaves the device to a hosted service
+   * even if a cloud profile is assigned to that role. Absent = off.
+   */
+  restrictBackgroundToLocal?: boolean;
+}
+
+/**
+ * What kind of call a `complete()` request represents, for routing to a
+ * different `ModelProfile` than the main chat model. `'main'` is the primary
+ * user-facing chat loop (plan/tool-use turns and the final answer) and is
+ * never role-routed — it always uses the top-level Settings fields.
+ */
+export type ModelRole = 'main' | 'utility' | 'reflection' | 'plan' | 'vision';
+
+/**
+ * An alternate named endpoint a role can be routed to — e.g. a small local
+ * model (Ollama) for cheap background work (titles, reflection, RAG
+ * paraphrase/rerank) while the main chat loop stays on a stronger model.
+ * Mirrors the shape of the top-level Settings connection fields so routing
+ * is a straightforward field swap (see llmProvider.ts resolveModelForRole).
+ */
+export interface ModelProfile {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  apiVersion?: string;
+  temperature?: number;
+  maxTokens?: number;
+  /**
+   * 'local' = a private/on-device-reachable endpoint (e.g. Ollama on
+   * localhost or a LAN host); 'cloud' = a hosted third-party service. Purely
+   * user-declared (there's no way to verify this from the URL alone) — it
+   * only feeds `restrictBackgroundToLocal`. Absent = treated as 'cloud' (the
+   * conservative default: the gate only skips what it can confirm is local).
+   */
+  privacyTier?: 'local' | 'cloud';
 }
 
 export type AgentStatus =

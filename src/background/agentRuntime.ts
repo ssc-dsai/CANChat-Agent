@@ -71,7 +71,7 @@ import type { M365SearchFilters } from '../shared/microsoftSearch';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
 import { mapCommand } from './mapClient';
-import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
+import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, resolveModelForRole, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
 import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
@@ -971,7 +971,7 @@ export class AgentRuntime {
         },
         { role: 'user', content: digest },
       ];
-      const reply = await complete({ ...settings, maxTokens: 150, temperature: 0 }, prompt);
+      const reply = await complete({ ...resolveModelForRole(settings, 'utility'), maxTokens: 150, temperature: 0 }, prompt);
       const meta = parseConversationMeta(typeof reply.content === 'string' ? reply.content : '');
       // Re-check the id: the user may have cleared or loaded another thread while
       // we were awaiting the model.
@@ -1041,7 +1041,7 @@ export class AgentRuntime {
       },
     ];
     try {
-      const reply = await complete({ ...settings, maxTokens: 300, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
+      const reply = await complete({ ...resolveModelForRole(settings, 'reflection'), maxTokens: 300, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
       if (this.taskEpoch !== epoch) return;
       const parsed = parseLesson(typeof reply.content === 'string' ? reply.content : '');
       if (!parsed) return;
@@ -1108,7 +1108,7 @@ export class AgentRuntime {
       },
     ];
     try {
-      const reply = await complete({ ...settings, maxTokens: 400, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
+      const reply = await complete({ ...resolveModelForRole(settings, 'reflection'), maxTokens: 400, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
       if (this.taskEpoch !== epoch) return;
       const candidates = parseReflection(typeof reply.content === 'string' ? reply.content : '');
       if (candidates.length === 0) return;
@@ -1210,7 +1210,7 @@ export class AgentRuntime {
       { role: 'user', content: `EXISTING: ${existing.label}: ${existing.summary}\n\nNEW: ${candidate.label}: ${candidate.summary}` },
     ];
     try {
-      const reply = await complete({ ...settings, maxTokens: 20, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
+      const reply = await complete({ ...resolveModelForRole(settings, 'reflection'), maxTokens: 20, temperature: 0 }, prompt, undefined, undefined, this.rateLimitNotice);
       if (this.taskEpoch !== epoch) return false;
       return parseSupersedeVerdict(typeof reply.content === 'string' ? reply.content : '');
     } catch {
@@ -1547,7 +1547,7 @@ export class AgentRuntime {
           content: `Original request:\n${this.lastUserText}\n\nPlan that was followed:\n${planText}\n\nKey findings:\n${this.findings.join('\n') || '(none)'}\n\nProduce the skill JSON.`,
         },
       ];
-      const reply = await complete(settings, prompt, undefined, this.makeSignal(), this.rateLimitNotice);
+      const reply = await complete(resolveModelForRole(settings, 'utility'), prompt, undefined, this.makeSignal(), this.rateLimitNotice);
       const raw = (reply.content ?? '').trim().replace(/^```(?:json)?|```$/g, '').trim();
       const parsed = JSON.parse(raw) as { name?: string; description?: string; body?: string };
       if (!parsed.name || !parsed.description || !parsed.body) {
@@ -2003,7 +2003,7 @@ export class AgentRuntime {
         },
       ];
       const reply = await complete(
-        { ...settings, maxTokens: 200, temperature: 0 },
+        { ...resolveModelForRole(settings, 'utility'), maxTokens: 200, temperature: 0 },
         prompt,
         undefined,
         this.makeSignal(),
@@ -2075,7 +2075,7 @@ export class AgentRuntime {
           (task.context ? `Parent context:\n${task.context.slice(0, 2000)}\n` : ''),
       },
     ];
-    const scopedSettings = { ...settings, maxTokens: Math.min(settings.maxTokens ?? 800, 800), temperature: 0 };
+    const scopedSettings = { ...resolveModelForRole(settings, 'plan'), maxTokens: Math.min(settings.maxTokens ?? 800, 800), temperature: 0 };
     let stepsUsed = 0;
     try {
       for (; stepsUsed < maxSteps; stepsUsed++) {
@@ -2213,7 +2213,7 @@ export class AgentRuntime {
         },
       ];
       const reply = await complete(
-        { ...settings, maxTokens: 600, temperature: 0 },
+        { ...resolveModelForRole(settings, 'utility'), maxTokens: 600, temperature: 0 },
         prompt,
         undefined,
         this.makeSignal(),
@@ -3190,7 +3190,7 @@ export class AgentRuntime {
   private async repoQueryVariants(settings: Settings, query: string): Promise<string[]> {
     try {
       const reply = await complete(
-        settings,
+        resolveModelForRole(settings, 'utility'),
         [
           { role: 'system', content: 'Generate 2 concise retrieval query paraphrases for RAG search. Preserve names, dates, codes, and quoted terms. Return ONLY JSON: {"queries":["..."]}.' },
           { role: 'user', content: query },
@@ -3210,7 +3210,7 @@ export class AgentRuntime {
     try {
       const candidates = hits.slice(0, 20).map((h, i) => ({ id: i + 1, name: h.name, url: h.url, text: h.text.slice(0, 1200) }));
       const reply = await complete(
-        settings,
+        resolveModelForRole(settings, 'utility'),
         [
           { role: 'system', content: 'Rerank retrieval chunks for direct usefulness in answering the query. Prefer specific, answer-bearing chunks over generic or duplicate chunks. Return ONLY JSON: {"ids":[candidate ids in best order]}.' },
           { role: 'user', content: JSON.stringify({ query, candidates }) },

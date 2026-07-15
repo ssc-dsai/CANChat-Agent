@@ -6,6 +6,7 @@ import { RepositoriesSection } from '../sidebar/RepositoriesSection';
 import { SkillsSection } from '../sidebar/SkillsSection';
 import { useT } from '../sidebar/i18n';
 import { ConsoleSettingsPage } from './ConsoleSettingsPage';
+import { ModelProfilesSection } from './ModelProfilesSection';
 import { ModelSection } from './ModelSection';
 import { DataViewer } from './DataViewer';
 import { DatasetBrowser } from './DatasetBrowser';
@@ -99,7 +100,12 @@ export function Workspace() {
       case 'skills':
         return <SkillsSection />;
       case 'models':
-        return <ModelSection />;
+        return (
+          <div class="ws-models-page">
+            <ModelSection />
+            <ModelProfilesSection />
+          </div>
+        );
       case 'memory':
         return <MemoryPage />;
       case 'settings':

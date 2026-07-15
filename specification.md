@@ -216,9 +216,11 @@ discriminator, exactly like the offscreen document:
 - `mapClient.ts` — `ensureMapTab()` (singleton map tab + `map_ready` handshake) +
   `mapCommand(cmd)`; mirrors `offscreenClient`.
 - `llmProvider.ts` — `complete(settings, messages, tools?, signal?, onRetry?)`,
-  `embed(settings, texts)`, `transcribe(settings, audio)`, `testConnection(settings)`.
-  OpenAI-compatible HTTP with an **Azure mode** keyed off `apiVersion`; multimodal
-  `image_url` content parts; transient-failure auto-retry; throws a typed `LlmError`.
+  `embed(settings, texts)`, `transcribe(settings, audio)`, `testConnection(settings)`,
+  `resolveModelForRole(settings, role)` (model orchestration — see §9 *Model
+  orchestration*). OpenAI-compatible HTTP with an **Azure mode** keyed off
+  `apiVersion`; multimodal `image_url` content parts; transient-failure
+  auto-retry; throws a typed `LlmError`.
 - `browserToolAdapter.ts` — thin wrappers over Chrome APIs and the content script:
   `listTabs`, `getActiveTab`, `getTabContent`, `getAllTabContents`, `navigate`,
   `openUrl`, `readTabGroup`, `searchWeb`, `getElementMap`, `click/fill/submit`,
@@ -283,7 +285,9 @@ sidebar), **Memory** (`MemoryPage.tsx` — see §9), **Skills** (`SkillsSection`
 (`CapabilitiesSection`, reused, opened with `defaultOpen` so the console isn't a
 collapsed accordion on load), **Models** (`ModelSection.tsx` — a self-contained
 endpoint/key/model/temperature/max-tokens editor, independent of `SettingsScreen` so
-it can't regress onboarding), **Datasets** (`DatasetBrowser.tsx` — DuckDB: list/preview
+it can't regress onboarding — plus `ModelProfilesSection.tsx` below it for named
+alternate-endpoint profiles and role routing; see §9 *Model orchestration*),
+**Datasets** (`DatasetBrowser.tsx` — DuckDB: list/preview
 tables, import CSV/JSON, run SQL via the `duckdb` `RuntimeRequest`), **Data**
 (`DataViewer.tsx`, over `export_data` results), **Image** (`ImageViewer.tsx`, full-size
 generated images), and **Settings** (`ConsoleSettingsPage.tsx` — language switcher +
@@ -972,6 +976,44 @@ UI: a compact `ProjectSwitcher` dropdown in the sidebar header, a full CRUD
 `src/workspace/ProjectsPage.tsx`, and an optional project selector added to the
 `CapabilitiesSection`/`SkillsSection` forms (shown only once at least one
 project exists).
+
+**Model orchestration** (`shared/types.ts` `ModelRole`/`ModelProfile`,
+`background/llmProvider.ts` `resolveModelForRole`): routes background/utility
+LLM calls to a different named endpoint than the main chat model, without
+touching `complete()` itself or its ~11 existing call sites' positional
+arguments. `ModelRole` is `'main' | 'utility' | 'reflection' | 'plan' |
+'vision'`; `'main'` (the user-facing chat loop and its final answer,
+`agentRuntime.ts` lines ~1766/1973) is never routed. `Settings.modelProfiles`
+holds named alternate endpoints (baseUrl/apiKey/model/apiVersion/temperature/
+maxTokens/`privacyTier`); `Settings.roleProfiles` maps a role to a profile id.
+`resolveModelForRole(settings, role)` is pure and total — no chrome.* deps,
+never throws, and returns `settings` unchanged whenever there's nothing to
+route to (no mapping, no matching profile, or the profile is gated out), so a
+deployment with zero profiles behaves exactly as before roles existed. Every
+call site simply wraps its `settings` argument, e.g.
+`complete(resolveModelForRole(settings, 'reflection'), ...)`; the tagging by
+role:
+- `'utility'` — conversation title/summary, self-check verify gate, skill
+  distillation, old-tool-output compaction (`summarizeEvicted`), RAG query
+  paraphrase and rerank.
+- `'reflection'` — lesson-learning (`maybeLearnLesson`), memory extraction
+  (`reflectMemories`), the merge-vs-supersede adjudication call.
+- `'plan'` — scoped multi-step research subtasks (`runScopedSubtask`).
+- `'vision'` — OCR transcription of page screenshots (`repoIngest.ts`
+  `ocrTabText`).
+
+**Rule-based routing only** — no classifier LLM decides where a call goes;
+the mapping is static settings config, so it's also naturally **stable across
+a task's steps** for prompt-cache purposes (nothing here reads per-message
+state). **Privacy gate**: `Settings.restrictBackgroundToLocal`, when on,
+skips any profile not explicitly tagged `privacyTier: 'local'` (untagged
+profiles are conservatively treated as needing the same protection) and
+falls back to the main model instead — background work never leaves the
+device to a hosted service even if a cloud profile is assigned to that role.
+UI: `src/workspace/ModelProfilesSection.tsx`, rendered below the existing
+`ModelSection` on the Workspace's Models page — profile CRUD, a role
+assignment table, and the restrict-to-local toggle, all writing directly into
+`ba_settings` (the main connection fields above are untouched by this UI).
 
 **Auth auto-pause.** When page extraction detects a login wall, the task pauses,
 the panel shows a sign-in notice, and resuming re-fetches the page.
