@@ -861,18 +861,27 @@ export class AgentRuntime {
     return this.running;
   }
 
-  async runScheduledTask(title: string, prompt: string): Promise<{ ok: boolean; response?: string; error?: string; needsApproval?: boolean }> {
+  async runScheduledTask(
+    title: string,
+    prompt: string,
+  ): Promise<{ ok: boolean; response?: string; error?: string; needsApproval?: boolean; conversationId?: string; fileArtifactNames?: string[] }> {
     if (this.running) return { ok: false, error: 'Agent is already running.' };
     const before = this.messages.length;
     this.unattended = true;
     this.unattendedApprovalBlocked = false;
     try {
       await this.handleUserMessage(`[Scheduled task: ${title}]\n${prompt}`);
-      const response = [...this.messages.slice(before)].reverse().find((m) => m.role === 'assistant')?.text;
+      const turnMessages = this.messages.slice(before);
+      const response = [...turnMessages].reverse().find((m) => m.role === 'assistant')?.text;
+      // Files generated unattended are auto-downloaded (see pushChat) since no
+      // sidebar is open to click the card's Download button — surface their
+      // names here so the run record (and its notification) can say where they went.
+      const fileArtifactNames = turnMessages.filter((m) => m.fileArtifact).map((m) => m.fileArtifact!.filename);
+      const conversationId = this.currentConversationId ?? undefined;
       if (this.unattendedApprovalBlocked) {
-        return { ok: false, response, error: 'Scheduled task needs user approval for a state-changing tool.', needsApproval: true };
+        return { ok: false, response, error: 'Scheduled task needs user approval for a state-changing tool.', needsApproval: true, conversationId, fileArtifactNames };
       }
-      return { ok: Boolean(response), response, error: response ? undefined : 'Scheduled task produced no response.' };
+      return { ok: Boolean(response), response, error: response ? undefined : 'Scheduled task produced no response.', conversationId, fileArtifactNames };
     } finally {
       this.unattended = false;
     }
@@ -3583,7 +3592,23 @@ export class AgentRuntime {
 
   private pushChat(message: ChatMessageView): void {
     this.messages.push(message);
+    // In an attended turn, a generated file waits as a card the user clicks to
+    // download. In an unattended (scheduled/triggered) run there is no one to
+    // click it — the file must still reach disk, so download it directly.
+    if (this.unattended && message.fileArtifact) void this.downloadFileArtifact(message.fileArtifact);
     this.emit({ type: 'chat_message', message });
+  }
+
+  private async downloadFileArtifact(artifact: FileArtifact): Promise<void> {
+    try {
+      await chrome.downloads.download({
+        url: `data:${artifact.mimeType};base64,${artifact.dataBase64}`,
+        filename: artifact.filename,
+        saveAs: false,
+      });
+    } catch {
+      // Best-effort — the bytes are still retained in the conversation record either way.
+    }
   }
 
   private notice(text: string): void {

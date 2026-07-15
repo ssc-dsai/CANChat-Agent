@@ -30,6 +30,10 @@ export interface ScheduledRun {
   status: ScheduledTaskStatus | 'running';
   summary?: string;
   error?: string;
+  /** The conversation this run's transcript landed in, if any (e.g. to trace back a generated file). */
+  conversationId?: string;
+  /** Filenames of any files generated during this run — auto-downloaded since no UI was open to click a card. */
+  fileArtifactNames?: string[];
 }
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -83,6 +87,23 @@ export function nextRunFromSchedule(runAt?: string, recurrence?: ScheduledTaskRe
   if (recurrence) return computeNextRunAt(recurrence, now);
   const t = Date.parse(String(runAt ?? ''));
   return Number.isFinite(t) && t > now ? t : null;
+}
+
+/**
+ * The message body for a run-completion notification — pulled out as a pure
+ * function so its wording is unit-testable without a `chrome.notifications`
+ * mock (the API call itself is a thin, untested wrapper, same convention as
+ * the rest of this module's chrome.* boundary functions).
+ */
+export function buildRunNotificationMessage(
+  status: 'ok' | 'error' | 'needs_approval' | 'deferred',
+  error: string | undefined,
+  fileArtifactNames: string[] | undefined,
+): string {
+  const files = fileArtifactNames && fileArtifactNames.length > 0 ? ` Saved to Downloads: ${fileArtifactNames.join(', ')}.` : '';
+  if (status === 'ok') return `Finished.${files} Open Automations for details.`;
+  if (status === 'needs_approval') return 'Needs your approval for a state-changing step — open Automations to review.';
+  return `Failed: ${error ?? 'unknown error'}`;
 }
 
 export function summarizeTask(task: ScheduledTask): Record<string, unknown> {

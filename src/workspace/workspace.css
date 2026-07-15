@@ -69,6 +69,13 @@ html, body, #app { margin: 0; height: 100%; font-family: -apple-system, BlinkMac
 /* Same .field-in-a-column-.site-form fix as .ws-model-profiles above (see that
    comment) — a shared-CSS fix is tracked separately. */
 .ws-automations-page .site-form .field { flex: initial; }
+.ws-automations-page .ws-run-list { max-height: none; }
+.ws-automations-page .ws-run-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.ws-automations-page .ws-run-header { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.ws-automations-page .ws-run-header .site-name { max-width: none; }
+.ws-automations-page .ws-run-header .site-desc { flex: initial; white-space: normal; }
+.ws-automations-page .ws-run-detail { margin: 0; font-size: 12px; color: var(--text); white-space: normal; }
+.ws-automations-page .ws-run-detail.ws-dim { color: var(--text-dim); }
 
 /* ===== Models page: main connection editor + profiles/routing below it ===== */
 .ws-models-page { display: flex; flex-direction: column; gap: 32px; max-width: 640px; }

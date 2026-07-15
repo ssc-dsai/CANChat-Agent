@@ -1,4 +1,5 @@
 import {
+  buildRunNotificationMessage,
   computeNextRunAt,
   nextRunFromSchedule,
   summarizeTask,
@@ -24,7 +25,36 @@ export interface ScheduleTaskInput {
 
 export interface ScheduledRunner {
   isRunning(): boolean;
-  runScheduledTask(title: string, prompt: string): Promise<{ ok: boolean; response?: string; error?: string; needsApproval?: boolean }>;
+  runScheduledTask(
+    title: string,
+    prompt: string,
+  ): Promise<{ ok: boolean; response?: string; error?: string; needsApproval?: boolean; conversationId?: string; fileArtifactNames?: string[] }>;
+}
+
+/**
+ * Fire a completion notification — the only passive signal a scheduled run
+ * gives when it fires unattended with no sidebar open. Best-effort: silently
+ * no-ops if the `notifications` permission isn't granted or the API is
+ * otherwise unavailable, so a missing permission never breaks the run itself.
+ */
+export function notifyRunComplete(
+  taskTitle: string,
+  status: 'ok' | 'error' | 'needs_approval' | 'deferred',
+  error: string | undefined,
+  fileArtifactNames: string[] | undefined,
+): void {
+  if (typeof chrome.notifications?.create !== 'function') return;
+  const message = buildRunNotificationMessage(status, error, fileArtifactNames);
+  try {
+    chrome.notifications.create(`ba_run_notification:${crypto.randomUUID()}`, {
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: `Scheduled task: ${taskTitle}`,
+      message,
+    });
+  } catch {
+    // Best-effort — a notification failure must never affect the run's own result.
+  }
 }
 
 export async function getScheduledTasks(): Promise<ScheduledTask[]> {
@@ -150,9 +180,13 @@ export async function runScheduledTaskById(id: string, runner: ScheduledRunner):
   let status: ScheduledTaskStatus = 'ok';
   let error: string | undefined;
   let summary: string | undefined;
+  let conversationId: string | undefined;
+  let fileArtifactNames: string[] | undefined;
   try {
     const result = await runner.runScheduledTask(task.title, task.prompt);
     summary = result.response;
+    conversationId = result.conversationId;
+    fileArtifactNames = result.fileArtifactNames;
     if (!result.ok) {
       status = result.needsApproval ? 'needs_approval' : 'error';
       error = result.error ?? 'Scheduled task failed.';
@@ -163,7 +197,7 @@ export async function runScheduledTaskById(id: string, runner: ScheduledRunner):
   }
 
   const finishedAt = Date.now();
-  await recordRun({ ...run, finishedAt, status, summary, error });
+  await recordRun({ ...run, finishedAt, status, summary, error, conversationId, fileArtifactNames });
   const next = nextAfterRun(task, finishedAt);
   await updateTask(id, {
     ...next,
@@ -171,6 +205,7 @@ export async function runScheduledTaskById(id: string, runner: ScheduledRunner):
     lastStatus: status,
     lastError: error,
   });
+  notifyRunComplete(task.title, status, error, fileArtifactNames);
 }
 
 export function summarizeScheduledTasks(tasks: ScheduledTask[]): unknown[] {

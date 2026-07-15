@@ -167,6 +167,16 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   void maybeFireEventTriggers(tab.url, runtime);
 });
 
+// A scheduled task/trigger completion notification is the only passive signal
+// fired while no sidebar is open — clicking it opens the run history (and any
+// auto-downloaded file names) on the Automations page.
+if (chrome.notifications) {
+  chrome.notifications.onClicked.addListener((notificationId) => {
+    void chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html#automations') });
+    chrome.notifications.clear(notificationId);
+  });
+}
+
 function broadcastMailProgress(p: MailSyncProgress, last: { at: number }): void {
   const now = Date.now();
   if (p.phase === 'done' || now - last.at >= 250) {

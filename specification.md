@@ -1091,6 +1091,18 @@ untouched by any of this):
   reconciled on install/settings-change so MV3 eviction never loses a
   schedule), with a capped `ScheduledRun[]` history
   (`getScheduledRuns`/100-entry cap) per run.
+  **Delivery, since no sidebar is typically open when an alarm fires**: a
+  `chrome.notifications` completion notification (`notifyRunComplete`, message
+  text pulled out as pure `buildRunNotificationMessage` for testability;
+  degrades to a no-op if the `notifications` permission/API is unavailable)
+  fires on every run, clicking it opens the Automations page; any
+  `FileArtifact` produced (e.g. `create_powerpoint`) is auto-downloaded via
+  `chrome.downloads.download` from `AgentRuntime.pushChat` (only when
+  `this.unattended` — an attended turn still uses the click-to-download card,
+  unchanged) rather than only ever rendering as a card no one is present to
+  click; `runScheduledTask`'s return value carries `conversationId` and
+  `fileArtifactNames`, threaded into `ScheduledRun`/`TriggerRun` and shown in
+  full (not truncated to a hover tooltip) on the Automations page.
 - **Workflows** (`shared/workflows.ts` `Workflow {name, skillNames[]}`) — a
   named, ordered chain of *existing* skills. Running one is not a new
   execution engine: `buildWorkflowPrompt` just writes an explicit

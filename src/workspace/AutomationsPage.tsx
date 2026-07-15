@@ -174,11 +174,17 @@ export function AutomationsPage() {
       {recentTaskRuns.length > 0 && (
         <>
           <p class="settings-note">Recent runs</p>
-          <ul class="sites-list">
+          <ul class="sites-list ws-run-list">
             {recentTaskRuns.map((r) => (
-              <li key={r.id} class="site-row" title={r.error ?? r.summary ?? ''}>
-                <span class="site-name">{tasks.find((t) => t.id === r.taskId)?.title ?? '(deleted task)'}</span>
-                <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status}{r.error ? `: ${r.error}` : ''}</span>
+              <li key={r.id} class="ws-run-item">
+                <div class="ws-run-header">
+                  <span class="site-name">{tasks.find((t) => t.id === r.taskId)?.title ?? '(deleted task)'}</span>
+                  <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status}</span>
+                </div>
+                {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
+                {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
+                  <p class="ws-run-detail ws-dim">📎 Saved to Downloads: {r.fileArtifactNames.join(', ')}</p>
+                )}
               </li>
             ))}
           </ul>
@@ -297,11 +303,17 @@ export function AutomationsPage() {
       {recentTriggerRuns.length > 0 && (
         <>
           <p class="settings-note">Recent trigger runs</p>
-          <ul class="sites-list">
+          <ul class="sites-list ws-run-list">
             {recentTriggerRuns.map((r) => (
-              <li key={r.id} class="site-row" title={r.error ?? r.summary ?? ''}>
-                <span class="site-name">{triggers.find((t) => t.id === r.triggerId)?.name ?? '(deleted trigger)'}</span>
-                <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status}{r.error ? `: ${r.error}` : ''} ({r.url})</span>
+              <li key={r.id} class="ws-run-item">
+                <div class="ws-run-header">
+                  <span class="site-name">{triggers.find((t) => t.id === r.triggerId)?.name ?? '(deleted trigger)'}</span>
+                  <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status} ({r.url})</span>
+                </div>
+                {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
+                {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
+                  <p class="ws-run-detail ws-dim">📎 Saved to Downloads: {r.fileArtifactNames.join(', ')}</p>
+                )}
               </li>
             ))}
           </ul>

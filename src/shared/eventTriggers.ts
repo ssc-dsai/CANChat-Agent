@@ -34,6 +34,10 @@ export interface TriggerRun {
   status: 'ok' | 'error' | 'needs_approval' | 'running';
   summary?: string;
   error?: string;
+  /** The conversation this run's transcript landed in, if any (e.g. to trace back a generated file). */
+  conversationId?: string;
+  /** Filenames of any files generated during this run — auto-downloaded since no UI was open to click a card. */
+  fileArtifactNames?: string[];
 }
 
 export const DEFAULT_COOLDOWN_MINUTES = 60;

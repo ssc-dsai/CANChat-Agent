@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { computeNextRunAt, nextRunFromSchedule, parseLocalTimeOfDay } from './scheduledTasks';
+import { buildRunNotificationMessage, computeNextRunAt, nextRunFromSchedule, parseLocalTimeOfDay } from './scheduledTasks';
+
+describe('buildRunNotificationMessage', () => {
+  it('mentions downloaded file names on success', () => {
+    expect(buildRunNotificationMessage('ok', undefined, ['headlines.pptx'])).toContain('Saved to Downloads: headlines.pptx');
+  });
+
+  it('omits the Downloads line when nothing was generated', () => {
+    expect(buildRunNotificationMessage('ok', undefined, undefined)).not.toContain('Downloads');
+    expect(buildRunNotificationMessage('ok', undefined, [])).not.toContain('Downloads');
+  });
+
+  it('surfaces the error text on failure', () => {
+    expect(buildRunNotificationMessage('error', 'Model request timed out', undefined)).toBe('Failed: Model request timed out');
+  });
+
+  it('flags the approval-needed case distinctly', () => {
+    expect(buildRunNotificationMessage('needs_approval', undefined, undefined)).toContain('approval');
+  });
+});
 
 describe('scheduled task helpers', () => {
   it('parses HH:mm local times', () => {
