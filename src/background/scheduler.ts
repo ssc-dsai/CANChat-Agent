@@ -115,6 +115,11 @@ async function updateTask(id: string, patch: Partial<ScheduledTask>): Promise<Sc
   return tasks[idx];
 }
 
+/** UI entry point (the Automations page): pause/resume a task without deleting it. */
+export async function setScheduledTaskEnabled(id: string, enabled: boolean): Promise<ScheduledTask | null> {
+  return updateTask(id, { enabled });
+}
+
 function nextAfterRun(task: ScheduledTask, now: number): { enabled: boolean; nextRunAt: number } {
   if (!task.recurrence) return { enabled: false, nextRunAt: task.nextRunAt };
   const next = computeNextRunAt(task.recurrence, now + 1000);

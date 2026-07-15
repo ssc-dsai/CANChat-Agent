@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bumpSkillVersion,
+  compareSkillVersions,
   detectIncompatibility,
   parseSkillFrontmatter,
+  parseSkillZip,
   rawGithubUrl,
+  shouldReplaceSkill,
   slugifySkillName,
 } from './skillImport';
 
@@ -73,5 +77,95 @@ describe('detectIncompatibility', () => {
     expect(
       detectIncompatibility('Search the web, read the top results, and summarize with citations.'),
     ).toBeNull();
+  });
+});
+
+describe('parseSkillFrontmatter — version and allowed-tools', () => {
+  it('reads version and comma-separated allowed-tools', () => {
+    const md = [
+      '---',
+      'name: PDF filler',
+      'description: Fill a PDF form',
+      'version: 1.2.0',
+      'allowed-tools: search_web, get_tab_content',
+      '---',
+      'Steps here',
+    ].join('\n');
+    const parsed = parseSkillFrontmatter(md);
+    expect(parsed.version).toBe('1.2.0');
+    expect(parsed.declaredTools).toEqual(['search_web', 'get_tab_content']);
+  });
+
+  it('leaves version/declaredTools undefined when absent', () => {
+    const md = ['---', 'name: foo', 'description: bar', '---', 'Body'].join('\n');
+    const parsed = parseSkillFrontmatter(md);
+    expect(parsed.version).toBeUndefined();
+    expect(parsed.declaredTools).toBeUndefined();
+  });
+});
+
+describe('compareSkillVersions', () => {
+  it('compares numerically, not lexicographically', () => {
+    expect(compareSkillVersions('1.9.0', '1.10.0')).toBeLessThan(0);
+    expect(compareSkillVersions('2.0.0', '1.99.99')).toBeGreaterThan(0);
+    expect(compareSkillVersions('1.0.0', '1.0.0')).toBe(0);
+  });
+
+  it('treats missing/non-numeric segments as 0', () => {
+    expect(compareSkillVersions('1.2', '1.2.1')).toBeLessThan(0);
+    expect(compareSkillVersions('1.2.0', '1.2')).toBe(0); // missing segment == 0
+    expect(compareSkillVersions(undefined, undefined)).toBe(0);
+  });
+});
+
+describe('shouldReplaceSkill', () => {
+  it('always replaces when either side has no version (historical behavior)', () => {
+    expect(shouldReplaceSkill(undefined, '1.0.0')).toBe(true);
+    expect(shouldReplaceSkill('1.0.0', undefined)).toBe(true);
+    expect(shouldReplaceSkill(undefined, undefined)).toBe(true);
+  });
+
+  it('replaces with an equal or newer version', () => {
+    expect(shouldReplaceSkill('1.0.0', '1.0.0')).toBe(true);
+    expect(shouldReplaceSkill('1.0.0', '1.1.0')).toBe(true);
+  });
+
+  it('rejects an older version', () => {
+    expect(shouldReplaceSkill('2.0.0', '1.9.0')).toBe(false);
+  });
+});
+
+describe('bumpSkillVersion', () => {
+  it('starts a fresh skill at 1.0.0', () => {
+    expect(bumpSkillVersion(undefined)).toBe('1.0.0');
+  });
+
+  it('patch-bumps an existing version', () => {
+    expect(bumpSkillVersion('1.2.3')).toBe('1.2.4');
+    expect(bumpSkillVersion('1.2')).toBe('1.2.1');
+  });
+});
+
+describe('parseSkillZip', () => {
+  it('extracts every SKILL.md-shaped member, skipping non-skill files', async () => {
+    const { zipSync, strToU8 } = await import('fflate');
+    const skillMd = ['---', 'name: Zip Skill', 'description: From a zip', '---', 'Do the thing'].join('\n');
+    const nested = ['---', 'name: Nested Skill', 'description: In a subfolder', 'version: 2.0.0', '---', 'Nested steps'].join('\n');
+    const zip = zipSync({
+      'SKILL.md': strToU8(skillMd),
+      'README.md': strToU8('# Not a skill, no frontmatter'),
+      'pack/nested/SKILL.md': strToU8(nested),
+      'pack/script.py': strToU8('print("ignored, not .md")'),
+    });
+    const skills = parseSkillZip(zip);
+    expect(skills).toHaveLength(2);
+    expect(skills.map((s) => s.name).sort()).toEqual(['nested-skill', 'zip-skill']);
+    expect(skills.find((s) => s.name === 'nested-skill')?.version).toBe('2.0.0');
+  });
+
+  it('returns an empty array for a zip with no skill-shaped .md files', async () => {
+    const { zipSync, strToU8 } = await import('fflate');
+    const zip = zipSync({ 'README.md': strToU8('no frontmatter here') });
+    expect(parseSkillZip(zip)).toEqual([]);
   });
 });

@@ -20,6 +20,7 @@ import type {
   TabContextSummary,
   ToolActivity,
 } from './types';
+import type { EventTrigger } from './eventTriggers';
 
 /** Commands sent from the sidebar to the background over a long-lived port. */
 export type SidebarCommand =
@@ -134,6 +135,23 @@ export type RuntimeRequest =
   | { type: 'project_update'; id: string; name?: string; color?: string }
   | { type: 'project_delete'; id: string }
   | { type: 'project_set_active'; id: string | null }
+  // Agent platform: the pre-existing scheduled-task system (previously
+  // tool-only, no UI) plus the two Phase 6 additions — Workflows (named
+  // ordered skill chains) and Event triggers (fire an unattended run on a
+  // matching navigation). Firing either reuses AgentRuntime.runScheduledTask,
+  // so the existing unattended-approval gate applies unchanged.
+  | { type: 'scheduled_tasks_get' }
+  | { type: 'scheduled_runs_get' }
+  | { type: 'scheduled_task_set_enabled'; id: string; enabled: boolean }
+  | { type: 'scheduled_task_delete'; id: string }
+  | { type: 'workflow_list' }
+  | { type: 'workflow_create'; name: string; skillNames: string[]; description?: string }
+  | { type: 'workflow_delete'; id: string }
+  | { type: 'event_trigger_list' }
+  | { type: 'event_trigger_create'; name: string; hostPattern: string; target: EventTrigger['target']; cooldownMinutes?: number }
+  | { type: 'event_trigger_update'; id: string; patch: Partial<Pick<EventTrigger, 'name' | 'hostPattern' | 'target' | 'cooldownMinutes' | 'enabled'>> }
+  | { type: 'event_trigger_delete'; id: string }
+  | { type: 'trigger_runs_get' }
   // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
   // service worker owns the offscreen document, so it routes the op for them.
   | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };
