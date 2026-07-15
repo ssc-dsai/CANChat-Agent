@@ -24,6 +24,7 @@ export function DatasetBrowser() {
   const [importText, setImportText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<DuckDbTableInfo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
@@ -46,6 +47,15 @@ export function DatasetBrowser() {
   };
 
   const preview = (name: string) => runSql(`SELECT * FROM "${name}" LIMIT 100`);
+
+  const profileTable = async (name: string) => {
+    setBusy(true);
+    setError(null);
+    const r = await duckdb('describe_table', { tableName: name });
+    if (r.ok) setProfile(r.tables?.[0] ?? null);
+    else setError(r.error ?? 'Could not profile table.');
+    setBusy(false);
+  };
 
   const importData = async () => {
     const name = importName.trim();
@@ -104,6 +114,7 @@ export function DatasetBrowser() {
           <div key={t.name} class="ws-ds-row">
             <button class="ws-link" onClick={() => preview(t.name)}>{t.name}</button>
             <span class="ws-dim">{t.rowCount} rows · {t.columns.length} cols{t.persisted ? ' · saved' : ''}</span>
+            <button class="ws-btn ws-btn-quiet" onClick={() => profileTable(t.name)} title="Profile columns">Profile</button>
             <button class="ws-btn ws-btn-quiet" onClick={() => drop(t.name)} title="Drop dataset">✕</button>
           </div>
         ))}
@@ -121,6 +132,37 @@ export function DatasetBrowser() {
       </section>
 
       {error && <div class="ws-ds-error">{error}</div>}
+
+      {profile && (
+        <section class="ws-ds-result">
+          <div class="ws-ds-head">
+            <strong>Profile: {profile.name}</strong>
+            <button class="ws-btn ws-btn-quiet" onClick={() => setProfile(null)}>Close</button>
+          </div>
+          <div class="ws-ds-scroll">
+            <table class="ws-ds-table">
+              <thead>
+                <tr><th>Column</th><th>Type</th><th>Null %</th><th>Approx distinct</th><th>Min</th><th>Max</th></tr>
+              </thead>
+              <tbody>
+                {profile.columns.map((name, i) => {
+                  const cp = profile.columnProfiles?.find((p) => p.name === name);
+                  return (
+                    <tr key={name}>
+                      <td>{name}</td>
+                      <td>{profile.columnTypes[i]}</td>
+                      <td>{cp ? `${(cp.nullRatio * 100).toFixed(1)}%` : '—'}</td>
+                      <td>{cp?.approxDistinct ?? '—'}</td>
+                      <td>{cp?.min ?? '—'}</td>
+                      <td>{cp?.max ?? '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {result?.ok && result.columns && (
         <section class="ws-ds-result">

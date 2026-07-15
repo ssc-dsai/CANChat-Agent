@@ -1,5 +1,5 @@
 import { unzipSync } from 'fflate';
-import type { DuckDbResponse, DuckDbTableInfo } from '../shared/messages';
+import type { ColumnProfile, DuckDbResponse, DuckDbTableInfo } from '../shared/messages';
 import { ARCHIVE_MEMBER_EXT, extOf, tableNameFromFile, uniqueTableName } from '../shared/dataFile';
 import { validateReadOnlySql } from '../shared/sqlGuard';
 
@@ -450,6 +450,37 @@ export async function listTables(): Promise<DuckDbResponse> {
   }
 }
 
+/**
+ * One bounded profiling query per table via DuckDB's built-in `SUMMARIZE`
+ * (a single columnar pass, not a per-column round trip): null ratio, approx
+ * distinct count, and min/max per column. Best-effort — a profiling failure
+ * (e.g. a type SUMMARIZE can't handle) degrades to no profile rather than
+ * failing the whole describe_dataset call.
+ */
+async function profileColumns(c: typeof conn, tableName: string): Promise<ColumnProfile[]> {
+  try {
+    // null_percentage is DECIMAL in SUMMARIZE's own result; casting it to
+    // DOUBLE inside the query (rather than parsing the raw Arrow decimal in
+    // JS, which silently drops the scale — e.g. reads 33.33 as 3333) makes
+    // DuckDB do the scaling itself.
+    const result = await c.query(
+      `SELECT column_name, min, max, approx_unique, CAST(null_percentage AS DOUBLE) AS null_percentage FROM (SUMMARIZE "${tableName}")`,
+    );
+    return result.toArray().map((r: any) => {
+      const nullPct = Number(r.null_percentage ?? 0);
+      return {
+        name: String(r.column_name ?? ''),
+        nullRatio: Number.isFinite(nullPct) ? nullPct / 100 : 0,
+        approxDistinct: Number(r.approx_unique ?? 0),
+        min: r.min == null ? undefined : String(r.min),
+        max: r.max == null ? undefined : String(r.max),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function describeTable(tableName: string): Promise<DuckDbResponse> {
   try {
     const c = await ensureDb();
@@ -459,13 +490,14 @@ export async function describeTable(tableName: string): Promise<DuckDbResponse> 
     const rows = rowsFromArrow(result);
     const count = await c.query(`SELECT COUNT(*) as cnt FROM "${tableName}"`);
     const rowCount = Number(count.toArray()[0].cnt ?? 0);
+    const columnProfiles = await profileColumns(c, tableName);
     return {
       ok: true,
       columns: cols,
       columnTypes: types,
       rows,
       rowCount,
-      tables: [{ name: tableName, columns: rows.map((r) => r[0]), columnTypes: rows.map((r) => r[1]), rowCount }],
+      tables: [{ name: tableName, columns: rows.map((r) => r[0]), columnTypes: rows.map((r) => r[1]), rowCount, columnProfiles }],
     };
   } catch (e) {
     return { ok: false, error: String(e) };

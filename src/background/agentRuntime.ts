@@ -2933,7 +2933,13 @@ export class AgentRuntime {
         if (!tableName) return 'Error: describe_dataset needs a tableName.';
         const dres = await duckDbDescribeTable(tableName);
         if (!dres.ok) return `Error: ${dres.error}`;
-        return JSON.stringify({ name: tableName, columns: dres.columns, columnTypes: dres.columnTypes, rowCount: dres.rowCount });
+        return JSON.stringify({
+          name: tableName,
+          columns: dres.columns,
+          columnTypes: dres.columnTypes,
+          rowCount: dres.rowCount,
+          columnProfiles: dres.tables?.[0]?.columnProfiles,
+        });
       }
       case 'persist_dataset': {
         const tableName = String(args.tableName ?? '').trim();

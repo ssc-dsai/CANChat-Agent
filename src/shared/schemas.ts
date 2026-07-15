@@ -1151,7 +1151,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'describe_dataset',
-      description: 'Show the schema (column names and types) and row count of a loaded dataset.',
+      description: 'Show the schema (column names and types), row count, and a per-column profile (null ratio, approximate distinct count, min/max) of a loaded dataset. Use the profile to judge which columns are identifiers, near-constant, or worth filtering/grouping on before writing a query.',
       parameters: {
         type: 'object',
         properties: {

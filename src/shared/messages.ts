@@ -466,12 +466,26 @@ export interface DuckDbRequest {
   persist?: boolean;
 }
 
+/**
+ * Bounded per-column profile from DuckDB's `SUMMARIZE`, computed on demand by
+ * `describeTable` (not `listTables`, so metadata still appears before any
+ * profiling cost — see the Structured Data RAG MVP's profiling item).
+ */
+export interface ColumnProfile {
+  name: string;
+  nullRatio: number; // 0..1
+  approxDistinct: number;
+  min?: string;
+  max?: string;
+}
+
 export interface DuckDbTableInfo {
   name: string;
   columns: string[];
   columnTypes: string[];
   rowCount: number;
   persisted?: boolean;
+  columnProfiles?: ColumnProfile[];
 }
 
 export interface DuckDbResponse {

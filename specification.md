@@ -614,8 +614,17 @@ classification, non-gated; datasets persist to OPFS)
   to narrow the query, not treat the sample as complete) and surfaced in the
   Datasets workspace page too. See `UNATTENDED_BLOCKED_TOOLS` above for why
   this tool is additionally refused outright in scheduled tasks/triggers.
-- `list_datasets` — list loaded tables. `describe_dataset {tableName}` — schema + row
-  count.
+- `list_datasets` — list loaded tables. `describe_dataset {tableName}` — schema, row
+  count, and a per-column profile: null ratio, approximate distinct count, min/max
+  (`duckDb.ts`'s `profileColumns`, one bounded query via DuckDB's built-in
+  `SUMMARIZE`, not a per-column round trip — computed on demand by
+  `describeTable`, not `listTables`, so plain table metadata still appears
+  before any profiling cost). `null_percentage` is cast to `DOUBLE` inside the
+  SQL rather than parsed from the raw Arrow `DECIMAL` in JS — the latter
+  silently drops the scale (reads 33.33 as 3333). Structured Data RAG MVP
+  item #2 — deliberately no sampling/bounding beyond the single pass; large
+  tables are a known follow-up, not solved here. Surfaced in the Datasets
+  workspace page via a **Profile** button per table.
 - `persist_dataset {tableName}` / `load_dataset {tableName}` / `drop_dataset {tableName}`
   — explicitly persist, reload, or permanently delete a dataset (memory + OPFS).
 
