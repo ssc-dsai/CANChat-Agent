@@ -225,6 +225,31 @@ function decide(req: ChatRequest): ChatMessage {
     return { role: 'assistant', content: FINAL_TEXT };
   }
 
+  // Structured-to-document hybrid flow (Structured Data RAG MVP #4): query a
+  // dataset for over-budget projects, then search a document repo (the
+  // active tab's status-report page, captured via add_to_repo) using a name
+  // found in the query result, and answer citing both.
+  if (userMentions('HYBRID_DEMO')) {
+    if (!hasToolCall(req.messages, 'open_data_url')) {
+      const url = (latestUserText(req.messages).match(/https?:\/\/\S+/) ?? [''])[0];
+      return { role: 'assistant', content: null, tool_calls: [toolCall('open_data_url', { url })] };
+    }
+    if (!hasToolCall(req.messages, 'query_data')) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [toolCall('query_data', { sql: 'SELECT project FROM budgets WHERE actual_cost > approved_budget' })],
+      };
+    }
+    if (!hasToolCall(req.messages, 'add_to_repo')) {
+      return { role: 'assistant', content: null, tool_calls: [toolCall('add_to_repo', { repo: 'reports' })] };
+    }
+    if (!hasToolCall(req.messages, 'search_repo')) {
+      return { role: 'assistant', content: null, tool_calls: [toolCall('search_repo', { repo: 'reports', query: 'Alpha budget overrun' })] };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
   // Builds a downloadable .pptx via the create_powerpoint tool, then answers.
   if (userMentions('CREATE_PPTX')) {
     if (!hasToolResult) {
@@ -241,6 +266,15 @@ function decide(req: ChatRequest): ChatMessage {
           }),
         ],
       };
+    }
+    return { role: 'assistant', content: FINAL_TEXT };
+  }
+
+  // Attempts query_data (unattended runs must have this blocked — see
+  // UNATTENDED_BLOCKED_TOOLS in agentRuntime.ts).
+  if (userMentions('QUERY_DATA_DEMO')) {
+    if (!hasToolResult) {
+      return { role: 'assistant', content: null, tool_calls: [toolCall('query_data', { sql: 'SELECT 1 AS n' })] };
     }
     return { role: 'assistant', content: FINAL_TEXT };
   }

@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import type { ExportedRepo } from '../shared/messages';
+import type { ExportedProduct, ExportedRepo } from '../shared/messages';
 import type { ConversationSummary } from '../shared/types';
 import { saveFile } from './download';
 import { useT } from './i18n';
@@ -33,6 +33,7 @@ interface Backup {
   exportedAt: string;
   storage: Record<string, unknown>;
   repos: ExportedRepo[];
+  products: ExportedProduct[];
 }
 
 export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: boolean } = {}) {
@@ -66,6 +67,7 @@ export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: bo
         );
       }
       const repos = (await chrome.runtime.sendMessage({ type: 'repo_export' })) as ExportedRepo[];
+      const products = (await chrome.runtime.sendMessage({ type: 'products_export' })) as ExportedProduct[];
       const backup: Backup = {
         app: 'CANChat Agent',
         kind: 'backup',
@@ -73,15 +75,22 @@ export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: bo
         exportedAt: new Date().toISOString(),
         storage,
         repos: Array.isArray(repos) ? repos : [],
+        products: Array.isArray(products) ? products : [],
       };
       saveFile(
         new Blob([JSON.stringify(backup)], { type: 'application/json' }),
         `canchat-agent-backup-${new Date().toISOString().slice(0, 10)}.json`,
       );
       const n = backup.repos.length;
+      const p = backup.products.length;
+      const extras = [
+        n ? `${n} repositor${n === 1 ? 'y' : 'ies'}` : '',
+        p ? `${p} product${p === 1 ? '' : 's'}` : '',
+      ].filter(Boolean);
+      const extraText = extras.length ? `, and ${extras.join(' and ')}` : '';
       setMessage({
         ok: true,
-        text: `Exported settings, hints, skills, memory${n ? `, and ${n} repositor${n === 1 ? 'y' : 'ies'}` : ''}.`,
+        text: `Exported settings, hints, skills, memory${extraText}.`,
       });
     } catch (e) {
       setMessage({ ok: false, text: `Export failed: ${String(e)}` });
@@ -98,7 +107,7 @@ export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: bo
         throw new Error('Not a CANChat Agent backup file.');
       }
       const ok = window.confirm(
-        'Restore will overwrite your current settings, hints, skills, and memory, and replace any repositories with the same name. Continue?',
+        'Restore will overwrite your current settings, hints, skills, and memory, and replace any repositories or products with the same name/id. Continue?',
       );
       if (!ok) {
         setBusy(false);
@@ -109,6 +118,9 @@ export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: bo
       }
       if (Array.isArray(data.repos) && data.repos.length) {
         await chrome.runtime.sendMessage({ type: 'repo_import', repos: data.repos });
+      }
+      if (Array.isArray(data.products) && data.products.length) {
+        await chrome.runtime.sendMessage({ type: 'products_import', products: data.products });
       }
       setMessage({ ok: true, text: 'Restore complete. Reloading…' });
       setTimeout(() => location.reload(), 900);
@@ -124,8 +136,9 @@ export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: bo
         <strong>Backup &amp; Restore</strong>
       </summary>
       <p class="settings-note">
-        Export your configuration — endpoint settings, hints, skills, memory, and on-device
-        repositories — to a single JSON file, and restore it on this or another device.
+        Export your configuration — endpoint settings, hints, skills, memory, on-device
+        repositories, and generated products — to a single JSON file, and restore it on this or
+        another device.
       </p>
       <label class="backup-check">
         <input

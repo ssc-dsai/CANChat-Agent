@@ -18,6 +18,8 @@ export interface EventTrigger {
   enabled: boolean;
   /** Hostname to match (subdomain-aware, same rule as an app playbook's origin). */
   hostPattern: string;
+  /** If true, fire on every matching page navigation (ignore cooldown between sub-pages). */
+  matchSubPages?: boolean;
   target: TriggerTarget;
   createdAt: string;
   lastFiredAt?: string;

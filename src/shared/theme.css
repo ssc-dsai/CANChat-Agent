@@ -8,6 +8,9 @@
   --bg: #ffffff;
   --bg-panel: #f7f4fa;
   --bg-input: #efeaf4;
+  /* Elevated surface for grouped "cards" (settings groups, dialogs): pure
+     white above the panel tint in light mode, one step lighter in dark. */
+  --bg-card: #ffffff;
   --border: #e0d8e8;
   --text: #1c1726;
   --text-dim: #5a5366;
@@ -16,9 +19,15 @@
   --brand-soft: #f1e9f6;
   --magenta: #c0249e;
   --brand-grad: linear-gradient(135deg, #6e2a8c 0%, #c0249e 100%);
-  --ok: #1f8f4d;
-  --warn: #9a7110;
-  --error: #c43c3c;
+  /* Status colors sit at ≥ 4.5:1 (WCAG 2.1 AA, normal text) on --bg and
+     --bg-panel; the previous ok/warn values measured 4.1:1 and 4.4:1. */
+  --ok: #187a41;
+  --warn: #8a6410;
+  --error: #c03434;
+  /* Faint elevation for cards/overlays; dark mode leans on surface color
+     instead of shadow, so these stay subtle there too. */
+  --shadow-1: 0 1px 2px rgba(28, 23, 38, 0.05), 0 1px 8px rgba(28, 23, 38, 0.05);
+  --shadow-2: 0 4px 14px rgba(28, 23, 38, 0.12), 0 14px 40px rgba(28, 23, 38, 0.14);
   /* Label palette — light. Each key has a soft tinted bg + readable fg. */
   --chip-red-bg: #fbe0e0;
   --chip-red-fg: #a32626;
@@ -44,6 +53,7 @@
     --bg: #181421;
     --bg-panel: #211b2d;
     --bg-input: #2a2338;
+    --bg-card: #262031;
     --border: #3a3147;
     --text: #ece8f2;
     --text-dim: #a79fb6;

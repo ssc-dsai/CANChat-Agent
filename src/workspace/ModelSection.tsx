@@ -50,6 +50,7 @@ export function ModelSection() {
       baseUrl: settings.baseUrl.trim(),
       apiKey: settings.apiKey.trim(),
       model: settings.model.trim(),
+      ideogramApiKey: settings.ideogramApiKey?.trim() || undefined,
       apiVersion: settings.apiVersion?.trim() || undefined,
     };
     await chrome.storage.local.set({ ba_settings: trimmed });
@@ -87,6 +88,16 @@ export function ModelSection() {
           placeholder="model-name"
           value={settings.model}
           onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
+        />
+      </label>
+
+      <label class="field">
+        <span>{t('settings.ideogramApiKey')}</span>
+        <input
+          type="password"
+          placeholder="ik-…"
+          value={settings.ideogramApiKey ?? ''}
+          onInput={(e) => update({ ideogramApiKey: (e.target as HTMLInputElement).value })}
         />
       </label>
 

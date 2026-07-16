@@ -5,6 +5,8 @@
 //   - `extract_pdf`: pull text from a PDF with pdf.js.
 //   - `extract_office`: unzip .docx/.pptx/.xlsx (fflate) and parse the OOXML.
 //   - RAG (`offscreen-repo`): delegate to `repoStore` (OPFS-backed vector store).
+//   - Products (`offscreen-product`): delegate to `productStore` (OPFS-backed
+//     durable outputs from scheduled tasks/triggers).
 // The service worker reaches these via `offscreenClient`; this file is the
 // receiving end of that channel. Heavy/binary work lives here so it can't stall
 // the worker and so it has a real Window to use.
@@ -26,6 +28,8 @@ import type {
   GenerateDocumentRequest,
   GenerateDocumentResponse,
   GeneratePresentationRequest,
+  ProductRequest,
+  ProductResponse,
   RepoRequest,
   RepoResponse,
 } from '../shared/messages';
@@ -39,6 +43,7 @@ import {
   repoList,
   repoSearch,
 } from './repoStore';
+import { productDelete, productExportAll, productGet, productImportAll, productList, productSave } from './productStore';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -402,6 +407,33 @@ chrome.runtime.onMessage.addListener((message: RepoRequest, _sender, sendRespons
   return true; // async response
 });
 
+async function handleProduct(req: ProductRequest): Promise<ProductResponse> {
+  try {
+    switch (req.op) {
+      case 'save':
+        return { ok: true, result: await productSave(req.filename, req.mimeType, req.dataBase64, { sourceTitle: req.sourceTitle, conversationId: req.conversationId }) };
+      case 'list':
+        return { ok: true, result: await productList() };
+      case 'get':
+        return { ok: true, result: await productGet(req.id) };
+      case 'delete':
+        return { ok: true, result: await productDelete(req.id) };
+      case 'export':
+        return { ok: true, result: await productExportAll() };
+      case 'import':
+        return { ok: true, result: await productImportAll(req.products) };
+    }
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+chrome.runtime.onMessage.addListener((message: ProductRequest, _sender, sendResponse) => {
+  if (message?.target !== 'offscreen-product') return undefined;
+  handleProduct(message).then(sendResponse);
+  return true; // async response
+});
+
 // On-device embeddings (transformers.js). Dynamic import keeps the model runtime
 // out of the offscreen bundle's startup path — it only loads when first used.
 chrome.runtime.onMessage.addListener((message: EmbedLocalRequest, _sender, sendResponse) => {
@@ -431,10 +463,10 @@ chrome.runtime.onMessage.addListener((message: DuckDbRequest, _sender, sendRespo
           result = await duck.query(message.sql ?? '');
           break;
         case 'import_csv':
-          result = await duck.importCsv(message.tableName ?? 'table', message.data ?? '', message.persist);
+          result = await duck.importCsv(message.tableName ?? 'table', message.data ?? '', message.persist, message.projectId);
           break;
         case 'import_json':
-          result = await duck.importJson(message.tableName ?? 'table', message.data ?? '', message.persist);
+          result = await duck.importJson(message.tableName ?? 'table', message.data ?? '', message.persist, message.projectId);
           break;
         case 'list_tables':
           result = await duck.listTables();
@@ -443,7 +475,7 @@ chrome.runtime.onMessage.addListener((message: DuckDbRequest, _sender, sendRespo
           result = await duck.describeTable(message.tableName ?? '');
           break;
         case 'persist_table':
-          result = await duck.persistTableByName(message.tableName ?? '');
+          result = await duck.persistTableByName(message.tableName ?? '', message.projectId);
           break;
         case 'load_table':
           result = await duck.loadTable(message.tableName ?? '');
@@ -453,7 +485,7 @@ chrome.runtime.onMessage.addListener((message: DuckDbRequest, _sender, sendRespo
           break;
         case 'open_file': {
           const bytes = Uint8Array.from(atob(message.bytesB64 ?? ''), (ch) => ch.charCodeAt(0));
-          const tables = await duck.openBuffer(message.name ?? 'data', bytes);
+          const tables = await duck.openBuffer(message.name ?? 'data', bytes, message.projectId);
           result = { ok: true, tables };
           break;
         }

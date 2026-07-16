@@ -42,16 +42,23 @@ function downloadBase64(dataBase64: string, type: string, filename: string): voi
 
 /** Download card for a generated binary document (e.g. a .docx). */
 function FileArtifactCard({ file }: { file: FileArtifact }) {
+  const isImage = file.mimeType.startsWith('image/');
+  const download = () => downloadBase64(file.dataBase64, file.mimeType, file.filename);
   return (
     <div class="export-card">
+      {isImage && (
+        <img
+          src={`data:${file.mimeType};base64,${file.dataBase64}`}
+          class="export-image-preview"
+          alt={file.filename}
+          onClick={download}
+        />
+      )}
       <div class="export-head">
         <strong>{file.filename}</strong>
       </div>
       <div class="export-actions">
-        <button
-          class="btn btn-small btn-primary"
-          onClick={() => downloadBase64(file.dataBase64, file.mimeType, file.filename)}
-        >
+        <button class="btn btn-small btn-primary" onClick={download}>
           Download
         </button>
       </div>

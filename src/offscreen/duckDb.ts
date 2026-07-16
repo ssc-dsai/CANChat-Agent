@@ -1,6 +1,7 @@
 import { unzipSync } from 'fflate';
-import type { DuckDbResponse, DuckDbTableInfo } from '../shared/messages';
+import type { ColumnProfile, DuckDbResponse, DuckDbTableInfo } from '../shared/messages';
 import { ARCHIVE_MEMBER_EXT, extOf, tableNameFromFile, uniqueTableName } from '../shared/dataFile';
+import { validateReadOnlySql } from '../shared/sqlGuard';
 
 // Bundle DuckDB-WASM's worker + wasm locally and serve them from the extension
 // origin. The default jsDelivr bundles load a cross-origin Worker, which the MV3
@@ -22,6 +23,8 @@ interface PersistedMeta {
   columns: string[];
   columnTypes: string[];
   rowCount: number;
+  /** Nullable project scope (filter, not partition — see shared/memoryGraph.ts visibleToProject). */
+  projectId?: string;
 }
 
 async function datasetsDir(): Promise<FileSystemDirectoryHandle> {
@@ -184,31 +187,63 @@ async function dumpTable(tableName: string): Promise<{ rows: string[][]; columns
   }
 }
 
-async function toResponse(table: any): Promise<DuckDbResponse> {
+// query_data (the agent tool over this) is read-only and unrestricted in what
+// it can ask for, so the response itself must bound how much comes back: cap
+// converted rows so one runaway SELECT can't materialize gigabytes of JS
+// strings or blow out a chat message, and mark the response `truncated` so
+// the model (and the user) knows the true row count exceeded what's shown.
+const MAX_QUERY_ROWS = 500;
+// DuckDB-WASM has no query-cancellation hook exposed here, so this bounds how
+// long a caller waits rather than actually stopping engine-side execution —
+// still worth having so a pathological query can't hang the tool call forever.
+const QUERY_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Query timed out after ${ms / 1000}s.`)), ms)),
+  ]);
+}
+
+async function toResponse(table: any, maxRows = Infinity): Promise<DuckDbResponse> {
+  const rowCount = table.numRows;
+  const truncated = Number.isFinite(maxRows) && rowCount > maxRows;
+  const limited = truncated ? table.slice(0, maxRows) : table;
   return {
     ok: true,
-    columns: columnsFromArrow(table),
-    columnTypes: columnTypesFromArrow(table),
-    rows: rowsFromArrow(table),
-    rowCount: table.numRows,
+    columns: columnsFromArrow(limited),
+    columnTypes: columnTypesFromArrow(limited),
+    rows: rowsFromArrow(limited),
+    rowCount,
+    truncated,
   };
 }
 
 export async function query(sql: string): Promise<DuckDbResponse> {
+  const guard = validateReadOnlySql(sql);
+  if (!guard.ok) return { ok: false, error: guard.error };
   try {
     const c = await ensureDb();
-    const result = await c.query(sql);
-    return toResponse(result);
+    const result = await withTimeout(c.query(sql), QUERY_TIMEOUT_MS);
+    return toResponse(result, MAX_QUERY_ROWS);
   } catch (e) {
     return { ok: false, error: String(e) };
   }
 }
 
-async function persistTable(tableName: string): Promise<void> {
+/**
+ * Persist a table's rows + schema to OPFS. `projectId` tags the dataset's
+ * scope; when omitted (a routine re-persist rather than a fresh import/save),
+ * whatever scope the table already had on disk is preserved rather than
+ * silently cleared.
+ */
+async function persistTable(tableName: string, projectId?: string): Promise<void> {
   const dump = await dumpTable(tableName);
   if (!dump) return;
   const dir = await datasetDir(tableName);
-  await persistMeta(dir, { columns: dump.columns, columnTypes: dump.columnTypes, rowCount: dump.rows.length });
+  const existing = await readMeta(dir);
+  const effectiveProjectId = projectId !== undefined ? projectId : existing?.projectId;
+  await persistMeta(dir, { columns: dump.columns, columnTypes: dump.columnTypes, rowCount: dump.rows.length, projectId: effectiveProjectId });
   await persistData(dir, dump.rows);
 }
 
@@ -222,32 +257,50 @@ async function countRows(c: typeof conn, tableName: string): Promise<number> {
   }
 }
 
-export async function importCsv(tableName: string, csv: string, persist?: boolean): Promise<DuckDbResponse> {
+export async function importCsv(tableName: string, csv: string, persist?: boolean, projectId?: string): Promise<DuckDbResponse> {
   try {
     await ensureDb();
     const tmpFile = `_import_${tableName}_${Date.now()}.csv`;
     await db.registerFileText(tmpFile, csv);
     const c = conn;
-    await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
-    await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_csv_auto('${tmpFile}')`);
-    await db.dropFile(tmpFile);
-    if (persist !== false) await persistTable(tableName);
+    try {
+      await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
+      try {
+        await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_csv_auto('${tmpFile}')`);
+      } catch {
+        await c.query(
+          `CREATE TABLE "${tableName}" AS SELECT * FROM read_csv_auto('${tmpFile}', ignore_errors=true, all_varchar=1)`,
+        );
+      }
+    } finally {
+      await db.dropFile(tmpFile);
+    }
+    if (persist !== false) await persistTable(tableName, projectId);
     return { ok: true, rowCount: await countRows(c, tableName) };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
 }
 
-export async function importJson(tableName: string, json: string, persist?: boolean): Promise<DuckDbResponse> {
+export async function importJson(tableName: string, json: string, persist?: boolean, projectId?: string): Promise<DuckDbResponse> {
   try {
     await ensureDb();
     const tmpFile = `_import_${tableName}_${Date.now()}.json`;
     await db.registerFileText(tmpFile, json);
     const c = conn;
-    await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
-    await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_json_auto('${tmpFile}')`);
-    await db.dropFile(tmpFile);
-    if (persist !== false) await persistTable(tableName);
+    try {
+      await c.query(`DROP TABLE IF EXISTS "${tableName}"`);
+      try {
+        await c.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_json_auto('${tmpFile}')`);
+      } catch {
+        await c.query(
+          `CREATE TABLE "${tableName}" AS SELECT * FROM read_json_auto('${tmpFile}', ignore_errors=true, maximum_object_size=0)`,
+        );
+      }
+    } finally {
+      await db.dropFile(tmpFile);
+    }
+    if (persist !== false) await persistTable(tableName, projectId);
     return { ok: true, rowCount: await countRows(c, tableName) };
   } catch (e) {
     return { ok: false, error: String(e) };
@@ -299,6 +352,24 @@ export function isOpenableExt(ext: string): boolean {
 async function readerSelect(ext: string, tmp: string): Promise<{ select: string; fallback?: string }> {
   if (FORMAT_READER[ext]) {
     const opts = ext === 'tsv' ? ", delim='\t'" : '';
+    if (ext === 'csv' || ext === 'tsv') {
+      return {
+        select: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}'${opts})`,
+        fallback: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}'${opts}, ignore_errors=true, all_varchar=1)`,
+      };
+    }
+    if (ext === 'json' || ext === 'ndjson') {
+      return {
+        select: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}')`,
+        fallback: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}', ignore_errors=true, maximum_object_size=0)`,
+      };
+    }
+    if (ext === 'parquet') {
+      return {
+        select: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}')`,
+        fallback: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}', union_by_name=true)`,
+      };
+    }
     return { select: `SELECT * FROM ${FORMAT_READER[ext]}('${tmp}'${opts})` };
   }
   if (SPATIAL_EXT.includes(ext)) {
@@ -335,7 +406,7 @@ async function tableInfo(name: string): Promise<DuckDbTableInfo> {
 }
 
 /** Load one registered buffer (a single tabular file) into a new table. */
-async function loadOne(name: string, bytes: Uint8Array, used: Set<string>): Promise<DuckDbTableInfo> {
+async function loadOne(name: string, bytes: Uint8Array, used: Set<string>, projectId?: string): Promise<DuckDbTableInfo> {
   const ext = extOf(name);
   if (!isOpenableExt(ext)) throw new Error(`Unsupported data file: ${name}`);
   const c = await ensureDb();
@@ -356,23 +427,23 @@ async function loadOne(name: string, bytes: Uint8Array, used: Set<string>): Prom
   } finally {
     await db.dropFile(tmp);
   }
-  await persistTable(table);
+  await persistTable(table, projectId);
   return tableInfo(table);
 }
 
 /** Recurse into the entries, handling zip members and single files alike. */
-async function openInto(name: string, bytes: Uint8Array, used: Set<string>): Promise<DuckDbTableInfo[]> {
+async function openInto(name: string, bytes: Uint8Array, used: Set<string>, projectId?: string): Promise<DuckDbTableInfo[]> {
   if (extOf(name) === 'zip') {
     const out: DuckDbTableInfo[] = [];
     const entries = unzipSync(bytes);
     for (const [member, data] of Object.entries(entries)) {
       if (member.endsWith('/') || member.startsWith('__MACOSX')) continue;
       if (!ARCHIVE_MEMBER_EXT.includes(extOf(member))) continue;
-      out.push(...(await openInto(member, data, used)));
+      out.push(...(await openInto(member, data, used, projectId)));
     }
     return out;
   }
-  return [await loadOne(name, bytes, used)];
+  return [await loadOne(name, bytes, used, projectId)];
 }
 
 /**
@@ -381,10 +452,10 @@ async function openInto(name: string, bytes: Uint8Array, used: Set<string>): Pro
  * info for each created table. Geospatial formats are read through the
  * locally-bundled spatial extension.
  */
-export async function openBuffer(name: string, bytes: Uint8Array): Promise<DuckDbTableInfo[]> {
+export async function openBuffer(name: string, bytes: Uint8Array, projectId?: string): Promise<DuckDbTableInfo[]> {
   await ensureDb();
   const used = await existingTableNames();
-  const tables = await openInto(name, bytes, used);
+  const tables = await openInto(name, bytes, used, projectId);
   if (tables.length === 0) {
     throw new Error(
       `No supported data files found in ${name}. The data engine opens CSV, TSV, JSON, NDJSON, Parquet, ` +
@@ -404,6 +475,7 @@ export async function listTables(): Promise<DuckDbResponse> {
     const tables: DuckDbTableInfo[] = [];
     for (const nm of names) {
       const p = persisted.includes(nm);
+      const projectId = p ? (await readMeta(await datasetDir(nm)))?.projectId : undefined;
       try {
         const desc = await c.query(`SELECT COUNT(*) as cnt FROM "${nm}"`);
         const cnt = Number(desc.toArray()[0].cnt ?? 0);
@@ -414,14 +486,46 @@ export async function listTables(): Promise<DuckDbResponse> {
           columnTypes: columnTypesFromArrow(colResult),
           rowCount: cnt,
           persisted: p || undefined,
+          projectId,
         });
       } catch {
-        tables.push({ name: nm, columns: [], columnTypes: [], rowCount: 0, persisted: true });
+        tables.push({ name: nm, columns: [], columnTypes: [], rowCount: 0, persisted: true, projectId });
       }
     }
     return { ok: true, tables };
   } catch (e) {
     return { ok: false, error: String(e) };
+  }
+}
+
+/**
+ * One bounded profiling query per table via DuckDB's built-in `SUMMARIZE`
+ * (a single columnar pass, not a per-column round trip): null ratio, approx
+ * distinct count, and min/max per column. Best-effort — a profiling failure
+ * (e.g. a type SUMMARIZE can't handle) degrades to no profile rather than
+ * failing the whole describe_dataset call.
+ */
+async function profileColumns(c: typeof conn, tableName: string): Promise<ColumnProfile[]> {
+  try {
+    // null_percentage is DECIMAL in SUMMARIZE's own result; casting it to
+    // DOUBLE inside the query (rather than parsing the raw Arrow decimal in
+    // JS, which silently drops the scale — e.g. reads 33.33 as 3333) makes
+    // DuckDB do the scaling itself.
+    const result = await c.query(
+      `SELECT column_name, min, max, approx_unique, CAST(null_percentage AS DOUBLE) AS null_percentage FROM (SUMMARIZE "${tableName}")`,
+    );
+    return result.toArray().map((r: any) => {
+      const nullPct = Number(r.null_percentage ?? 0);
+      return {
+        name: String(r.column_name ?? ''),
+        nullRatio: Number.isFinite(nullPct) ? nullPct / 100 : 0,
+        approxDistinct: Number(r.approx_unique ?? 0),
+        min: r.min == null ? undefined : String(r.min),
+        max: r.max == null ? undefined : String(r.max),
+      };
+    });
+  } catch {
+    return [];
   }
 }
 
@@ -434,26 +538,33 @@ export async function describeTable(tableName: string): Promise<DuckDbResponse> 
     const rows = rowsFromArrow(result);
     const count = await c.query(`SELECT COUNT(*) as cnt FROM "${tableName}"`);
     const rowCount = Number(count.toArray()[0].cnt ?? 0);
+    const columnProfiles = await profileColumns(c, tableName);
+    // Only touch OPFS for a table known to be persisted — datasetDir() would
+    // otherwise create an empty directory as a side effect of merely checking.
+    const isPersisted = (await listPersisted()).includes(tableName);
+    const projectId = isPersisted ? (await readMeta(await datasetDir(tableName)))?.projectId : undefined;
     return {
       ok: true,
       columns: cols,
       columnTypes: types,
       rows,
       rowCount,
-      tables: [{ name: tableName, columns: rows.map((r) => r[0]), columnTypes: rows.map((r) => r[1]), rowCount }],
+      tables: [{ name: tableName, columns: rows.map((r) => r[0]), columnTypes: rows.map((r) => r[1]), rowCount, columnProfiles, projectId }],
     };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
 }
 
-export async function persistTableByName(tableName: string): Promise<DuckDbResponse> {
+export async function persistTableByName(tableName: string, projectId?: string): Promise<DuckDbResponse> {
   try {
     await ensureDb();
     const dump = await dumpTable(tableName);
     if (!dump) return { ok: false, error: `Table "${tableName}" not found.` };
     const dir = await datasetDir(tableName);
-    await persistMeta(dir, { columns: dump.columns, columnTypes: dump.columnTypes, rowCount: dump.rows.length });
+    const existing = await readMeta(dir);
+    const effectiveProjectId = projectId !== undefined ? projectId : existing?.projectId;
+    await persistMeta(dir, { columns: dump.columns, columnTypes: dump.columnTypes, rowCount: dump.rows.length, projectId: effectiveProjectId });
     await persistData(dir, dump.rows);
     return { ok: true, rowCount: dump.rows.length };
   } catch (e) {

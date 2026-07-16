@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { CURATED_PLAYBOOKS, type CuratedPlaybook } from '../shared/curatedPlaybooks';
 import {
   DEFAULT_PLAYBOOK_INDEX_URL,
@@ -97,6 +97,7 @@ async function persistSkills(skills: Skill[]): Promise<void> {
 
 export function SkillsSection() {
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
   const [formProjectId, setFormProjectId] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
@@ -207,6 +208,25 @@ export function SkillsSection() {
     !nameTaken &&
     form.description.trim().length > 0 &&
     form.body.trim().length > 0;
+
+  const filteredSkills = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return skills;
+    return skills.filter((s) => {
+      const haystack = [s.name, s.description, s.body, s.origin ?? '', s.version ?? '', s.source?.kind ?? '']
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [search, skills]);
+
+  const skillSourceLabel = (s: Skill): string | null => {
+    if (s.source?.kind === 'generated') return 'generated';
+    if (s.source?.kind === 'url') return 'url';
+    if (s.source?.kind === 'zip') return 'zip';
+    if (s.source?.kind === 'manual') return 'manual';
+    return null;
+  };
 
   const submitForm = async () => {
     if (!formValid) return;
@@ -403,41 +423,112 @@ export function SkillsSection() {
   };
 
   return (
-    <div class="sites-section">
-      <div class="settings-header">
-        <strong>Skills</strong>
+    <div class="sites-section skills-section">
+      <div class="settings-header skills-header">
+        <div class="skills-title-block">
+          <strong>Skills</strong>
+          <p class="settings-note">
+            Reusable procedures for the agent. Skills can auto-trigger from the task, load from a
+            site, or be launched with /name in chat.
+          </p>
+        </div>
         <span class="sites-count">{skills.length}</span>
       </div>
-      <p class="settings-note">
-        Reusable procedures for the agent. It applies a skill automatically when a task matches
-        its description, or you can force one by typing /name in the chat. Skills bound to a site
-        (app playbooks) load automatically when you're on that site — teach one by typing /learn.
-        Open the <strong>App playbook library</strong> to install skills from a hosted index.
-      </p>
+
+      {!showForm && (
+        <div class="skills-toolbar">
+          <input
+            type="search"
+            class="skills-search"
+            placeholder="Search skills"
+            value={search}
+            onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+          />
+          <div class="skills-toolbar-actions">
+            <button class="btn btn-small btn-primary" onClick={() => setShowForm(true)}>
+              Add skill
+            </button>
+            <button class="btn btn-small" onClick={() => setShowUrl(!showUrl)}>
+              Import from URL
+            </button>
+            <button class="btn btn-small" onClick={() => setShowJson(!showJson)}>
+              Import JSON
+            </button>
+            <button class="btn btn-small" onClick={exportJson} disabled={skills.length === 0}>
+              Export JSON
+            </button>
+            <label class={`btn btn-small ${importing ? 'btn-disabled' : ''}`}>
+              Import zip
+              <input
+                type="file"
+                accept="application/zip,.zip"
+                style="display:none"
+                disabled={importing}
+                onChange={(e) => {
+                  const input = e.target as HTMLInputElement;
+                  const f = input.files?.[0];
+                  if (f) void importZip(f);
+                  input.value = '';
+                }}
+              />
+            </label>
+            <button class="btn btn-small" onClick={() => setShowLibrary(!showLibrary)}>
+              App playbook library
+            </button>
+          </div>
+        </div>
+      )}
 
       {skills.length > 0 && (
-        <ul class="sites-list">
-          {skills.map((s) => (
-            <li key={s.id} class="site-row" title={s.body}>
-              <span class="site-name">/{s.name}</span>
-              {s.version && <span class="stale-tag">v{s.version}</span>}
-              {s.source?.kind === 'generated' && <span class="stale-tag">generated</span>}
-              {s.origin && <span class="stale-tag">app: {s.origin}</span>}
-              {s.showButton && <span class="stale-tag">button</span>}
-              <span class="site-desc">{s.description}</span>
-              <button class="icon-btn" title="Edit" onClick={() => edit(s)}>
-                ✎
-              </button>
-              <button class="icon-btn" title="Delete" onClick={() => remove(s.id)}>
-                ✕
-              </button>
+        <ul class="skills-list">
+          {filteredSkills.map((s) => (
+            <li key={s.id} class="skills-card" title={s.body}>
+              <div class="skills-card-head">
+                <div class="skills-card-name">
+                  <span class="skills-slash">/</span>
+                  <span>{s.name}</span>
+                </div>
+                <div class="skills-card-actions">
+                  <button class="icon-btn" title="Edit" onClick={() => edit(s)}>
+                    ✎
+                  </button>
+                  <button class="icon-btn" title="Delete" onClick={() => remove(s.id)}>
+                    ✕
+                  </button>
+                </div>
+              </div>
+              <p class="skills-card-desc">{s.description}</p>
+              <div class="skills-card-meta">
+                {s.version && <span class="skills-tag skills-tag-version">v{s.version}</span>}
+                {skillSourceLabel(s) && <span class="skills-tag skills-tag-source">{skillSourceLabel(s)}</span>}
+                {s.origin && <span class="skills-tag skills-tag-origin">app: {s.origin}</span>}
+                {s.showButton && <span class="skills-tag skills-tag-button">button</span>}
+                {s.projectId && <span class="skills-tag skills-tag-project">project</span>}
+              </div>
             </li>
           ))}
         </ul>
       )}
 
-      {showForm ? (
-        <div class="site-form">
+      {skills.length > 0 && search.trim() && filteredSkills.length === 0 && (
+        <div class="skills-empty">
+          <strong>No skills match “{search.trim()}”.</strong>
+          <span>Try a different term or clear the search box.</span>
+        </div>
+      )}
+
+      {skills.length === 0 && (
+        <div class="skills-empty">
+          <strong>No skills yet.</strong>
+          <span>Add one to teach the agent a reusable procedure, or import one from a URL / zip.</span>
+          <button class="btn btn-small btn-primary skills-empty-cta" onClick={() => setShowForm(true)}>
+            Create your first skill
+          </button>
+        </div>
+      )}
+
+      {showForm && (
+        <div class="site-form skills-form">
           <label class="field">
             <span>Name (lowercase-kebab; invoked as /name)</span>
             <input
@@ -540,50 +631,10 @@ export function SkillsSection() {
             </button>
           </div>
         </div>
-      ) : (
-        <div class="context-actions">
-          <button class="btn btn-small" onClick={() => setShowForm(true)}>
-            Add skill
-          </button>
-          <button class="btn btn-small" onClick={() => setShowUrl(!showUrl)}>
-            Import from URL
-          </button>
-          <button class="btn btn-small" onClick={() => setShowJson(!showJson)}>
-            Import JSON
-          </button>
-          <button class="btn btn-small" onClick={exportJson} disabled={skills.length === 0}>
-            Export JSON
-          </button>
-          <label class={`btn btn-small ${importing ? 'btn-disabled' : ''}`}>
-            Import zip
-            <input
-              type="file"
-              accept="application/zip,.zip"
-              style="display:none"
-              disabled={importing}
-              onChange={(e) => {
-                const input = e.target as HTMLInputElement;
-                const f = input.files?.[0];
-                if (f) void importZip(f);
-                input.value = '';
-              }}
-            />
-          </label>
-          <button
-            class="btn btn-small"
-            onClick={() => {
-              const next = !showLibrary;
-              setShowLibrary(next);
-              if (next && remote.length === 0 && !remoteLoading) void fetchIndex(indexUrl);
-            }}
-          >
-            App playbook library
-          </button>
-        </div>
       )}
 
       {showLibrary && (
-        <div class="site-form">
+        <div class="site-form skills-form skills-library">
           <label class="field">
             <span>Playbook index URL — polled for installable skills</span>
             <input
@@ -623,19 +674,28 @@ export function SkillsSection() {
           {remoteErr && <div class="banner banner-error">{remoteErr}</div>}
 
           {remote.length > 0 && (
-            <ul class="sites-list">
+            <ul class="skills-list">
               {remote.map((p) => {
                 const installed = skills.some(
                   (s) => s.name === p.name || (p.origin && s.origin === normalizeHost(p.origin)),
                 );
                 return (
-                  <li key={p.name} class="site-row" title={p.description}>
-                    <span class="site-name">/{p.name}</span>
-                    {p.origin && <span class="stale-tag">app: {p.origin}</span>}
-                    <span class="site-desc">{p.description}</span>
-                    <button class="btn btn-small" onClick={() => installRemote(p)}>
-                      {installed ? 'Reinstall' : 'Add'}
-                    </button>
+                  <li key={p.name} class="skills-card skills-card-remote" title={p.description}>
+                    <div class="skills-card-head">
+                      <div class="skills-card-name">
+                        <span class="skills-slash">/</span>
+                        <span>{p.name}</span>
+                      </div>
+                      <button class="btn btn-small" onClick={() => installRemote(p)}>
+                        {installed ? 'Reinstall' : 'Add'}
+                      </button>
+                    </div>
+                    <p class="skills-card-desc">{p.description}</p>
+                    {p.origin && (
+                      <div class="skills-card-meta">
+                        <span class="skills-tag skills-tag-origin">app: {p.origin}</span>
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -643,20 +703,28 @@ export function SkillsSection() {
           )}
 
           <p class="settings-note">Built-in app playbooks</p>
-          <ul class="sites-list">
+          <ul class="skills-list skills-list-library">
             {CURATED_PLAYBOOKS.map((p) => {
               const installed = skills.some((s) => s.origin === p.origin);
               return (
-                <li key={p.origin} class="site-row" title={p.body}>
-                  <span class="site-name">{p.origin}</span>
-                  <span class="site-desc">{p.description}</span>
-                  {installed ? (
-                    <span class="stale-tag">Installed</span>
-                  ) : (
-                    <button class="btn btn-small" onClick={() => installCurated(p)}>
-                      Add
-                    </button>
-                  )}
+                <li key={p.origin} class="skills-card skills-card-curated" title={p.body}>
+                  <div class="skills-card-head">
+                    <div class="skills-card-name">
+                      <span class="skills-slash">/</span>
+                      <span>{p.name}</span>
+                    </div>
+                    {installed ? (
+                      <span class="skills-tag skills-tag-installed">installed</span>
+                    ) : (
+                      <button class="btn btn-small btn-primary" onClick={() => installCurated(p)}>
+                        Add
+                      </button>
+                    )}
+                  </div>
+                  <p class="skills-card-desc">{p.description}</p>
+                  <div class="skills-card-meta">
+                    <span class="skills-tag skills-tag-origin">{p.origin}</span>
+                  </div>
                 </li>
               );
             })}

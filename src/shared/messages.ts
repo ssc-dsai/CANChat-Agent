@@ -21,6 +21,7 @@ import type {
   ToolActivity,
 } from './types';
 import type { EventTrigger } from './eventTriggers';
+import type { Workflow } from './workflows';
 
 /** Commands sent from the sidebar to the background over a long-lived port. */
 export type SidebarCommand =
@@ -115,7 +116,7 @@ export type RuntimeRequest =
   | { type: 'mailbox_disconnect' }
   | { type: 'index_sharepoint_library'; repo: string; libraryUrl: string }
   | { type: 'sharepoint_session'; base?: string }
-  | { type: 'open_data_files'; files: DataFileUpload[] }
+  | { type: 'open_data_files'; files: DataFileUpload[]; projectId?: string }
   | { type: 'transcribe_audio'; audioDataUrl: string }
   // Probe the signed-in environment (M365 identity, open work systems, locale) to
   // populate memory; only honored when the memory feature is enabled.
@@ -146,15 +147,35 @@ export type RuntimeRequest =
   | { type: 'scheduled_task_delete'; id: string }
   | { type: 'workflow_list' }
   | { type: 'workflow_create'; name: string; skillNames: string[]; description?: string }
+  | { type: 'workflow_update'; id: string; patch: Partial<Pick<Workflow, 'name' | 'description' | 'skillNames'>> }
   | { type: 'workflow_delete'; id: string }
   | { type: 'event_trigger_list' }
-  | { type: 'event_trigger_create'; name: string; hostPattern: string; target: EventTrigger['target']; cooldownMinutes?: number }
-  | { type: 'event_trigger_update'; id: string; patch: Partial<Pick<EventTrigger, 'name' | 'hostPattern' | 'target' | 'cooldownMinutes' | 'enabled'>> }
+  | {
+      type: 'event_trigger_create';
+      name: string;
+      hostPattern: string;
+      target: EventTrigger['target'];
+      cooldownMinutes?: number;
+      matchSubPages?: boolean;
+    }
+  | {
+      type: 'event_trigger_update';
+      id: string;
+      patch: Partial<Pick<EventTrigger, 'name' | 'hostPattern' | 'target' | 'cooldownMinutes' | 'enabled' | 'matchSubPages'>>;
+    }
   | { type: 'event_trigger_delete'; id: string }
   | { type: 'trigger_runs_get' }
+  // Products: durable OPFS-backed outputs from scheduled tasks/triggers (see
+  // productStore.ts) — the service worker owns the offscreen document, so it
+  // routes these for the Workspace Products page same as the DuckDB ops below.
+  | { type: 'products_list' }
+  | { type: 'product_get'; id: string }
+  | { type: 'product_delete'; id: string }
+  | { type: 'products_export' }
+  | { type: 'products_import'; products: ExportedProduct[] }
   // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
   // service worker owns the offscreen document, so it routes the op for them.
-  | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string };
+  | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string; projectId?: string };
 
 /** One picked file on its way into a repository (see shared/uploadFile.ts). */
 export interface UploadFile {
@@ -407,6 +428,40 @@ export interface RepoResponse {
   result?: unknown;
 }
 
+// ----- Products store (offscreen document, OPFS) -----
+// Durable outputs from scheduled tasks/triggers (generated files), kept
+// browsable/downloadable after the run that produced them — see productStore.ts.
+
+export interface ProductMeta {
+  id: string;
+  filename: string;
+  mimeType: string;
+  createdAt: string;
+  sizeBytes: number;
+  sourceTitle?: string;
+  conversationId?: string;
+}
+
+/** A single product serialized for backup (blob base64-encoded). */
+export interface ExportedProduct {
+  meta: ProductMeta;
+  dataB64: string;
+}
+
+export type ProductRequest =
+  | { target: 'offscreen-product'; op: 'save'; filename: string; mimeType: string; dataBase64: string; sourceTitle?: string; conversationId?: string }
+  | { target: 'offscreen-product'; op: 'list' }
+  | { target: 'offscreen-product'; op: 'get'; id: string }
+  | { target: 'offscreen-product'; op: 'delete'; id: string }
+  | { target: 'offscreen-product'; op: 'export' }
+  | { target: 'offscreen-product'; op: 'import'; products: ExportedProduct[] };
+
+export interface ProductResponse {
+  ok: boolean;
+  error?: string;
+  result?: unknown;
+}
+
 // ----- DuckDB data engine (offscreen document) -----
 
 export type DuckDbOp = 'query' | 'import_csv' | 'import_json' | 'list_tables' | 'describe_table' | 'persist_table' | 'load_table' | 'drop_table' | 'open_file' | 'reset_all';
@@ -422,6 +477,21 @@ export interface DuckDbRequest {
   /** Original filename for `open_file` — drives format detection + table naming. */
   name?: string;
   persist?: boolean;
+  /** Project to tag a newly persisted table with (import_csv/import_json/open_file/persist_table). */
+  projectId?: string;
+}
+
+/**
+ * Bounded per-column profile from DuckDB's `SUMMARIZE`, computed on demand by
+ * `describeTable` (not `listTables`, so metadata still appears before any
+ * profiling cost — see the Structured Data RAG MVP's profiling item).
+ */
+export interface ColumnProfile {
+  name: string;
+  nullRatio: number; // 0..1
+  approxDistinct: number;
+  min?: string;
+  max?: string;
 }
 
 export interface DuckDbTableInfo {
@@ -430,6 +500,9 @@ export interface DuckDbTableInfo {
   columnTypes: string[];
   rowCount: number;
   persisted?: boolean;
+  columnProfiles?: ColumnProfile[];
+  /** Nullable project scope for a persisted table; undefined/null means global (visible under every project). */
+  projectId?: string;
 }
 
 export interface DuckDbResponse {
@@ -439,6 +512,8 @@ export interface DuckDbResponse {
   columnTypes?: string[];
   rows?: string[][];
   rowCount?: number;
+  /** True when `rows` was capped below the query's true `rowCount` (see MAX_QUERY_ROWS in duckDb.ts). */
+  truncated?: boolean;
   tables?: DuckDbTableInfo[];
 }
 

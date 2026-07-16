@@ -15,7 +15,7 @@ test.describe('user-manual screenshots', () => {
     await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear
     await expect(sidebar.locator('.settings-tabs')).toBeVisible();
     await sidebar.getByRole('tab', { name: 'Advanced' }).click();
-    await expect(sidebar.getByText('SharePoint')).toBeVisible();
+    await expect(sidebar.getByText('SharePoint base URL')).toBeVisible();
     await sidebar.screenshot({ path: `${SHOTS}/01-settings-advanced.png` });
   });
 

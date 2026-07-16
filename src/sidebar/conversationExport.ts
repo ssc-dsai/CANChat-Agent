@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import type { ChatMessageView, DataExport } from '../shared/types';
+import type { ChatMessageView, DataExport, FileArtifact } from '../shared/types';
 import { saveFile } from './download';
 
 // marked's gfm/breaks options and DOMPurify's link hook are configured globally
@@ -50,6 +50,17 @@ function renderTable(data: DataExport): string {
   );
 }
 
+function renderFileArtifact(file: FileArtifact): string {
+  if (file.mimeType.startsWith('image/')) {
+    return (
+      `<div class="msg-images">` +
+      `<img class="msg-image" src="data:${escapeHtml(file.mimeType)};base64,${file.dataBase64}" alt="${escapeHtml(file.filename)}">` +
+      `</div>`
+    );
+  }
+  return `<div class="export-fileart">${escapeHtml(file.filename)}</div>`;
+}
+
 const ROLE_LABEL: Record<ChatMessageView['role'], string> = {
   user: 'You',
   assistant: 'Agent',
@@ -70,6 +81,7 @@ function renderMessage(m: ChatMessageView): string {
   }
 
   if (m.dataExport) parts.push(renderTable(m.dataExport));
+  if (m.fileArtifact) parts.push(renderFileArtifact(m.fileArtifact));
 
   const time = m.timestamp ? `<span class="msg-time">${escapeHtml(m.timestamp)}</span>` : '';
   return (
@@ -112,6 +124,7 @@ const STYLE = `
   .export-table caption { text-align: left; font-weight: 600; margin-bottom: 6px; }
   .export-table th, .export-table td { border: 1px solid #d8dbe0; padding: 4px 8px; text-align: left; font-size: 13px; }
   .export-table thead th { background: #f1f3f6; }
+  .export-fileart { margin-top: 8px; color: #555; font-size: 13px; }
 `;
 
 /** Build a standalone HTML document for the conversation and download it. */

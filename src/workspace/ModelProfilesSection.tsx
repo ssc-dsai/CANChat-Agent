@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ModelProfile, ModelRole, Settings } from '../shared/types';
+import { useT } from '../sidebar/i18n';
 
 const ROLES: Array<{ role: Exclude<ModelRole, 'main'>; label: string; hint: string }> = [
-  { role: 'utility', label: 'Utility', hint: 'Titles/summaries, self-check, RAG paraphrase/rerank, skill distillation' },
-  { role: 'reflection', label: 'Reflection', hint: 'Lesson-learning, memory extraction and merge decisions' },
-  { role: 'plan', label: 'Plan', hint: 'Scoped multi-step research subtasks' },
-  { role: 'vision', label: 'Vision', hint: 'OCR transcription of page screenshots' },
+  { role: 'utility', label: 'modelProfiles.utilityRole', hint: 'modelProfiles.utilityHint' },
+  { role: 'reflection', label: 'modelProfiles.reflectionRole', hint: 'modelProfiles.reflectionHint' },
+  { role: 'plan', label: 'modelProfiles.planRole', hint: 'modelProfiles.planHint' },
+  { role: 'vision', label: 'modelProfiles.visionRole', hint: 'modelProfiles.visionHint' },
 ];
 
 const EMPTY_FORM: Omit<ModelProfile, 'id'> = {
@@ -15,7 +16,31 @@ const EMPTY_FORM: Omit<ModelProfile, 'id'> = {
   model: '',
   apiVersion: '',
   privacyTier: 'cloud',
+  description: '',
+  capabilities: {
+    vision: false,
+    audio: false,
+    video: false,
+  },
 };
+
+const ROLE_CAPABILITY: Partial<Record<Exclude<ModelRole, 'main'>, keyof NonNullable<ModelProfile['capabilities']>>> = {
+  vision: 'vision',
+};
+
+function hasCapability(profile: ModelProfile | undefined, capability: keyof NonNullable<ModelProfile['capabilities']>): boolean {
+  return Boolean(profile?.capabilities?.[capability]);
+}
+
+function selectedCapabilities(profile: ModelProfile): string[] {
+  const caps = profile.capabilities;
+  if (!caps) return [];
+  return [
+    caps.vision ? 'vision' : '',
+    caps.audio ? 'audio' : '',
+    caps.video ? 'video' : '',
+  ].filter(Boolean);
+}
 
 function newId(): string {
   return `mp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -33,6 +58,7 @@ async function loadSettings(): Promise<Settings> {
 // role mapping = that role just uses the main model, same as before profiles
 // existed. See llmProvider.ts resolveModelForRole for the resolution logic.
 export function ModelProfilesSection() {
+  const t = useT();
   const [settings, setSettings] = useState<Settings>(EMPTY_SETTINGS);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -54,6 +80,14 @@ export function ModelProfilesSection() {
 
   const submitForm = async () => {
     if (!formValid) return;
+    const description = form.description?.trim() || undefined;
+    const capabilities = form.capabilities && (form.capabilities.vision || form.capabilities.audio || form.capabilities.video)
+      ? {
+          vision: Boolean(form.capabilities.vision),
+          audio: Boolean(form.capabilities.audio),
+          video: Boolean(form.capabilities.video),
+        }
+      : undefined;
     const profile: ModelProfile = {
       id: editingId ?? newId(),
       name: form.name.trim(),
@@ -64,6 +98,8 @@ export function ModelProfilesSection() {
       temperature: form.temperature,
       maxTokens: form.maxTokens,
       privacyTier: form.privacyTier,
+      description,
+      capabilities,
     };
     const next = editingId ? profiles.map((p) => (p.id === editingId ? profile : p)) : [...profiles, profile];
     await patch({ modelProfiles: next });
@@ -82,6 +118,12 @@ export function ModelProfilesSection() {
       temperature: p.temperature,
       maxTokens: p.maxTokens,
       privacyTier: p.privacyTier ?? 'cloud',
+      description: p.description ?? '',
+      capabilities: {
+        vision: p.capabilities?.vision ?? false,
+        audio: p.capabilities?.audio ?? false,
+        video: p.capabilities?.video ?? false,
+      },
     });
     setEditingId(p.id);
     setShowForm(true);
@@ -109,25 +151,30 @@ export function ModelProfilesSection() {
 
   return (
     <div class="ws-model-profiles">
-      <h2>Model profiles &amp; routing</h2>
-      <p class="settings-note">
-        Route background work — titles, reflection, research subtasks, page-image OCR — to a
-        different (often cheaper or local) model than the main chat loop above, without changing
-        what the main conversation uses. A role with no profile assigned just uses the main model,
-        same as before profiles existed.
-      </p>
+      <h2>{t('modelProfiles.title')}</h2>
+      <p class="settings-note">{t('modelProfiles.note')}</p>
 
       {profiles.length > 0 && (
-        <ul class="sites-list">
+      <ul class="sites-list">
           {profiles.map((p) => (
             <li key={p.id} class="site-row">
-              <span class={`approval-tag trust-badge trust-${p.privacyTier === 'local' ? 'local' : 'public'}`}>
-                {p.privacyTier === 'local' ? 'local' : 'cloud'}
-              </span>
-              <span class="site-name">{p.name}</span>
-              <span class="site-desc">{p.model} — {p.baseUrl}</span>
-              <button class="icon-btn" title="Edit" onClick={() => edit(p)}>✎</button>
-              <button class="icon-btn" title="Delete" onClick={() => remove(p.id)}>✕</button>
+              <div class="site-main">
+                <div class="site-row-top">
+                    <span class={`approval-tag trust-badge trust-${p.privacyTier === 'local' ? 'local' : 'public'}`}>
+                      {p.privacyTier === 'local' ? t('modelProfiles.local') : t('modelProfiles.cloud')}
+                    </span>
+                    {selectedCapabilities(p).map((cap) => (
+                      <span key={cap} class="approval-tag approval-cap">
+                        {cap === 'vision' ? t('modelProfiles.vision') : cap === 'audio' ? t('modelProfiles.audio') : t('modelProfiles.video')}
+                      </span>
+                    ))}
+                </div>
+                <span class="site-name">{p.name}</span>
+                <span class="site-desc">{p.model} — {p.baseUrl}</span>
+                {p.description && <span class="site-note">{p.description}</span>}
+              </div>
+              <button class="icon-btn" title={t('modelProfiles.edit')} onClick={() => edit(p)}>✎</button>
+              <button class="icon-btn" title={t('modelProfiles.delete')} onClick={() => remove(p.id)}>✕</button>
             </li>
           ))}
         </ul>
@@ -136,24 +183,33 @@ export function ModelProfilesSection() {
       {showForm ? (
         <div class="site-form">
           <label class="field">
-            <span>Name</span>
-            <input type="text" placeholder="Local Ollama" value={form.name} onInput={(e) => setForm({ ...form, name: (e.target as HTMLInputElement).value })} />
+              <span>{t('modelProfiles.name')}</span>
+              <input type="text" placeholder="Local Ollama" value={form.name} onInput={(e) => setForm({ ...form, name: (e.target as HTMLInputElement).value })} />
+            </label>
+            <label class="field">
+              <span>{t('modelProfiles.description')}</span>
+            <input
+              type="text"
+              placeholder="Cheap local model for summarization and utility work"
+              value={form.description ?? ''}
+              onInput={(e) => setForm({ ...form, description: (e.target as HTMLInputElement).value })}
+            />
           </label>
           <label class="field">
-            <span>Endpoint base URL</span>
+              <span>{t('modelProfiles.endpointUrl')}</span>
             <input type="url" placeholder="http://localhost:11434/v1" value={form.baseUrl} onInput={(e) => setForm({ ...form, baseUrl: (e.target as HTMLInputElement).value })} />
           </label>
           <label class="field">
-            <span>API key</span>
+              <span>{t('modelProfiles.apiKey')}</span>
             <input type="password" placeholder="sk-… (blank if the endpoint needs none)" value={form.apiKey} onInput={(e) => setForm({ ...form, apiKey: (e.target as HTMLInputElement).value })} />
           </label>
           <label class="field">
-            <span>Model</span>
+              <span>{t('modelProfiles.model')}</span>
             <input type="text" placeholder="llama3" value={form.model} onInput={(e) => setForm({ ...form, model: (e.target as HTMLInputElement).value })} />
           </label>
           <div class="field-row">
             <label class="field">
-              <span>Temperature (optional)</span>
+              <span>{t('modelProfiles.temperature')}</span>
               <input
                 type="number" step="0.1" min="0" max="2"
                 value={form.temperature ?? ''}
@@ -161,7 +217,7 @@ export function ModelProfilesSection() {
               />
             </label>
             <label class="field">
-              <span>Max tokens (optional)</span>
+              <span>{t('modelProfiles.maxTokens')}</span>
               <input
                 type="number" min="1"
                 value={form.maxTokens ?? ''}
@@ -170,46 +226,90 @@ export function ModelProfilesSection() {
             </label>
           </div>
           <label class="field">
-            <span>Privacy tier</span>
+            <span>{t('modelProfiles.privacyTier')}</span>
             <select value={form.privacyTier ?? 'cloud'} onChange={(e) => setForm({ ...form, privacyTier: (e.target as HTMLSelectElement).value as 'local' | 'cloud' })}>
-              <option value="cloud">Cloud (hosted service)</option>
-              <option value="local">Local (on-device / private network)</option>
+              <option value="cloud">{t('modelProfiles.cloud')}</option>
+              <option value="local">{t('modelProfiles.local')}</option>
             </select>
           </label>
-          <p class="settings-note">
-            Tag a profile <strong>Local</strong> only if it's actually private (e.g. Ollama on
-            localhost). "Restrict background tasks to local" below refuses to route to anything
-            not tagged Local.
-          </p>
-          <div class="settings-actions">
-            <button class="btn" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); }}>Cancel</button>
-            <button class="btn btn-primary" onClick={submitForm} disabled={!formValid}>{editingId ? 'Update' : 'Add'} profile</button>
+          <div class="field-stack">
+            <span class="field-label">{t('modelProfiles.capabilities')}</span>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                checked={form.capabilities?.vision ?? false}
+                onChange={(e) => setForm({
+                  ...form,
+                  capabilities: { ...(form.capabilities ?? EMPTY_FORM.capabilities!), vision: (e.target as HTMLInputElement).checked },
+                })}
+              />
+              <span class="toggle-text">
+                <span class="toggle-label">{t('modelProfiles.vision')}</span>
+                <span class="toggle-note">Image inputs, screenshots, OCR fallback</span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                checked={form.capabilities?.audio ?? false}
+                onChange={(e) => setForm({
+                  ...form,
+                  capabilities: { ...(form.capabilities ?? EMPTY_FORM.capabilities!), audio: (e.target as HTMLInputElement).checked },
+                })}
+              />
+              <span class="toggle-text">
+                <span class="toggle-label">{t('modelProfiles.audio')}</span>
+                <span class="toggle-note">Transcription / speech understanding</span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                checked={form.capabilities?.video ?? false}
+                onChange={(e) => setForm({
+                  ...form,
+                  capabilities: { ...(form.capabilities ?? EMPTY_FORM.capabilities!), video: (e.target as HTMLInputElement).checked },
+                })}
+              />
+              <span class="toggle-text">
+                <span class="toggle-label">{t('modelProfiles.video')}</span>
+                <span class="toggle-note">Frame-level video understanding</span>
+              </span>
+            </label>
           </div>
-        </div>
-      ) : (
-        <div class="context-actions">
-          <button class="btn btn-small" onClick={() => setShowForm(true)}>Add profile</button>
-        </div>
-      )}
+          <p class="settings-note">{t('modelProfiles.tagLocalNote')}</p>
+          <div class="settings-actions">
+              <button class="btn" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); }}>{t('common.cancel')}</button>
+              <button class="btn btn-primary" onClick={submitForm} disabled={!formValid}>{editingId ? t('modelProfiles.updateProfile') : t('modelProfiles.addProfile')}</button>
+            </div>
+          </div>
+        ) : (
+          <div class="context-actions">
+          <button class="btn btn-small" onClick={() => setShowForm(true)}>{t('modelProfiles.addProfile')}</button>
+          </div>
+        )}
 
       {profiles.length > 0 && (
         <>
-          <h3>Role assignment</h3>
+          <h3>{t('modelProfiles.roleAssignment')}</h3>
           <table class="ws-role-table">
             <tbody>
               {ROLES.map(({ role, label, hint }) => (
                 <tr key={role}>
                   <td>
-                    <strong>{label}</strong>
-                    <p class="settings-note">{hint}</p>
+                    <strong>{t(label)}</strong>
+                    <p class="settings-note">{t(hint)}</p>
                   </td>
                   <td>
                     <select value={settings.roleProfiles?.[role] ?? ''} onChange={(e) => setRoleProfile(role, (e.target as HTMLSelectElement).value)}>
-                      <option value="">Same as main model</option>
+                      <option value="">{t('modelProfiles.sameAsMain')}</option>
                       {profiles.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
+                        <option key={p.id} value={p.id}>{p.name}{p.description ? ` — ${p.description}` : ''}</option>
                       ))}
                     </select>
+                    {ROLE_CAPABILITY[role] && settings.roleProfiles?.[role] && !hasCapability(profiles.find((p) => p.id === settings.roleProfiles?.[role]), ROLE_CAPABILITY[role]!) && (
+                      <p class="settings-note warn">{t('modelProfiles.roleCapabilityMissing').replace('{capability}', String(ROLE_CAPABILITY[role]))}</p>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -222,13 +322,9 @@ export function ModelProfilesSection() {
               checked={settings.restrictBackgroundToLocal ?? false}
               onChange={(e) => patch({ restrictBackgroundToLocal: (e.target as HTMLInputElement).checked })}
             />
-            <span>Restrict background tasks to local-tagged profiles</span>
-          </label>
-          <p class="settings-note">
-            When on, any role routed to a profile not tagged Local falls back to the main model
-            instead — background work never leaves the device to a hosted service, even if a
-            cloud profile is assigned above.
-          </p>
+              <span>{t('modelProfiles.restrictLocal')}</span>
+            </label>
+          <p class="settings-note">{t('modelProfiles.restrictLocalNote')}</p>
         </>
       )}
     </div>

@@ -11,6 +11,7 @@ import type {
   DuckDbOp,
   EmbedLocalRequest,
   EmbedLocalResponse,
+  ExportedProduct,
   ExportedRepo,
   ExtractOfficeRequest,
   ExtractOfficeResponse,
@@ -20,6 +21,9 @@ import type {
   GenerateDocumentResponse,
   GeneratePresentationRequest,
   SlideSpec,
+  ProductMeta,
+  ProductRequest,
+  ProductResponse,
   RepoRequest,
   RepoResponse,
   RepoKind,
@@ -222,6 +226,48 @@ export function repoImport(repos: ExportedRepo[]): Promise<RepoResponse> {
   return repoRequest({ target: 'offscreen-repo', op: 'import', repos });
 }
 
+// ----- Products store (durable outputs from scheduled tasks/triggers) -----
+
+async function productRequest(req: ProductRequest): Promise<ProductResponse> {
+  try {
+    await ensureOffscreen();
+  } catch (e) {
+    return { ok: false, error: `Could not start the products store: ${String(e)}` };
+  }
+  return sendOffscreen<ProductResponse>(req);
+}
+
+export async function productSave(
+  filename: string,
+  mimeType: string,
+  dataBase64: string,
+  opts: { sourceTitle?: string; conversationId?: string } = {},
+): Promise<ProductResponse> {
+  return productRequest({ target: 'offscreen-product', op: 'save', filename, mimeType, dataBase64, ...opts });
+}
+
+export async function productList(): Promise<ProductMeta[]> {
+  const res = await productRequest({ target: 'offscreen-product', op: 'list' });
+  return res.ok && Array.isArray(res.result) ? (res.result as ProductMeta[]) : [];
+}
+
+export async function productGet(id: string): Promise<{ meta: ProductMeta; dataBase64: string } | null> {
+  const res = await productRequest({ target: 'offscreen-product', op: 'get', id });
+  return res.ok ? (res.result as { meta: ProductMeta; dataBase64: string } | null) : null;
+}
+
+export function productDelete(id: string): Promise<ProductResponse> {
+  return productRequest({ target: 'offscreen-product', op: 'delete', id });
+}
+
+export function productExport(): Promise<ProductResponse> {
+  return productRequest({ target: 'offscreen-product', op: 'export' });
+}
+
+export function productImport(products: ExportedProduct[]): Promise<ProductResponse> {
+  return productRequest({ target: 'offscreen-product', op: 'import', products });
+}
+
 // ----- DuckDB data engine -----
 
 /**
@@ -257,20 +303,20 @@ async function sendDuckDb(request: DuckDbRequest): Promise<DuckDbResponse> {
   return res;
 }
 
-function duckDbRequest(op: DuckDbOp, sql?: string, tableName?: string, data?: string): Promise<DuckDbResponse> {
-  return sendDuckDb({ target: 'offscreen-duckdb', op, sql, tableName, data });
+function duckDbRequest(op: DuckDbOp, sql?: string, tableName?: string, data?: string, projectId?: string): Promise<DuckDbResponse> {
+  return sendDuckDb({ target: 'offscreen-duckdb', op, sql, tableName, data, projectId });
 }
 
 export function duckDbQuery(sql: string): Promise<DuckDbResponse> {
   return duckDbRequest('query', sql);
 }
 
-export function duckDbImportCsv(tableName: string, data: string): Promise<DuckDbResponse> {
-  return duckDbRequest('import_csv', undefined, tableName, data);
+export function duckDbImportCsv(tableName: string, data: string, projectId?: string): Promise<DuckDbResponse> {
+  return duckDbRequest('import_csv', undefined, tableName, data, projectId);
 }
 
-export function duckDbImportJson(tableName: string, data: string): Promise<DuckDbResponse> {
-  return duckDbRequest('import_json', undefined, tableName, data);
+export function duckDbImportJson(tableName: string, data: string, projectId?: string): Promise<DuckDbResponse> {
+  return duckDbRequest('import_json', undefined, tableName, data, projectId);
 }
 
 export function duckDbListTables(): Promise<DuckDbResponse> {
@@ -281,8 +327,8 @@ export function duckDbDescribeTable(tableName: string): Promise<DuckDbResponse> 
   return duckDbRequest('describe_table', undefined, tableName);
 }
 
-export function duckDbPersistTable(tableName: string): Promise<DuckDbResponse> {
-  return duckDbRequest('persist_table', undefined, tableName);
+export function duckDbPersistTable(tableName: string, projectId?: string): Promise<DuckDbResponse> {
+  return duckDbRequest('persist_table', undefined, tableName, undefined, projectId);
 }
 
 export function duckDbLoadTable(tableName: string): Promise<DuckDbResponse> {
@@ -294,8 +340,8 @@ export function duckDbDropTable(tableName: string): Promise<DuckDbResponse> {
 }
 
 /** Open a data file (CSV/JSON/Parquet/ZIP) from base64 bytes into one or more tables. */
-export function duckDbOpenFile(name: string, bytesB64: string): Promise<DuckDbResponse> {
-  return sendDuckDb({ target: 'offscreen-duckdb', op: 'open_file', name, bytesB64 });
+export function duckDbOpenFile(name: string, bytesB64: string, projectId?: string): Promise<DuckDbResponse> {
+  return sendDuckDb({ target: 'offscreen-duckdb', op: 'open_file', name, bytesB64, projectId });
 }
 
 /** Drop every table and clear all persisted datasets — a fresh engine for a new conversation. */

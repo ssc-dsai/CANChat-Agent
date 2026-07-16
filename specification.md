@@ -289,6 +289,8 @@ it can't regress onboarding — plus `ModelProfilesSection.tsx` below it for nam
 alternate-endpoint profiles and role routing; see §9 *Model orchestration*),
 **Automations** (`AutomationsPage.tsx` — scheduled tasks, workflows, and
 event triggers; see §9 *Agent platform*),
+**Products** (`ProductsPage.tsx` — files those runs generate, OPFS-backed;
+see §9 *Agent platform*),
 **Datasets** (`DatasetBrowser.tsx` — DuckDB: list/preview
 tables, import CSV/JSON, run SQL via the `duckdb` `RuntimeRequest`), **Data**
 (`DataViewer.tsx`, over `export_data` results), **Image** (`ImageViewer.tsx`, full-size
@@ -424,6 +426,15 @@ A turn-based loop over the OpenAI chat API with tool calling.
   stateful-but-benign: sequential, no approval card. (The `map_*` tools and
   `create_*` act on the extension's own sandboxed surfaces — not the user's session —
   so they are non-gated.)
+- `UNATTENDED_BLOCKED_TOOLS` = `query_data` — a narrower gate than
+  `APPROVAL_REQUIRED`, checked separately in `executeToolCall` before the
+  normal approval logic: stays frictionless in attended chat (not
+  approval-gated interactively — it only touches the local DuckDB engine, per
+  the read-only enforcement below) but is refused outright
+  (`this.unattendedApprovalBlocked = true`, same signal as a denied approval)
+  when `this.unattended` is true, since a scheduled task or event trigger
+  running model-authored SQL with nobody watching is a materially different
+  risk than the same call in an attended turn.
 
 ---
 
@@ -588,10 +599,66 @@ classification, non-gated; datasets persist to OPFS)
   table (auto-persisted).
 - `query_data {sql}` — run DuckDB SQL (SELECT/WHERE/GROUP BY/JOIN/window fns…),
   returns rows as JSON. The model translates natural-language questions to SQL.
-- `list_datasets` — list loaded tables. `describe_dataset {tableName}` — schema + row
-  count.
+  **Read-only enforced**: `shared/sqlGuard.ts`'s `validateReadOnlySql` (pure,
+  unit-tested) rejects anything but a single `SELECT`/`WITH…SELECT` statement
+  before it reaches DuckDB — no semicolon-separated multi-statements, no
+  `INSERT`/`UPDATE`/`DELETE`/DDL/`ATTACH`/`COPY`/`PRAGMA`/etc, checked by
+  word-boundary keyword matching (a string literal containing a keyword as a
+  whole word can false-positive; this is defense-in-depth, not a real SQL
+  parser). Results are capped at 500 rows (`MAX_QUERY_ROWS`, via `Table.slice`
+  on the Arrow result before conversion, so an oversized result isn't fully
+  materialized into JS) and the query is wrapped in a 15s timeout
+  (`QUERY_TIMEOUT_MS`) — DuckDB-WASM exposes no engine-side cancellation here,
+  so this bounds the caller's wait rather than truly stopping execution. A
+  truncated response is flagged (`truncated: true` + a note telling the model
+  to narrow the query, not treat the sample as complete) and surfaced in the
+  Datasets workspace page too. See `UNATTENDED_BLOCKED_TOOLS` above for why
+  this tool is additionally refused outright in scheduled tasks/triggers.
+- `list_datasets` — list loaded tables. `describe_dataset {tableName}` — schema, row
+  count, and a per-column profile: null ratio, approximate distinct count, min/max
+  (`duckDb.ts`'s `profileColumns`, one bounded query via DuckDB's built-in
+  `SUMMARIZE`, not a per-column round trip — computed on demand by
+  `describeTable`, not `listTables`, so plain table metadata still appears
+  before any profiling cost). `null_percentage` is cast to `DOUBLE` inside the
+  SQL rather than parsed from the raw Arrow `DECIMAL` in JS — the latter
+  silently drops the scale (reads 33.33 as 3333). Structured Data RAG MVP
+  item #2 — deliberately no sampling/bounding beyond the single pass; large
+  tables are a known follow-up, not solved here. Surfaced in the Datasets
+  workspace page via a **Profile** button per table.
 - `persist_dataset {tableName}` / `load_dataset {tableName}` / `drop_dataset {tableName}`
   — explicitly persist, reload, or permanently delete a dataset (memory + OPFS).
+  **Project-scoped** (Structured Data RAG MVP item #3, mirroring the existing
+  memory/skills/capabilities pattern — see `visibleToProject`,
+  `shared/memoryGraph.ts`): persisting a table (via `import_data`,
+  `open_data_url`, or `persist_dataset`) tags its OPFS `meta.json` with
+  `AgentRuntime.activeProjectId`; a routine re-persist that doesn't pass a
+  project id preserves whatever the table already had rather than clearing it.
+  `list_datasets` filters to datasets visible under the active project (global
+  = no `projectId`, else exact match) before returning names, so a
+  differently-scoped dataset's name is never disclosed to the model at all;
+  `describe_dataset`/`persist_dataset`/`load_dataset`/`drop_dataset` each
+  re-check visibility by name (`AgentRuntime.isDatasetVisible`) before acting,
+  so guessing an exact name from a different project still fails. This is a
+  filter, not a partition — `query_data`'s free-form SQL is **not** scanned
+  for table references, so a model that already knows another project's exact
+  table name (e.g. from stale context) could still `SELECT` it directly; true
+  per-query enforcement is a known gap, not solved here. The Datasets
+  workspace page applies the same filter client-side, reading
+  `ba_active_project` the same way `ProjectSwitcher.tsx` does.
+- **Hybrid structured + document retrieval** (Structured Data RAG MVP item
+  #4) — no new tool, no new orchestration code: a system-prompt rule (next to
+  the NL→SQL guidance above) tells the model to answer a question spanning
+  both a dataset and narrative documents (e.g. "which projects exceeded
+  budget, and what do their status reports say?") by running `query_data`
+  first for the exact filtered answer, then `search_repo` (or `add_to_repo`
+  first, if the pages aren't captured yet) using identifiers/names *from that
+  result* as the query, and citing both — never substituting one source's
+  numbers for the other's prose. Dataset/repo selection stays name-based (no
+  schema/column embeddings — out of MVP scope per §25 of the feature spec this
+  phase implements). Proven end-to-end by a mock-driven E2E test that opens a
+  document as the active tab, asks a hybrid question, and asserts the tool
+  trace contains both the SQL result (`Alpha`) and retrieved document text
+  (`vendor delays`) — not just that a plausible-sounding answer came back.
 
 **Knowledge & output**
 - `save_app_playbook {origin, name, description, content, reason}` — persist a
@@ -1096,13 +1163,34 @@ untouched by any of this):
   text pulled out as pure `buildRunNotificationMessage` for testability;
   degrades to a no-op if the `notifications` permission/API is unavailable)
   fires on every run, clicking it opens the Automations page; any
-  `FileArtifact` produced (e.g. `create_powerpoint`) is auto-downloaded via
-  `chrome.downloads.download` from `AgentRuntime.pushChat` (only when
+  `FileArtifact` produced (e.g. `create_powerpoint`) is saved into the durable
+  **Products** store (`AgentRuntime.pushChat` → `productSave`, only when
   `this.unattended` — an attended turn still uses the click-to-download card,
-  unchanged) rather than only ever rendering as a card no one is present to
-  click; `runScheduledTask`'s return value carries `conversationId` and
-  `fileArtifactNames`, threaded into `ScheduledRun`/`TriggerRun` and shown in
-  full (not truncated to a hover tooltip) on the Automations page.
+  unchanged) rather than either only rendering as a card no one is present to
+  click, or firing an OS download prompt per run (a real annoyance once
+  several jobs are scheduled); `runScheduledTask`'s return value carries
+  `conversationId` and `fileArtifactNames`, threaded into
+  `ScheduledRun`/`TriggerRun` and shown in full (not truncated to a hover
+  tooltip) on the Automations page.
+- **Products** (`offscreen/productStore.ts`, `shared/messages.ts`
+  `ProductRequest`/`ProductMeta`) — an OPFS-backed store for files unattended
+  runs generate, mirroring `repoStore.ts`'s pattern (offscreen-document-only;
+  the service worker reaches it via `offscreenClient.ts`'s
+  `productSave`/`productList`/`productGet`/`productDelete` → `target:
+  'offscreen-product'` messages) but laid out one self-contained item per
+  directory (`products/<id>/{meta.json, blob}`), closer to `duckDb.ts`'s
+  per-dataset directories than `repoStore.ts`'s single shared corpus. Each
+  `ProductMeta {id, filename, mimeType, createdAt, sizeBytes, sourceTitle?,
+  conversationId?}` is retrievable by id (base64 round-trip through the same
+  bridge) and listed newest-first. UI: `src/workspace/ProductsPage.tsx` — a
+  flat list (filename, timestamp, size, source task/trigger name) with
+  Download (via the existing `saveFile` Save-As flow) and Delete per row; no
+  expiry, capacity, or auto-pruning — deletion is manual. Included in
+  **Backup & Restore** (`sidebar/BackupRestoreSection.tsx`), mirroring repos:
+  `productExportAll`/`productImportAll` (base64-encoded blobs) round-trip
+  through `products_export`/`products_import` messages and an `ExportedProduct
+  {meta, dataB64}` array in the backup JSON, overwriting any product with the
+  same id on restore.
 - **Workflows** (`shared/workflows.ts` `Workflow {name, skillNames[]}`) — a
   named, ordered chain of *existing* skills. Running one is not a new
   execution engine: `buildWorkflowPrompt` just writes an explicit

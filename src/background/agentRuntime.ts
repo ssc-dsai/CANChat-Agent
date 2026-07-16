@@ -76,7 +76,7 @@ import { mcpCallTool, mcpListTools } from './mcpClient';
 import { mapCommand } from './mapClient';
 import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, resolveModelForRole, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
-import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
+import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, productSave, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
 import type { SearchHit } from '../shared/vectorSearch';
 import { ingestTab } from './repoIngest';
@@ -201,6 +201,70 @@ interface PlanStep {
   status: PlanStepStatus;
 }
 
+function sanitizeTextFilename(filename: string): string {
+  return filename
+    .replace(/[\\/]/g, '_')
+    .replace(/[<>:"|?*\x00-\x1F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function fileExtension(filename: string): string {
+  const base = filename.split(/[\\/]/).pop() ?? filename;
+  const dot = base.lastIndexOf('.');
+  if (dot <= 0 || dot === base.length - 1) return '';
+  return base.slice(dot + 1).toLowerCase();
+}
+
+function mimeTypeForTextFile(filename: string): string {
+  switch (fileExtension(filename)) {
+    case 'md':
+    case 'markdown':
+      return 'text/markdown';
+    case 'txt':
+    case 'log':
+      return 'text/plain';
+    case 'csv':
+      return 'text/csv';
+    case 'json':
+      return 'application/json';
+    case 'yaml':
+    case 'yml':
+      return 'text/yaml';
+    case 'html':
+    case 'htm':
+      return 'text/html';
+    case 'xml':
+      return 'application/xml';
+    default:
+      return 'text/plain';
+  }
+}
+
+function imageExtensionForMimeType(mimeType: string): string {
+  switch ((mimeType || '').split(';')[0].trim().toLowerCase()) {
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    case 'image/png':
+    default:
+      return 'png';
+  }
+}
+
+function encodeUtf8Base64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 /** Tools that mutate page or browser state and therefore need user approval. */
 const APPROVAL_REQUIRED = new Set([
   'click_element',
@@ -219,6 +283,16 @@ const APPROVAL_REQUIRED = new Set([
   'schedule_task', // creates persistent background automation — confirm first
   'cancel_scheduled_task', // deletes persistent automation — confirm first
 ]);
+
+/**
+ * Tools that stay frictionless in an attended chat (not in APPROVAL_REQUIRED)
+ * but must never run unattended: `query_data` executes model-authored SQL
+ * (read-only-enforced in duckDb.ts, but still arbitrary within that), which
+ * is fine when a user is present to see the result, not fine as a silent
+ * scheduled/triggered action. Checked separately from APPROVAL_REQUIRED so it
+ * doesn't add an approval prompt to normal interactive use.
+ */
+const UNATTENDED_BLOCKED_TOOLS = new Set(['query_data']);
 
 /** Read-only / local tools that are safe to run concurrently within one turn. */
 const READ_ONLY_TOOLS = new Set([
@@ -243,6 +317,8 @@ const READ_ONLY_TOOLS = new Set([
   'update_plan',
   'record_finding',
   'export_data',
+  'create_file',
+  'create_image',
   'create_word_document',
   'read_pdf',
   'read_office_document',
@@ -333,9 +409,11 @@ Planning multi-step tasks:
 - You can issue several independent read-only tool calls in one turn — they run in parallel (e.g. get_tab_content on several tabs at once).
 - Before giving your final answer, verify the goal is actually met (re-read the page or re-check the result) rather than assuming an action worked.
 - When the task is to collect structured information (one row per item, often across several pages), gather it as you go and call export_data with columns and rows — the user gets a downloadable CSV/JSON table.
+- When the user wants a text or markdown file, call create_file with a filename and full content — they get a downloadable .txt/.md card.
+- When the user wants a generated image, call create_image with a detailed prompt — they get a downloadable image card.
 - When the user wants a Word document, report, or formatted write-up to keep, call create_word_document with a title and markdown body — they get a downloadable .docx.
 - When the user wants a slide deck or presentation, call create_powerpoint with a title and an ordered slides array (each slide: title, bullets, optional speaker notes) — they get a downloadable .pptx.
-- When the task involves analysing, filtering, sorting, aggregating, joining, or comparing structured data, use the data analysis tools: (1) import_data to load CSV/JSON into the DuckDB engine, (2) query_data to run SQL queries (SELECT, WHERE, GROUP BY, ORDER BY, LIMIT, JOIN, window functions) and get results as JSON, (3) list_datasets to see what tables are loaded, (4) describe_dataset to see the schema. Import data first, then run multiple queries to explore and answer the question. For natural-language questions, translate them into SQL queries against the loaded data.
+- When the task involves analysing, filtering, sorting, aggregating, joining, or comparing structured data, use the data analysis tools: (1) import_data to load CSV/JSON/Parquet into the DuckDB engine when you already have the file contents, (2) query_data to run SQL queries (SELECT, WHERE, GROUP BY, ORDER BY, LIMIT, JOIN, window functions) and get results as JSON, (3) list_datasets to see what tables are loaded, (4) describe_dataset to see the schema. Import data first, then run multiple queries to explore and answer the question. For natural-language questions, translate them into SQL queries against the loaded data.
 - **NL→SQL examples:**
   - "What's the average salary by department?" → \`SELECT department, AVG(CAST(salary AS DOUBLE)) AS avg_salary FROM data GROUP BY department ORDER BY avg_salary DESC\`
   - "Find the top 5 most expensive products" → \`SELECT product, price FROM data ORDER BY CAST(price AS DOUBLE) DESC LIMIT 5\`
@@ -347,6 +425,7 @@ Planning multi-step tasks:
   - "What are the most common values in the status column?" → \`SELECT status, COUNT(*) AS cnt FROM data GROUP BY status ORDER BY cnt DESC\`
   Call describe_dataset first to see column names and types before writing queries. DuckDB columns are VARCHAR; use CAST(col AS DOUBLE) for numeric operations and CAST(col AS BIGINT) for integer operations.
 - Datasets are automatically persisted to on-device storage when imported and auto-restored on restart. Use persist_dataset to explicitly persist tables created or modified with SQL. Use load_dataset to reload a persisted dataset, and drop_dataset to permanently delete a dataset from both memory and storage.
+- **Hybrid structured + document questions** (e.g. "which projects exceeded budget, and what do their status reports say?"): query the dataset first with query_data to get the exact identifiers/names (do the math and filtering in SQL — never eyeball or estimate from a data dump), then use search_repo (or add_to_repo first if the relevant pages aren't captured yet) with those identifiers/names as the query to pull matching document evidence. Cite both: the query result for the numbers, the retrieved passages (with page name/URL) for the narrative. Never substitute one for the other — a number from a document's prose is not as reliable as the same number computed by SQL over the actual data.
 - To analyse a data file the user references by URL or that is open in the current tab (CSV, TSV, JSON, NDJSON, Parquet, or geospatial GeoJSON/KML/GPX/FGB — or a ZIP of those), call open_data_url with that URL — it loads the file into the engine as one table per file — then query it with query_data. Do not try to read large data files with get_tab_content or read_pdf. If the "Datasets loaded" list in the working state already names a table, just query it; never ask the user to paste data, and answer with query results, not whole-table dumps.
 - Reach for open_data_url on a ZIP archive whenever you suspect it holds structured data files (e.g. the user mentions data/records/a database/JSON/maps, or the archive's name or context suggests tabular or geospatial contents) OR the user explicitly asks to open/query the archive's data with DuckDB. open_data_url unzips it and loads every supported member as its own table; query them with query_data. Geospatial members load via the spatial extension with their geometry as a GeoJSON-text "geometry" column.
 - XML and SQLite/database (.xml/.db/.sqlite) files CANNOT be opened by the data engine — if an archive or URL contains only those, say so plainly rather than pretending it loaded; do not silently ignore the request.
@@ -540,6 +619,8 @@ export class AgentRuntime {
   private pendingApproval: PendingApproval | null = null;
   private unattended = false;
   private unattendedApprovalBlocked = false;
+  /** The scheduled task/trigger title driving the current unattended run, for tagging Products with their source. */
+  private unattendedTaskTitle: string | null = null;
   private authWait: AuthWait | null = null;
   private permissionWait: PermissionWait | null = null;
   private abortController: AbortController | null = null;
@@ -869,13 +950,15 @@ export class AgentRuntime {
     const before = this.messages.length;
     this.unattended = true;
     this.unattendedApprovalBlocked = false;
+    this.unattendedTaskTitle = title;
     try {
       await this.handleUserMessage(`[Scheduled task: ${title}]\n${prompt}`);
       const turnMessages = this.messages.slice(before);
       const response = [...turnMessages].reverse().find((m) => m.role === 'assistant')?.text;
-      // Files generated unattended are auto-downloaded (see pushChat) since no
-      // sidebar is open to click the card's Download button — surface their
-      // names here so the run record (and its notification) can say where they went.
+      // Files generated unattended are saved to the Products store (see
+      // pushChat) since no sidebar is open to click the card's Download
+      // button — surface their names here so the run record (and its
+      // notification) can say where they went.
       const fileArtifactNames = turnMessages.filter((m) => m.fileArtifact).map((m) => m.fileArtifact!.filename);
       const conversationId = this.currentConversationId ?? undefined;
       if (this.unattendedApprovalBlocked) {
@@ -884,6 +967,7 @@ export class AgentRuntime {
       return { ok: Boolean(response), response, error: response ? undefined : 'Scheduled task produced no response.', conversationId, fileArtifactNames };
     } finally {
       this.unattended = false;
+      this.unattendedTaskTitle = null;
     }
   }
 
@@ -2461,6 +2545,12 @@ export class AgentRuntime {
       };
     }
 
+    if (this.unattended && UNATTENDED_BLOCKED_TOOLS.has(name)) {
+      this.unattendedApprovalBlocked = true;
+      this.finishActivity(activity, 'denied', 'Not permitted to run unattended');
+      return `Error: tool "${name}" is not permitted to run unattended in a scheduled task or trigger.`;
+    }
+
     // Trust gating: low-trust capabilities' tools always require approval,
     // even if the tool is normally read-only.
     const needsApproval = APPROVAL_REQUIRED.has(name) ||
@@ -2552,7 +2642,7 @@ export class AgentRuntime {
         return JSON.stringify(await browser.navigate(tabId, url));
       }
       case 'search_web': {
-        const result = await browser.searchWeb(String(args.query));
+        const result = await browser.searchWeb(String(args.query), this.unattended);
         if (result.tabId > 0) await this.addToConversationGroup(result.tabId);
         return JSON.stringify({ ...result, group: this.groupName });
       }
@@ -2817,6 +2907,10 @@ export class AgentRuntime {
       }
       case 'export_data':
         return this.exportData(args);
+      case 'create_file':
+        return this.createFile(args);
+      case 'create_image':
+        return this.createImage(args);
       case 'create_word_document':
         return this.createWordDocument(args);
       case 'create_powerpoint':
@@ -2855,19 +2949,38 @@ export class AgentRuntime {
             dataExport: { title: qTitle, filename: qFilename, columns: qColumns, rows: qRows },
           });
         }
-        return JSON.stringify({ columns: qColumns, rows: qRows, rowCount: qres.rowCount ?? qRows.length });
+        return JSON.stringify({
+          columns: qColumns,
+          rows: qRows,
+          rowCount: qres.rowCount ?? qRows.length,
+          ...(qres.truncated ? { truncated: true, note: `Only the first ${qRows.length} rows are shown; the true result has ${qres.rowCount} rows. Narrow the query (WHERE/LIMIT/aggregation) rather than treating this as the complete result set.` } : {}),
+        });
       }
       case 'import_data': {
         const tableName = String(args.tableName ?? '').trim();
         const format = String(args.format ?? 'csv');
+        const raw = args.data;
+        if (!tableName || raw == null) return 'Error: import_data needs tableName and data.';
+        if (format === 'parquet') {
+          const bytesB64 = typeof raw === 'string' ? raw : '';
+          if (!bytesB64) return 'Error: import_data needs base64-encoded parquet bytes in data.';
+          const fileName = `${tableName}.parquet`;
+          const ores = await duckDbOpenFile(fileName, bytesB64, this.activeProjectId ?? undefined);
+          if (!ores.ok) return `Error: ${ores.error}`;
+          const opened = (ores.tables ?? []).filter((t) => visibleToProject(t.projectId, this.activeProjectId));
+          this.trackDatasets(opened.map((t) => t.name));
+          const summary = opened.map((t) => `${t.name} (${t.rowCount} rows, ${t.columns.length} cols)`).join('; ');
+          return `Imported ${opened.length} table(s) from parquet data into "${tableName}": ${summary}. You can now query it with query_data.`;
+        }
         // Models often emit `data` as a real JSON array/object rather than a string,
         // even though the schema says string. String() would turn that into
         // "[object Object],…" which read_json_auto rejects — so stringify non-strings.
-        const raw = args.data;
-        const data =
-          raw == null ? '' : typeof raw === 'string' ? raw : JSON.stringify(raw);
-        if (!tableName || !data) return 'Error: import_data needs tableName and data.';
-        const ires = format === 'json' ? await duckDbImportJson(tableName, data) : await duckDbImportCsv(tableName, data);
+        const data = typeof raw === 'string' ? raw : JSON.stringify(raw);
+        if (!data) return 'Error: import_data needs tableName and data.';
+        const ires =
+          format === 'json'
+            ? await duckDbImportJson(tableName, data, this.activeProjectId ?? undefined)
+            : await duckDbImportCsv(tableName, data, this.activeProjectId ?? undefined);
         if (!ires.ok) return `Error: ${ires.error}`;
         this.trackDatasets([tableName]);
         const n = ires.rowCount ?? 0;
@@ -2889,7 +3002,7 @@ export class AgentRuntime {
         } catch (e) {
           return `Error: could not fetch ${url}: ${String(e)}`;
         }
-        const ores = await duckDbOpenFile(fileName, bytesB64);
+        const ores = await duckDbOpenFile(fileName, bytesB64, this.activeProjectId ?? undefined);
         if (!ores.ok) return `Error: ${ores.error}`;
         const opened = ores.tables ?? [];
         this.trackDatasets(opened.map((t) => t.name));
@@ -2899,26 +3012,40 @@ export class AgentRuntime {
       case 'list_datasets': {
         const lres = await duckDbListTables();
         if (!lres.ok) return `Error: ${lres.error}`;
-        const names = (lres.tables ?? []).map((t) => t.name);
+        // Filter, not partition (see visibleToProject) — a dataset persisted
+        // under a different active project simply doesn't appear here, so the
+        // model never learns its name to reference in a later query.
+        const names = (lres.tables ?? [])
+          .filter((t) => visibleToProject(t.projectId, this.activeProjectId))
+          .map((t) => t.name);
         return names.length === 0 ? 'No tables loaded. Use import_data to load data first.' : JSON.stringify(names);
       }
       case 'describe_dataset': {
         const tableName = String(args.tableName ?? '').trim();
         if (!tableName) return 'Error: describe_dataset needs a tableName.';
+        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
         const dres = await duckDbDescribeTable(tableName);
         if (!dres.ok) return `Error: ${dres.error}`;
-        return JSON.stringify({ name: tableName, columns: dres.columns, columnTypes: dres.columnTypes, rowCount: dres.rowCount });
+        return JSON.stringify({
+          name: tableName,
+          columns: dres.columns,
+          columnTypes: dres.columnTypes,
+          rowCount: dres.rowCount,
+          columnProfiles: dres.tables?.[0]?.columnProfiles,
+        });
       }
       case 'persist_dataset': {
         const tableName = String(args.tableName ?? '').trim();
         if (!tableName) return 'Error: persist_dataset needs a tableName.';
-        const pres = await duckDbPersistTable(tableName);
+        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
+        const pres = await duckDbPersistTable(tableName, this.activeProjectId ?? undefined);
         if (!pres.ok) return `Error: ${pres.error}`;
         return `Persisted dataset "${tableName}" (${pres.rowCount ?? 0} rows) to on-device storage. It will auto-restart on next load.`;
       }
       case 'load_dataset': {
         const tableName = String(args.tableName ?? '').trim();
         if (!tableName) return 'Error: load_dataset needs a tableName.';
+        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
         const lres = await duckDbLoadTable(tableName);
         if (!lres.ok) return `Error: ${lres.error}`;
         return `Loaded dataset "${tableName}" (${lres.rowCount ?? 0} rows) from on-device storage. You can now query it with query_data.`;
@@ -2926,6 +3053,7 @@ export class AgentRuntime {
       case 'drop_dataset': {
         const tableName = String(args.tableName ?? '').trim();
         if (!tableName) return 'Error: drop_dataset needs a tableName.';
+        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
         const drres = await duckDbDropTable(tableName);
         if (!drres.ok) return `Error: ${drres.error}`;
         this.loadedDatasets = this.loadedDatasets.filter((n) => n !== tableName);
@@ -3357,6 +3485,111 @@ export class AgentRuntime {
     return `Exported ${rows.length} rows${note}. The user can download it as CSV or JSON from the card.`;
   }
 
+  private createFile(args: Record<string, unknown>): string {
+    const filename = sanitizeTextFilename(String(args.filename ?? '').trim());
+    const content = String(args.content ?? '');
+    if (!filename) {
+      return 'Error: create_file needs a filename.';
+    }
+    const fileArtifact: FileArtifact = {
+      filename,
+      mimeType: mimeTypeForTextFile(filename),
+      dataBase64: encodeUtf8Base64(content),
+    };
+    this.pushChat({
+      role: 'notice',
+      text: `Prepared a file: "${filename}". Download it from the card below.`,
+      timestamp: new Date().toISOString(),
+      fileArtifact,
+    });
+    return `Created the file "${filename}" (${content.length} characters). The user can download it from the card.`;
+  }
+
+  private async createImage(args: Record<string, unknown>): Promise<string> {
+    const settings = await getSettings();
+    const apiKey = settings?.ideogramApiKey?.trim();
+    if (!apiKey) {
+      return 'Error: create_image needs an Ideogram API key. Add it in Settings.';
+    }
+    const prompt = String(args.prompt ?? '').trim();
+    if (!prompt) {
+      return 'Error: create_image needs a prompt.';
+    }
+    const aspectRatio = String(args.aspectRatio ?? 'ASPECT_1_1').trim() || 'ASPECT_1_1';
+    const styleType = String(args.styleType ?? 'AUTO').trim() || 'AUTO';
+    const model = String(args.model ?? 'V_2').trim() || 'V_2';
+    const response = await fetch('https://api.ideogram.ai/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Api-Key': apiKey,
+      },
+      body: JSON.stringify({
+        image_request: {
+          prompt,
+          aspect_ratio: aspectRatio,
+          style_type: styleType,
+          model,
+          num_images: 1,
+        },
+      }),
+    });
+    if (!response.ok) {
+      let detail = '';
+      try {
+        detail = (await response.text()).trim();
+      } catch {
+        detail = '';
+      }
+      return `Error: Ideogram returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`;
+    }
+    let payload: any;
+    try {
+      payload = await response.json();
+    } catch (e) {
+      return `Error: could not parse Ideogram response: ${String(e)}`;
+    }
+    const first = Array.isArray(payload?.data) ? payload.data[0] : null;
+    const imageUrl = String(first?.url ?? first?.image_url ?? first?.imageUrl ?? '').trim();
+    const inlineBase64 = String(first?.b64_json ?? first?.image_base64 ?? first?.base64 ?? '').trim();
+    let dataBase64 = '';
+    let mimeType = String(first?.mime_type ?? first?.mimeType ?? '').trim().toLowerCase() || 'image/png';
+    if (inlineBase64) {
+      dataBase64 = inlineBase64;
+    } else if (imageUrl) {
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        return `Error: downloading the generated image returned HTTP ${imageResponse.status}.`;
+      }
+      const bytes = new Uint8Array(await imageResponse.arrayBuffer());
+      if (bytes.byteLength > MAX_DATA_BYTES) {
+        return `Error: generated image is too large (> ${Math.round(MAX_DATA_BYTES / 1024 / 1024)} MB).`;
+      }
+      dataBase64 = bytesToBase64(bytes);
+      const contentType = imageResponse.headers.get('content-type');
+      mimeType = contentType ? contentType.split(';')[0].trim().toLowerCase() : mimeType;
+    } else {
+      return 'Error: Ideogram response did not include an image URL.';
+    }
+    const slug = prompt
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'ideogram-image';
+    const fileArtifact: FileArtifact = {
+      filename: `ideogram-${slug}.${imageExtensionForMimeType(mimeType)}`,
+      mimeType,
+      dataBase64,
+    };
+    this.pushChat({
+      role: 'notice',
+      text: `Prepared an image from the prompt. Download it from the card below.`,
+      timestamp: new Date().toISOString(),
+      fileArtifact,
+    });
+    return `Created the image "${fileArtifact.filename}". The user can download it from the card.`;
+  }
+
   /**
    * Generate a downloadable .docx from markdown via the offscreen document, then
    * attach it to a notice message as a fileArtifact (mirrors exportData). The
@@ -3594,17 +3827,18 @@ export class AgentRuntime {
     this.messages.push(message);
     // In an attended turn, a generated file waits as a card the user clicks to
     // download. In an unattended (scheduled/triggered) run there is no one to
-    // click it — the file must still reach disk, so download it directly.
-    if (this.unattended && message.fileArtifact) void this.downloadFileArtifact(message.fileArtifact);
+    // click it and firing an OS download prompt for every run is its own kind
+    // of annoying (especially with several jobs running), so save it to the
+    // durable, browsable Products store instead.
+    if (this.unattended && message.fileArtifact) void this.saveFileArtifactToProducts(message.fileArtifact);
     this.emit({ type: 'chat_message', message });
   }
 
-  private async downloadFileArtifact(artifact: FileArtifact): Promise<void> {
+  private async saveFileArtifactToProducts(artifact: FileArtifact): Promise<void> {
     try {
-      await chrome.downloads.download({
-        url: `data:${artifact.mimeType};base64,${artifact.dataBase64}`,
-        filename: artifact.filename,
-        saveAs: false,
+      await productSave(artifact.filename, artifact.mimeType, artifact.dataBase64, {
+        sourceTitle: this.unattendedTaskTitle ?? undefined,
+        conversationId: this.currentConversationId ?? undefined,
       });
     } catch {
       // Best-effort — the bytes are still retained in the conversation record either way.
@@ -3613,6 +3847,22 @@ export class AgentRuntime {
 
   private notice(text: string): void {
     this.pushChat({ role: 'notice', text, timestamp: new Date().toISOString() });
+  }
+
+  /**
+   * Filter, not partition (see visibleToProject): a dataset persisted under a
+   * different active project is invisible to describe/persist/load/drop, even
+   * if the model somehow already knows its exact name (it can't discover it
+   * via list_datasets, which applies the same filter). Fails open on an
+   * engine error or an in-memory-only table absent from listTables — those
+   * aren't scoping decisions, and the underlying call surfaces its own error.
+   */
+  private async isDatasetVisible(tableName: string): Promise<boolean> {
+    const lres = await duckDbListTables();
+    if (!lres.ok) return true;
+    const t = (lres.tables ?? []).find((x) => x.name === tableName);
+    if (!t) return true;
+    return visibleToProject(t.projectId, this.activeProjectId);
   }
 
   /** Remember table names so the working-state block can advertise them (deduped). */

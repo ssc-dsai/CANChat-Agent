@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { DuckDbOp, DuckDbResponse, DuckDbTableInfo } from '../shared/messages';
 import { DATA_ACCEPT } from '../shared/dataFile';
 import { openDataFiles } from '../sidebar/dataOpenClient';
+import { visibleToProject } from '../shared/memoryGraph';
 
 // Drive the built-in DuckDB engine straight from the workspace. The service
 // worker owns the offscreen document, so we route every op through a `duckdb`
 // RuntimeRequest rather than messaging the offscreen page directly.
-function duckdb(op: DuckDbOp, extra?: { sql?: string; tableName?: string; data?: string }): Promise<DuckDbResponse> {
+function duckdb(op: DuckDbOp, extra?: { sql?: string; tableName?: string; data?: string; projectId?: string }): Promise<DuckDbResponse> {
   return chrome.runtime.sendMessage({ type: 'duckdb', op, ...extra }) as Promise<DuckDbResponse>;
 }
 
@@ -24,6 +25,8 @@ export function DatasetBrowser() {
   const [importText, setImportText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<DuckDbTableInfo | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
@@ -32,6 +35,24 @@ export function DatasetBrowser() {
     else setError(r.error ?? 'Could not reach the data engine.');
   };
   useEffect(() => { void refresh(); }, []);
+
+  // Scoping is a filter, not a partition (see shared/memoryGraph.ts
+  // visibleToProject) — mirrors ProjectSwitcher.tsx's read pattern.
+  useEffect(() => {
+    const load = () =>
+      chrome.storage.local.get('ba_active_project').then((r) => {
+        const id = r.ba_active_project;
+        setActiveProjectId(typeof id === 'string' && id ? id : null);
+      });
+    load();
+    const listener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && changes.ba_active_project) load();
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => chrome.storage.onChanged.removeListener(listener);
+  }, []);
+
+  const visibleTables = tables.filter((t) => visibleToProject(t.projectId, activeProjectId));
 
   const runSql = async (query?: string) => {
     const q = (query ?? sql).trim();
@@ -47,13 +68,22 @@ export function DatasetBrowser() {
 
   const preview = (name: string) => runSql(`SELECT * FROM "${name}" LIMIT 100`);
 
+  const profileTable = async (name: string) => {
+    setBusy(true);
+    setError(null);
+    const r = await duckdb('describe_table', { tableName: name });
+    if (r.ok) setProfile(r.tables?.[0] ?? null);
+    else setError(r.error ?? 'Could not profile table.');
+    setBusy(false);
+  };
+
   const importData = async () => {
     const name = importName.trim();
     if (!name || !importText.trim()) return;
     setBusy(true);
     setError(null);
     const op: DuckDbOp = detectFormat(importText) === 'json' ? 'import_json' : 'import_csv';
-    const r = await duckdb(op, { tableName: name, data: importText });
+    const r = await duckdb(op, { tableName: name, data: importText, projectId: activeProjectId ?? undefined });
     if (r.ok) {
       setImportText('');
       await refresh();
@@ -77,7 +107,7 @@ export function DatasetBrowser() {
     setBusy(true);
     setError(null);
     try {
-      const { results } = await openDataFiles(files);
+      const { results } = await openDataFiles(files, activeProjectId ?? undefined);
       const failed = results.find((r) => !r.ok);
       if (failed) setError(`${failed.name}: ${failed.error ?? 'failed'}`);
       await refresh();
@@ -99,11 +129,12 @@ export function DatasetBrowser() {
           </span>
           <input ref={fileRef} type="file" multiple accept={DATA_ACCEPT} style="display:none" onChange={onPickFiles} />
         </div>
-        {tables.length === 0 && <p class="ws-dim">No datasets loaded. Import CSV or JSON below — or ask the agent to import data.</p>}
-        {tables.map((t) => (
+        {visibleTables.length === 0 && <p class="ws-dim">No datasets loaded. Import CSV or JSON below — or ask the agent to import data.</p>}
+        {visibleTables.map((t) => (
           <div key={t.name} class="ws-ds-row">
             <button class="ws-link" onClick={() => preview(t.name)}>{t.name}</button>
             <span class="ws-dim">{t.rowCount} rows · {t.columns.length} cols{t.persisted ? ' · saved' : ''}</span>
+            <button class="ws-btn ws-btn-quiet" onClick={() => profileTable(t.name)} title="Profile columns">Profile</button>
             <button class="ws-btn ws-btn-quiet" onClick={() => drop(t.name)} title="Drop dataset">✕</button>
           </div>
         ))}
@@ -122,9 +153,43 @@ export function DatasetBrowser() {
 
       {error && <div class="ws-ds-error">{error}</div>}
 
+      {profile && (
+        <section class="ws-ds-result">
+          <div class="ws-ds-head">
+            <strong>Profile: {profile.name}</strong>
+            <button class="ws-btn ws-btn-quiet" onClick={() => setProfile(null)}>Close</button>
+          </div>
+          <div class="ws-ds-scroll">
+            <table class="ws-ds-table">
+              <thead>
+                <tr><th>Column</th><th>Type</th><th>Null %</th><th>Approx distinct</th><th>Min</th><th>Max</th></tr>
+              </thead>
+              <tbody>
+                {profile.columns.map((name, i) => {
+                  const cp = profile.columnProfiles?.find((p) => p.name === name);
+                  return (
+                    <tr key={name}>
+                      <td>{name}</td>
+                      <td>{profile.columnTypes[i]}</td>
+                      <td>{cp ? `${(cp.nullRatio * 100).toFixed(1)}%` : '—'}</td>
+                      <td>{cp?.approxDistinct ?? '—'}</td>
+                      <td>{cp?.min ?? '—'}</td>
+                      <td>{cp?.max ?? '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {result?.ok && result.columns && (
         <section class="ws-ds-result">
-          <div class="ws-dim">{result.rowCount ?? result.rows?.length ?? 0} row(s)</div>
+          <div class="ws-dim">
+            {result.rowCount ?? result.rows?.length ?? 0} row(s)
+            {result.truncated ? ` — showing the first ${result.rows?.length ?? 0}; narrow with WHERE/LIMIT/aggregation` : ''}
+          </div>
           <div class="ws-ds-scroll">
             <table class="ws-ds-table">
               <thead>

@@ -9,6 +9,11 @@
       "name": "search-mail",
       "description": "Search Outlook mail precisely — translate the request into mail KQL keywords (from / to / subject / received / hasattachments) and run the search in the Outlook web app.",
       "file": "search-mail.md"
+    },
+    {
+      "name": "create-files",
+      "description": "Create plain text and markdown files with the create_file tool, then deliver them as downloadable cards.",
+      "file": "create-files.md"
     }
   ]
 }

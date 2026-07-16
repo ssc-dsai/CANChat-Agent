@@ -282,11 +282,34 @@ export async function navigate(tabId: number, url: string): Promise<NavigationRe
   };
 }
 
+function buildSearchUrl(query: string): string {
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+}
+
 /**
  * Search using the browser's default search engine in a new tab, per spec.
  * Results are read back through getTabContent.
  */
-export async function searchWeb(query: string): Promise<NavigationResult> {
+export async function searchWeb(query: string, background = false): Promise<NavigationResult> {
+  if (background) {
+    const url = buildSearchUrl(query);
+    let tab: chrome.tabs.Tab;
+    try {
+      tab = await chrome.tabs.create({ url, active: false });
+    } catch (err) {
+      return { tabId: -1, url, title: '', status: 'error', error: String(err) };
+    }
+    if (!tab.id) return { tabId: -1, url, title: '', status: 'error', error: 'Tab not created.' };
+    const complete = await waitForTabComplete(tab.id);
+    const loaded = await chrome.tabs.get(tab.id);
+    return {
+      tabId: tab.id,
+      url: loaded.url ?? url,
+      title: loaded.title ?? '',
+      status: complete ? 'complete' : 'timeout',
+    };
+  }
+
   await chrome.search.query({ text: query, disposition: 'NEW_TAB' });
   // chrome.search.query does not return the tab; the new results tab becomes
   // the active tab in the current window.
