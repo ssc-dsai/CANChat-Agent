@@ -325,6 +325,7 @@ const READ_ONLY_TOOLS = new Set([
   'get_video_transcript',
   'read_app_content',
   'map_get_state',
+  'query_pointer_target',
   'query_data',
   'open_data_url',
   'import_data',
@@ -3174,6 +3175,8 @@ export class AgentRuntime {
       }
       case 'get_element_map':
         return JSON.stringify((await browser.getElementMap(tabId)).slice(0, 120));
+      case 'query_pointer_target':
+        return browser.queryPointerTarget(tabId);
       case 'read_app_content':
         return browser.readAppContent(tabId);
       case 'capture_full_page': {

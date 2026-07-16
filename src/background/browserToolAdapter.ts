@@ -451,6 +451,18 @@ export async function getElementMap(tabId: number): Promise<ElementRef[]> {
   return sendToTab<ElementRef[]>(tabId, { kind: 'ba_element_map' });
 }
 
+async function ensurePointerTracker(tabId: number): Promise<void> {
+  await chrome.scripting.executeScript({ target: { tabId }, files: ['pointerTracker.js'] });
+}
+
+export async function queryPointerTarget(tabId: number): Promise<string> {
+  await ensurePointerTracker(tabId);
+  const result = await sendToTab<{ ok: boolean; target?: unknown; detail?: string }>(tabId, {
+    kind: 'ba_get_pointer_target',
+  });
+  return JSON.stringify(result);
+}
+
 export async function readAppContent(tabId: number): Promise<string> {
   await ensureContentScript(tabId);
   const result = await sendToTab<{ method: string; text: string; truncated: boolean }>(tabId, {

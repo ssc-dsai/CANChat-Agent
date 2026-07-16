@@ -29,6 +29,8 @@ export type SidebarCommand =
   | { type: 'stop_task' }
   | { type: 'clear_conversation' }
   | { type: 'undo_exchange' }
+  | { type: 'start_learn_mode' }
+  | { type: 'stop_learn_mode' }
   | { type: 'load_conversation'; id: string }
   | { type: 'delete_conversation'; id: string }
   // `record` is a conversation body already validated by parseConversationFile in
@@ -118,6 +120,7 @@ export type RuntimeRequest =
   | { type: 'sharepoint_session'; base?: string }
   | { type: 'open_data_files'; files: DataFileUpload[]; projectId?: string }
   | { type: 'transcribe_audio'; audioDataUrl: string }
+  | { type: 'learn_record_event'; event: import('./learning').LearnEvent }
   // Probe the signed-in environment (M365 identity, open work systems, locale) to
   // populate memory; only honored when the memory feature is enabled.
   | { type: 'probe_environment' }
@@ -524,6 +527,7 @@ export type ContentRequest =
   | { kind: 'ba_app_content' }
   | { kind: 'ba_scroll_step' }
   | { kind: 'ba_element_map' }
+  | { kind: 'ba_get_pointer_target' }
   | { kind: 'ba_click'; refIdOrSelector: string }
   | { kind: 'ba_fill'; refIdOrSelector: string; value: string }
   | { kind: 'ba_submit'; refIdOrSelector: string }

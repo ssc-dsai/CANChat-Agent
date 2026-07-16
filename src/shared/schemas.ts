@@ -241,6 +241,15 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'query_pointer_target',
+      description:
+        'Read the element currently under the cursor while the user holds Alt. Use this when the task needs hover context or when you want to inspect what the user is pointing at without clicking.',
+      parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'click_element',
       description:
         'Click an element identified by a refId from get_element_map. State-changing: requires user approval.',

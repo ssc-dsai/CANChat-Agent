@@ -11,6 +11,7 @@
 // =============================================================================
 
 import type { ContentRequest } from '../shared/messages';
+import type { PointerTarget } from '../shared/types';
 import {
   buildElementMap,
   clickAt,
@@ -29,6 +30,7 @@ import {
 declare global {
   interface Window {
     __browserAgentInjected?: boolean;
+    __browserAgentPointerTarget?: PointerTarget | null;
   }
 }
 
@@ -54,6 +56,13 @@ if (!window.__browserAgentInjected) {
           break;
         case 'ba_element_map':
           sendResponse(buildElementMap());
+          break;
+        case 'ba_get_pointer_target':
+          if (window.__browserAgentPointerTarget) {
+            sendResponse({ ok: true, target: window.__browserAgentPointerTarget });
+          } else {
+            return false;
+          }
           break;
         case 'ba_click':
           sendResponse(clickElement(request.refIdOrSelector));

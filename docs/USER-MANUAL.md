@@ -214,6 +214,7 @@ Short, plain definitions for the terms used throughout this manual.
 | **Plan** | The agent's step-by-step outline for a bigger task, shown to you. | Lets you watch progress and see what it intends to do. |
 | **Skill** | A reusable set of instructions you save, invoked by `/name`. | Turns a repeatable task into a one-word command. |
 | **App playbook** | A skill tied to a website that loads automatically there. | Teaches the agent how to drive a specific app (e.g. Gmail). |
+| **Learn mode** | A recording mode that captures your clicks and form interactions on a site and turns them into a reusable playbook. | Lets you teach the agent by doing the task once. |
 | **MCP** | "Model Context Protocol" — an external tool server the agent can call. | Connects the agent to services beyond the browser. |
 | **WebMCP** | Tools a *web page itself* offers to the agent (`navigator.modelContext`). | The agent uses the page's own actions instead of clicking around. |
 | **Knowledge base / repository** | Pages you save **on your device**, searchable later. | Ask questions across saved pages ("RAG"); nothing is uploaded. |
@@ -1116,7 +1117,7 @@ approval each time.** Memory tools appear only when Memory is enabled.
 
 **Page interaction:** `get_element_map`, `click_element` 🔒, `fill_input` 🔒,
 `submit_form` 🔒, `press_keys` 🔒, `click_at` 🔒, `drag` 🔒, `scroll_wheel`,
-`run_javascript` 🔒.
+`query_pointer_target`, `run_javascript` 🔒.
 
 **Knowledge bases (RAG):** `add_to_repo`, `search_repo`, `list_repos`,
 `run_subtasks` (isolated mini-loops for multi-page research).

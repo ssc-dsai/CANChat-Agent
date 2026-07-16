@@ -412,6 +412,17 @@ export interface FileArtifact {
   dataBase64: string;
 }
 
+/** Element under the user's pointer (Alt+hover). */
+export interface PointerTarget {
+  tag: string;
+  selector: string;
+  text?: string;
+  role?: string;
+  ariaLabel?: string;
+  rect?: { x: number; y: number; width: number; height: number };
+  href?: string;
+}
+
 /**
  * Lightweight history-list entry for a saved conversation. Lives in the
  * `ba_conv_index` array so the History overlay can render without loading every
