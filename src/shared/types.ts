@@ -208,6 +208,8 @@ export interface Settings {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** Optional Ideogram API key used by the image-generation tool. */
+  ideogramApiKey?: string;
   /**
    * Azure OpenAI's required api-version (e.g. "2024-02-01"). When set, the
    * adapter switches to Azure mode for every service: it appends
@@ -354,6 +356,14 @@ export interface ModelProfile {
    * conservative default: the gate only skips what it can confirm is local).
    */
   privacyTier?: 'local' | 'cloud';
+  /** User-written note explaining what this profile is for. */
+  description?: string;
+  /** Declared model capabilities, used for UI badges and validation. */
+  capabilities?: {
+    vision?: boolean;
+    audio?: boolean;
+    video?: boolean;
+  };
 }
 
 export type AgentStatus =

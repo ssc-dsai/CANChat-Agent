@@ -757,6 +757,33 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'create_image',
+      description:
+        'Generate a downloadable image from a text prompt using Ideogram. Use when the user asks for an illustration, concept image, poster, or other generated picture. The user gets a download card.',
+      parameters: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'The image prompt.' },
+          aspectRatio: {
+            type: 'string',
+            description: 'Optional aspect ratio, such as ASPECT_1_1 or ASPECT_16_9. Defaults to ASPECT_1_1.',
+          },
+          styleType: {
+            type: 'string',
+            description: 'Optional style preset, such as AUTO or REALISTIC.',
+          },
+          model: {
+            type: 'string',
+            description: 'Optional Ideogram model name. Defaults to V_2.',
+          },
+        },
+        required: ['prompt'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_word_document',
       description:
         'Generate a downloadable Microsoft Word (.docx) file from markdown. Use when the user wants a Word document, report, letter, or formatted write-up they can save. The markdown supports headings, paragraphs, bold/italic, bulleted/numbered lists, tables, and code blocks. The user gets a download card.',

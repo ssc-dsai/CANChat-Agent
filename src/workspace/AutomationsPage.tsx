@@ -43,6 +43,7 @@ export function AutomationsPage() {
   const [trTargetKind, setTrTargetKind] = useState<'skill' | 'workflow'>('skill');
   const [trTargetValue, setTrTargetValue] = useState('');
   const [trCooldown, setTrCooldown] = useState('');
+  const [trMatchSubPages, setTrMatchSubPages] = useState(true);
   const [trError, setTrError] = useState<string | null>(null);
 
   const reload = () => {
@@ -111,6 +112,7 @@ export function AutomationsPage() {
       type: 'event_trigger_create',
       name: trName,
       hostPattern: trHost,
+      matchSubPages: trMatchSubPages,
       target,
       cooldownMinutes,
     })) as { ok: boolean; error?: string };
@@ -122,6 +124,7 @@ export function AutomationsPage() {
     setTrHost('');
     setTrTargetValue('');
     setTrCooldown('');
+    setTrMatchSubPages(true);
     setShowTriggerForm(false);
     reload();
   };
@@ -150,175 +153,199 @@ export function AutomationsPage() {
         filling a form, sending mail) still waits for you.
       </p>
 
-      <h3>Scheduled tasks</h3>
-      {tasks.length === 0 ? (
+      <details class="settings-acc" open>
+        <summary class="settings-acc-summary">
+          <strong>Scheduled tasks</strong>
+        </summary>
         <p class="settings-note">
-          None yet — ask the agent to "schedule a task that…" and it will appear here.
+          Set tasks to run later or on a cadence. Each run stays in the same unattended-approval gate.
         </p>
-      ) : (
-        <ul class="sites-list">
-          {tasks.map((t) => (
-            <li key={t.id} class="site-row" title={t.prompt}>
-              <span class={`approval-tag trust-badge ${t.enabled ? 'trust-local' : 'trust-public'}`}>{t.enabled ? 'enabled' : 'paused'}</span>
-              <span class="site-name">{t.title}</span>
-              <span class="site-desc">
-                Next: {fmt(t.enabled ? t.nextRunAt : undefined)} · Last: {fmt(t.lastRunAt)}
-                {t.lastStatus ? ` (${STATUS_LABEL[t.lastStatus] ?? t.lastStatus})` : ''}
-              </span>
-              <button class="btn btn-small" onClick={() => toggleTask(t.id, !t.enabled)}>{t.enabled ? 'Pause' : 'Resume'}</button>
-              <button class="icon-btn" title="Delete" onClick={() => deleteTask(t.id)}>✕</button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {recentTaskRuns.length > 0 && (
-        <>
-          <p class="settings-note">Recent runs</p>
-          <ul class="sites-list ws-run-list">
-            {recentTaskRuns.map((r) => (
-              <li key={r.id} class="ws-run-item">
-                <div class="ws-run-header">
-                  <span class="site-name">{tasks.find((t) => t.id === r.taskId)?.title ?? '(deleted task)'}</span>
-                  <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status}</span>
-                </div>
-                {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
-                {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
-                  <p class="ws-run-detail ws-dim">📎 Saved to Products: {r.fileArtifactNames.join(', ')}</p>
-                )}
+        {tasks.length === 0 ? (
+          <p class="settings-note">None yet — ask the agent to "schedule a task that…" and it will appear here.</p>
+        ) : (
+          <ul class="sites-list">
+            {tasks.map((t) => (
+              <li key={t.id} class="site-row" title={t.prompt}>
+                <span class={`approval-tag trust-badge ${t.enabled ? 'trust-local' : 'trust-public'}`}>{t.enabled ? 'enabled' : 'paused'}</span>
+                <span class="site-name">{t.title}</span>
+                <span class="site-desc">
+                  Next: {fmt(t.enabled ? t.nextRunAt : undefined)} · Last: {fmt(t.lastRunAt)}
+                  {t.lastStatus ? ` (${STATUS_LABEL[t.lastStatus] ?? t.lastStatus})` : ''}
+                </span>
+                <button class="btn btn-small" onClick={() => toggleTask(t.id, !t.enabled)}>{t.enabled ? 'Pause' : 'Resume'}</button>
+                <button class="icon-btn" title="Delete" onClick={() => deleteTask(t.id)}>✕</button>
               </li>
             ))}
           </ul>
-        </>
-      )}
+        )}
+        {recentTaskRuns.length > 0 && (
+          <>
+            <p class="settings-note">Recent runs</p>
+            <ul class="sites-list ws-run-list">
+              {recentTaskRuns.map((r) => (
+                <li key={r.id} class="ws-run-item">
+                  <div class="ws-run-header">
+                    <span class="site-name">{tasks.find((t) => t.id === r.taskId)?.title ?? '(deleted task)'}</span>
+                    <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status}</span>
+                  </div>
+                  {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
+                  {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
+                    <p class="ws-run-detail ws-dim">📎 Saved to Products: {r.fileArtifactNames.join(', ')}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </details>
 
-      <h3>Workflows</h3>
-      <p class="settings-note">A named, ordered chain of existing skills — run them in sequence from one request.</p>
-      {workflows.length > 0 && (
-        <ul class="sites-list">
-          {workflows.map((w) => (
-            <li key={w.id} class="site-row" title={w.description}>
-              <span class="site-name">{w.name}</span>
-              <span class="site-desc">{w.skillNames.map((n) => `/${n}`).join(' → ')}</span>
-              <button class="icon-btn" title="Delete" onClick={() => deleteWorkflow(w.id)}>✕</button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {showWorkflowForm ? (
-        <div class="site-form">
-          <label class="field">
-            <span>Name</span>
-            <input type="text" value={wfName} onInput={(e) => setWfName((e.target as HTMLInputElement).value)} />
-          </label>
-          <label class="field">
-            <span>Description (optional)</span>
-            <input type="text" value={wfDescription} onInput={(e) => setWfDescription((e.target as HTMLInputElement).value)} />
-          </label>
-          <label class="field">
-            <span>Skills, in order (comma-separated /names) — known: {skills.map((s) => s.name).join(', ') || 'none saved yet'}</span>
-            <input type="text" placeholder="research, search-mail" value={wfSkills} onInput={(e) => setWfSkills((e.target as HTMLInputElement).value)} />
-          </label>
-          {wfError && <div class="banner banner-error">{wfError}</div>}
-          <div class="settings-actions">
-            <button class="btn" onClick={() => setShowWorkflowForm(false)}>Cancel</button>
-            <button class="btn btn-primary" onClick={createWorkflow} disabled={!wfName.trim() || !wfSkills.trim()}>Create workflow</button>
-          </div>
-        </div>
-      ) : (
-        <div class="context-actions">
-          <button class="btn btn-small" onClick={() => setShowWorkflowForm(true)}>Add workflow</button>
-        </div>
-      )}
-
-      <h3>Event triggers</h3>
-      <p class="settings-note">Run a skill or workflow unattended the next time you open a matching site.</p>
-      {triggers.length > 0 && (
-        <ul class="sites-list">
-          {triggers.map((t) => (
-            <li key={t.id} class="site-row">
-              <span class={`approval-tag trust-badge ${t.enabled ? 'trust-local' : 'trust-public'}`}>{t.enabled ? 'enabled' : 'paused'}</span>
-              <span class="site-name">{t.name}</span>
-              <span class="site-desc">
-                {t.hostPattern} → {targetLabel(t)} · cooldown {t.cooldownMinutes ?? 60}min · last fired {fmt(t.lastFiredAt)}
-              </span>
-              <button class="btn btn-small" onClick={() => toggleTrigger(t.id, !t.enabled)}>{t.enabled ? 'Pause' : 'Resume'}</button>
-              <button class="icon-btn" title="Delete" onClick={() => deleteTrigger(t.id)}>✕</button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {showTriggerForm ? (
-        <div class="site-form">
-          <label class="field">
-            <span>Name</span>
-            <input type="text" value={trName} onInput={(e) => setTrName((e.target as HTMLInputElement).value)} />
-          </label>
-          <label class="field">
-            <span>Site (hostname, subdomains included)</span>
-            <input type="text" placeholder="jira.example.com" value={trHost} onInput={(e) => setTrHost((e.target as HTMLInputElement).value)} />
-          </label>
-          <label class="field">
-            <span>Run</span>
-            <select value={trTargetKind} onChange={(e) => { setTrTargetKind((e.target as HTMLSelectElement).value as 'skill' | 'workflow'); setTrTargetValue(''); }}>
-              <option value="skill">A skill</option>
-              <option value="workflow">A workflow</option>
-            </select>
-          </label>
-          {trTargetKind === 'skill' ? (
-            <label class="field">
-              <span>Skill</span>
-              <select value={trTargetValue} onChange={(e) => setTrTargetValue((e.target as HTMLSelectElement).value)}>
-                <option value="">Choose a skill…</option>
-                {skills.map((s) => (
-                  <option key={s.id} value={s.name}>/{s.name}</option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <label class="field">
-              <span>Workflow</span>
-              <select value={trTargetValue} onChange={(e) => setTrTargetValue((e.target as HTMLSelectElement).value)}>
-                <option value="">Choose a workflow…</option>
-                {workflows.map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label class="field">
-            <span>Cooldown minutes (optional, default 60)</span>
-            <input type="number" min="1" placeholder="60" value={trCooldown} onInput={(e) => setTrCooldown((e.target as HTMLInputElement).value)} />
-          </label>
-          {trError && <div class="banner banner-error">{trError}</div>}
-          <div class="settings-actions">
-            <button class="btn" onClick={() => setShowTriggerForm(false)}>Cancel</button>
-            <button class="btn btn-primary" onClick={createTrigger} disabled={!trName.trim() || !trHost.trim()}>Create trigger</button>
-          </div>
-        </div>
-      ) : (
-        <div class="context-actions">
-          <button class="btn btn-small" onClick={() => setShowTriggerForm(true)}>Add trigger</button>
-        </div>
-      )}
-      {recentTriggerRuns.length > 0 && (
-        <>
-          <p class="settings-note">Recent trigger runs</p>
-          <ul class="sites-list ws-run-list">
-            {recentTriggerRuns.map((r) => (
-              <li key={r.id} class="ws-run-item">
-                <div class="ws-run-header">
-                  <span class="site-name">{triggers.find((t) => t.id === r.triggerId)?.name ?? '(deleted trigger)'}</span>
-                  <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status} ({r.url})</span>
-                </div>
-                {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
-                {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
-                  <p class="ws-run-detail ws-dim">📎 Saved to Products: {r.fileArtifactNames.join(', ')}</p>
-                )}
+      <details class="settings-acc">
+        <summary class="settings-acc-summary">
+          <strong>Workflows</strong>
+        </summary>
+        <p class="settings-note">A named, ordered chain of existing skills — run them in sequence from one request.</p>
+        {workflows.length > 0 && (
+          <ul class="sites-list">
+            {workflows.map((w) => (
+              <li key={w.id} class="site-row" title={w.description}>
+                <span class="site-name">{w.name}</span>
+                <span class="site-desc">{w.skillNames.map((n) => `/${n}`).join(' → ')}</span>
+                <button class="icon-btn" title="Delete" onClick={() => deleteWorkflow(w.id)}>✕</button>
               </li>
             ))}
           </ul>
-        </>
-      )}
+        )}
+        {showWorkflowForm ? (
+          <div class="site-form">
+            <label class="field">
+              <span>Name</span>
+              <input type="text" value={wfName} onInput={(e) => setWfName((e.target as HTMLInputElement).value)} />
+            </label>
+            <label class="field">
+              <span>Description (optional)</span>
+              <input type="text" value={wfDescription} onInput={(e) => setWfDescription((e.target as HTMLInputElement).value)} />
+            </label>
+            <label class="field">
+              <span>Skills, in order (comma-separated /names) — known: {skills.map((s) => s.name).join(', ') || 'none saved yet'}</span>
+              <input type="text" placeholder="research, search-mail" value={wfSkills} onInput={(e) => setWfSkills((e.target as HTMLInputElement).value)} />
+            </label>
+            {wfError && <div class="banner banner-error">{wfError}</div>}
+            <div class="settings-actions">
+              <button class="btn" onClick={() => setShowWorkflowForm(false)}>Cancel</button>
+              <button class="btn btn-primary" onClick={createWorkflow} disabled={!wfName.trim() || !wfSkills.trim()}>Create workflow</button>
+            </div>
+          </div>
+        ) : (
+          <div class="context-actions">
+            <button class="btn btn-small" onClick={() => setShowWorkflowForm(true)}>Add workflow</button>
+          </div>
+        )}
+      </details>
+
+      <details class="settings-acc">
+        <summary class="settings-acc-summary">
+          <strong>Event triggers</strong>
+        </summary>
+        <p class="settings-note">Run a skill or workflow unattended the next time you open a matching site.</p>
+        {triggers.length > 0 && (
+          <ul class="sites-list">
+            {triggers.map((t) => (
+              <li key={t.id} class="site-row">
+                <span class={`approval-tag trust-badge ${t.enabled ? 'trust-local' : 'trust-public'}`}>{t.enabled ? 'enabled' : 'paused'}</span>
+                <span class="site-name">{t.name}</span>
+                <span class="site-desc">
+                  {t.hostPattern} → {targetLabel(t)} · {t.matchSubPages ? 'all pages' : 'cooldown'} · cooldown {t.cooldownMinutes ?? 60}min · last fired {fmt(t.lastFiredAt)}
+                </span>
+                <button class="btn btn-small" onClick={() => toggleTrigger(t.id, !t.enabled)}>{t.enabled ? 'Pause' : 'Resume'}</button>
+                <button class="icon-btn" title="Delete" onClick={() => deleteTrigger(t.id)}>✕</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {showTriggerForm ? (
+          <div class="site-form">
+            <label class="field">
+              <span>Name</span>
+              <input type="text" value={trName} onInput={(e) => setTrName((e.target as HTMLInputElement).value)} />
+            </label>
+            <label class="field">
+              <span>Site (hostname, subdomains included)</span>
+              <input type="text" placeholder="jira.example.com" value={trHost} onInput={(e) => setTrHost((e.target as HTMLInputElement).value)} />
+            </label>
+            <label class="field">
+              <span>Run</span>
+              <select value={trTargetKind} onChange={(e) => { setTrTargetKind((e.target as HTMLSelectElement).value as 'skill' | 'workflow'); setTrTargetValue(''); }}>
+                <option value="skill">A skill</option>
+                <option value="workflow">A workflow</option>
+              </select>
+            </label>
+            {trTargetKind === 'skill' ? (
+              <label class="field">
+                <span>Skill</span>
+                <select value={trTargetValue} onChange={(e) => setTrTargetValue((e.target as HTMLSelectElement).value)}>
+                  <option value="">Choose a skill…</option>
+                  {skills.map((s) => (
+                    <option key={s.id} value={s.name}>/{s.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label class="field">
+                <span>Workflow</span>
+                <select value={trTargetValue} onChange={(e) => setTrTargetValue((e.target as HTMLSelectElement).value)}>
+                  <option value="">Choose a workflow…</option>
+                  {workflows.map((w) => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label class="field">
+              <span>Cooldown minutes (optional, default 60)</span>
+              <input type="number" min="1" placeholder="60" value={trCooldown} onInput={(e) => setTrCooldown((e.target as HTMLInputElement).value)} />
+            </label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                checked={trMatchSubPages}
+                onChange={(e) => setTrMatchSubPages((e.target as HTMLInputElement).checked)}
+              />
+              <span class="toggle-text">
+                <span class="toggle-label">Fire on every page in this site</span>
+                <span class="toggle-note">Ignore cooldown when the URL changes within the same host.</span>
+              </span>
+            </label>
+            {trError && <div class="banner banner-error">{trError}</div>}
+            <div class="settings-actions">
+              <button class="btn" onClick={() => setShowTriggerForm(false)}>Cancel</button>
+              <button class="btn btn-primary" onClick={createTrigger} disabled={!trName.trim() || !trHost.trim()}>Create trigger</button>
+            </div>
+          </div>
+        ) : (
+          <div class="context-actions">
+            <button class="btn btn-small" onClick={() => setShowTriggerForm(true)}>Add trigger</button>
+          </div>
+        )}
+        {recentTriggerRuns.length > 0 && (
+          <>
+            <p class="settings-note">Recent trigger runs</p>
+            <ul class="sites-list ws-run-list">
+              {recentTriggerRuns.map((r) => (
+                <li key={r.id} class="ws-run-item">
+                  <div class="ws-run-header">
+                    <span class="site-name">{triggers.find((t) => t.id === r.triggerId)?.name ?? '(deleted trigger)'}</span>
+                    <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status} ({r.url})</span>
+                  </div>
+                  {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
+                  {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
+                    <p class="ws-run-detail ws-dim">📎 Saved to Products: {r.fileArtifactNames.join(', ')}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </details>
     </div>
   );
 }

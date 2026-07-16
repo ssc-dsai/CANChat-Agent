@@ -126,6 +126,7 @@ export function SettingsScreen({ onClose }: Props) {
       baseUrl: settings.baseUrl.trim(),
       apiKey: settings.apiKey.trim(),
       model: settings.model.trim(),
+      ideogramApiKey: settings.ideogramApiKey?.trim() || undefined,
       apiVersion: settings.apiVersion?.trim() || undefined,
       systemPrompt: settings.systemPrompt?.trim() || undefined,
       sharepointBaseUrl: settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined,
@@ -202,6 +203,18 @@ export function SettingsScreen({ onClose }: Props) {
               placeholder="model-name"
               value={settings.model}
               onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+        </Group>
+
+        <Group title={t('settings.groupImage')} desc={t('settings.groupImageDesc')}>
+          <label class="field">
+            <span>{t('settings.ideogramApiKey')}</span>
+            <input
+              type="password"
+              placeholder="ik-…"
+              value={settings.ideogramApiKey ?? ''}
+              onInput={(e) => update({ ideogramApiKey: (e.target as HTMLInputElement).value })}
             />
           </label>
         </Group>

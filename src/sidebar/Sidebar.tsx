@@ -308,13 +308,14 @@ export function Sidebar() {
             <IconUndo />
           </button>
           <button
-            class="icon-btn"
+            class="new-chat-btn"
             aria-label={t('header.newChat')}
             title={t('header.newChat')}
             onClick={() => send({ type: 'clear_conversation' })}
             disabled={messages.length === 0}
           >
             <IconNew />
+            <span>{t('header.newChatShort')}</span>
           </button>
           <button class="icon-btn" aria-label="Open workspace" title="Open workspace" onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html') })}>
             <IconWorkspace />

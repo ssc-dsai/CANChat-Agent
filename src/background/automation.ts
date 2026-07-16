@@ -137,7 +137,9 @@ async function resolveTriggerPrompt(trigger: EventTrigger): Promise<string> {
 export async function maybeFireEventTriggers(url: string, runner: ScheduledRunner): Promise<void> {
   if (!/^https?:\/\//i.test(url)) return; // never fire on chrome://, extension pages, etc.
   const triggers = await getEventTriggers();
-  const candidates = triggers.filter((t) => t.enabled && urlMatchesTrigger(t, url) && !isInCooldown(t));
+  const candidates = triggers.filter(
+    (t) => t.enabled && urlMatchesTrigger(t, url) && (t.matchSubPages || !isInCooldown(t)),
+  );
   if (candidates.length === 0) return;
   // One task at a time — a trigger firing mid-task would either queue behind
   // the user's own work or (worse) interleave with it. Try again on the next

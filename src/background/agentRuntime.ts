@@ -241,6 +241,20 @@ function mimeTypeForTextFile(filename: string): string {
   }
 }
 
+function imageExtensionForMimeType(mimeType: string): string {
+  switch ((mimeType || '').split(';')[0].trim().toLowerCase()) {
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    case 'image/png':
+    default:
+      return 'png';
+  }
+}
+
 function encodeUtf8Base64(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let binary = '';
@@ -304,6 +318,7 @@ const READ_ONLY_TOOLS = new Set([
   'record_finding',
   'export_data',
   'create_file',
+  'create_image',
   'create_word_document',
   'read_pdf',
   'read_office_document',
@@ -395,6 +410,7 @@ Planning multi-step tasks:
 - Before giving your final answer, verify the goal is actually met (re-read the page or re-check the result) rather than assuming an action worked.
 - When the task is to collect structured information (one row per item, often across several pages), gather it as you go and call export_data with columns and rows — the user gets a downloadable CSV/JSON table.
 - When the user wants a text or markdown file, call create_file with a filename and full content — they get a downloadable .txt/.md card.
+- When the user wants a generated image, call create_image with a detailed prompt — they get a downloadable image card.
 - When the user wants a Word document, report, or formatted write-up to keep, call create_word_document with a title and markdown body — they get a downloadable .docx.
 - When the user wants a slide deck or presentation, call create_powerpoint with a title and an ordered slides array (each slide: title, bullets, optional speaker notes) — they get a downloadable .pptx.
 - When the task involves analysing, filtering, sorting, aggregating, joining, or comparing structured data, use the data analysis tools: (1) import_data to load CSV/JSON/Parquet into the DuckDB engine when you already have the file contents, (2) query_data to run SQL queries (SELECT, WHERE, GROUP BY, ORDER BY, LIMIT, JOIN, window functions) and get results as JSON, (3) list_datasets to see what tables are loaded, (4) describe_dataset to see the schema. Import data first, then run multiple queries to explore and answer the question. For natural-language questions, translate them into SQL queries against the loaded data.
@@ -2893,6 +2909,8 @@ export class AgentRuntime {
         return this.exportData(args);
       case 'create_file':
         return this.createFile(args);
+      case 'create_image':
+        return this.createImage(args);
       case 'create_word_document':
         return this.createWordDocument(args);
       case 'create_powerpoint':
@@ -3485,6 +3503,91 @@ export class AgentRuntime {
       fileArtifact,
     });
     return `Created the file "${filename}" (${content.length} characters). The user can download it from the card.`;
+  }
+
+  private async createImage(args: Record<string, unknown>): Promise<string> {
+    const settings = await getSettings();
+    const apiKey = settings?.ideogramApiKey?.trim();
+    if (!apiKey) {
+      return 'Error: create_image needs an Ideogram API key. Add it in Settings.';
+    }
+    const prompt = String(args.prompt ?? '').trim();
+    if (!prompt) {
+      return 'Error: create_image needs a prompt.';
+    }
+    const aspectRatio = String(args.aspectRatio ?? 'ASPECT_1_1').trim() || 'ASPECT_1_1';
+    const styleType = String(args.styleType ?? 'AUTO').trim() || 'AUTO';
+    const model = String(args.model ?? 'V_2').trim() || 'V_2';
+    const response = await fetch('https://api.ideogram.ai/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Api-Key': apiKey,
+      },
+      body: JSON.stringify({
+        image_request: {
+          prompt,
+          aspect_ratio: aspectRatio,
+          style_type: styleType,
+          model,
+          num_images: 1,
+        },
+      }),
+    });
+    if (!response.ok) {
+      let detail = '';
+      try {
+        detail = (await response.text()).trim();
+      } catch {
+        detail = '';
+      }
+      return `Error: Ideogram returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`;
+    }
+    let payload: any;
+    try {
+      payload = await response.json();
+    } catch (e) {
+      return `Error: could not parse Ideogram response: ${String(e)}`;
+    }
+    const first = Array.isArray(payload?.data) ? payload.data[0] : null;
+    const imageUrl = String(first?.url ?? first?.image_url ?? first?.imageUrl ?? '').trim();
+    const inlineBase64 = String(first?.b64_json ?? first?.image_base64 ?? first?.base64 ?? '').trim();
+    let dataBase64 = '';
+    let mimeType = String(first?.mime_type ?? first?.mimeType ?? '').trim().toLowerCase() || 'image/png';
+    if (inlineBase64) {
+      dataBase64 = inlineBase64;
+    } else if (imageUrl) {
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        return `Error: downloading the generated image returned HTTP ${imageResponse.status}.`;
+      }
+      const bytes = new Uint8Array(await imageResponse.arrayBuffer());
+      if (bytes.byteLength > MAX_DATA_BYTES) {
+        return `Error: generated image is too large (> ${Math.round(MAX_DATA_BYTES / 1024 / 1024)} MB).`;
+      }
+      dataBase64 = bytesToBase64(bytes);
+      const contentType = imageResponse.headers.get('content-type');
+      mimeType = contentType ? contentType.split(';')[0].trim().toLowerCase() : mimeType;
+    } else {
+      return 'Error: Ideogram response did not include an image URL.';
+    }
+    const slug = prompt
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'ideogram-image';
+    const fileArtifact: FileArtifact = {
+      filename: `ideogram-${slug}.${imageExtensionForMimeType(mimeType)}`,
+      mimeType,
+      dataBase64,
+    };
+    this.pushChat({
+      role: 'notice',
+      text: `Prepared an image from the prompt. Download it from the card below.`,
+      timestamp: new Date().toISOString(),
+      fileArtifact,
+    });
+    return `Created the image "${fileArtifact.filename}". The user can download it from the card.`;
   }
 
   /**

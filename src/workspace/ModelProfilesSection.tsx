@@ -15,7 +15,31 @@ const EMPTY_FORM: Omit<ModelProfile, 'id'> = {
   model: '',
   apiVersion: '',
   privacyTier: 'cloud',
+  description: '',
+  capabilities: {
+    vision: false,
+    audio: false,
+    video: false,
+  },
 };
+
+const ROLE_CAPABILITY: Partial<Record<Exclude<ModelRole, 'main'>, keyof NonNullable<ModelProfile['capabilities']>>> = {
+  vision: 'vision',
+};
+
+function hasCapability(profile: ModelProfile | undefined, capability: keyof NonNullable<ModelProfile['capabilities']>): boolean {
+  return Boolean(profile?.capabilities?.[capability]);
+}
+
+function selectedCapabilities(profile: ModelProfile): string[] {
+  const caps = profile.capabilities;
+  if (!caps) return [];
+  return [
+    caps.vision ? 'vision' : '',
+    caps.audio ? 'audio' : '',
+    caps.video ? 'video' : '',
+  ].filter(Boolean);
+}
 
 function newId(): string {
   return `mp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -54,6 +78,14 @@ export function ModelProfilesSection() {
 
   const submitForm = async () => {
     if (!formValid) return;
+    const description = form.description?.trim() || undefined;
+    const capabilities = form.capabilities && (form.capabilities.vision || form.capabilities.audio || form.capabilities.video)
+      ? {
+          vision: Boolean(form.capabilities.vision),
+          audio: Boolean(form.capabilities.audio),
+          video: Boolean(form.capabilities.video),
+        }
+      : undefined;
     const profile: ModelProfile = {
       id: editingId ?? newId(),
       name: form.name.trim(),
@@ -64,6 +96,8 @@ export function ModelProfilesSection() {
       temperature: form.temperature,
       maxTokens: form.maxTokens,
       privacyTier: form.privacyTier,
+      description,
+      capabilities,
     };
     const next = editingId ? profiles.map((p) => (p.id === editingId ? profile : p)) : [...profiles, profile];
     await patch({ modelProfiles: next });
@@ -82,6 +116,12 @@ export function ModelProfilesSection() {
       temperature: p.temperature,
       maxTokens: p.maxTokens,
       privacyTier: p.privacyTier ?? 'cloud',
+      description: p.description ?? '',
+      capabilities: {
+        vision: p.capabilities?.vision ?? false,
+        audio: p.capabilities?.audio ?? false,
+        video: p.capabilities?.video ?? false,
+      },
     });
     setEditingId(p.id);
     setShowForm(true);
@@ -118,14 +158,24 @@ export function ModelProfilesSection() {
       </p>
 
       {profiles.length > 0 && (
-        <ul class="sites-list">
+      <ul class="sites-list">
           {profiles.map((p) => (
             <li key={p.id} class="site-row">
-              <span class={`approval-tag trust-badge trust-${p.privacyTier === 'local' ? 'local' : 'public'}`}>
-                {p.privacyTier === 'local' ? 'local' : 'cloud'}
-              </span>
-              <span class="site-name">{p.name}</span>
-              <span class="site-desc">{p.model} — {p.baseUrl}</span>
+              <div class="site-main">
+                <div class="site-row-top">
+                  <span class={`approval-tag trust-badge trust-${p.privacyTier === 'local' ? 'local' : 'public'}`}>
+                    {p.privacyTier === 'local' ? 'local' : 'cloud'}
+                  </span>
+                  {selectedCapabilities(p).map((cap) => (
+                    <span key={cap} class="approval-tag approval-cap">
+                      {cap}
+                    </span>
+                  ))}
+                </div>
+                <span class="site-name">{p.name}</span>
+                <span class="site-desc">{p.model} — {p.baseUrl}</span>
+                {p.description && <span class="site-note">{p.description}</span>}
+              </div>
               <button class="icon-btn" title="Edit" onClick={() => edit(p)}>✎</button>
               <button class="icon-btn" title="Delete" onClick={() => remove(p.id)}>✕</button>
             </li>
@@ -138,6 +188,15 @@ export function ModelProfilesSection() {
           <label class="field">
             <span>Name</span>
             <input type="text" placeholder="Local Ollama" value={form.name} onInput={(e) => setForm({ ...form, name: (e.target as HTMLInputElement).value })} />
+          </label>
+          <label class="field">
+            <span>Description</span>
+            <input
+              type="text"
+              placeholder="Cheap local model for summarization and utility work"
+              value={form.description ?? ''}
+              onInput={(e) => setForm({ ...form, description: (e.target as HTMLInputElement).value })}
+            />
           </label>
           <label class="field">
             <span>Endpoint base URL</span>
@@ -176,6 +235,51 @@ export function ModelProfilesSection() {
               <option value="local">Local (on-device / private network)</option>
             </select>
           </label>
+          <div class="field-stack">
+            <span class="field-label">Capabilities</span>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                checked={form.capabilities?.vision ?? false}
+                onChange={(e) => setForm({
+                  ...form,
+                  capabilities: { ...(form.capabilities ?? EMPTY_FORM.capabilities!), vision: (e.target as HTMLInputElement).checked },
+                })}
+              />
+              <span class="toggle-text">
+                <span class="toggle-label">Vision</span>
+                <span class="toggle-note">Image inputs, screenshots, OCR fallback</span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                checked={form.capabilities?.audio ?? false}
+                onChange={(e) => setForm({
+                  ...form,
+                  capabilities: { ...(form.capabilities ?? EMPTY_FORM.capabilities!), audio: (e.target as HTMLInputElement).checked },
+                })}
+              />
+              <span class="toggle-text">
+                <span class="toggle-label">Audio</span>
+                <span class="toggle-note">Transcription / speech understanding</span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                checked={form.capabilities?.video ?? false}
+                onChange={(e) => setForm({
+                  ...form,
+                  capabilities: { ...(form.capabilities ?? EMPTY_FORM.capabilities!), video: (e.target as HTMLInputElement).checked },
+                })}
+              />
+              <span class="toggle-text">
+                <span class="toggle-label">Video</span>
+                <span class="toggle-note">Frame-level video understanding</span>
+              </span>
+            </label>
+          </div>
           <p class="settings-note">
             Tag a profile <strong>Local</strong> only if it's actually private (e.g. Ollama on
             localhost). "Restrict background tasks to local" below refuses to route to anything
@@ -207,9 +311,12 @@ export function ModelProfilesSection() {
                     <select value={settings.roleProfiles?.[role] ?? ''} onChange={(e) => setRoleProfile(role, (e.target as HTMLSelectElement).value)}>
                       <option value="">Same as main model</option>
                       {profiles.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
+                        <option key={p.id} value={p.id}>{p.name}{p.description ? ` — ${p.description}` : ''}</option>
                       ))}
                     </select>
+                    {ROLE_CAPABILITY[role] && settings.roleProfiles?.[role] && !hasCapability(profiles.find((p) => p.id === settings.roleProfiles?.[role]), ROLE_CAPABILITY[role]!) && (
+                      <p class="settings-note warn">This profile does not declare {ROLE_CAPABILITY[role]} support.</p>
+                    )}
                   </td>
                 </tr>
               ))}

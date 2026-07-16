@@ -41,6 +41,7 @@ const EN: Dict = {
   'header.saveConversation': 'Save conversation as HTML',
   'header.clearConversation': 'Clear conversation',
   'header.newChat': 'New chat (this one stays in History)',
+  'header.newChatShort': 'New Chat',
   'header.undo': 'Undo last exchange (puts your message back to edit)',
   'header.settings': 'Settings',
   'header.smallerText': 'Smaller text',
@@ -188,6 +189,8 @@ const EN: Dict = {
   // settings — group headings (Mac-style grouped cards)
   'settings.groupConnection': 'Model connection',
   'settings.groupInterface': 'Interface',
+  'settings.groupImage': 'Image generation',
+  'settings.groupImageDesc': 'Optional Ideogram settings used only by the create_image tool.',
   'settings.groupBehavior': 'Agent behaviour',
   'settings.groupBehaviorDesc': 'How the agent works through a task.',
   'settings.groupGeneration': 'Generation',
@@ -220,6 +223,7 @@ const EN: Dict = {
   'settings.endpointUrl': 'Endpoint base URL',
   'settings.apiKey': 'API key',
   'settings.model': 'Model',
+  'settings.ideogramApiKey': 'Ideogram API key (optional)',
   'settings.apiVersion': 'Azure API version (optional)',
   'settings.apiVersionNote':
     'Set this only for Azure OpenAI (e.g. 2024-02-01). When filled, requests use Azure’s api-version query parameter and api-key header. Your endpoint URL should point at the deployment, e.g. https://NAME.openai.azure.com/openai/deployments/DEPLOYMENT',
@@ -325,6 +329,7 @@ const FR: Dict = {
   'header.saveConversation': 'Enregistrer la conversation en HTML',
   'header.clearConversation': 'Effacer la conversation',
   'header.newChat': 'Nouvelle conversation (celle-ci reste dans l’historique)',
+  'header.newChatShort': 'Nouvelle conversation',
   'header.undo': 'Annuler le dernier échange (remet votre message à modifier)',
   'header.settings': 'Paramètres',
   'header.smallerText': 'Texte plus petit',
@@ -473,6 +478,8 @@ const FR: Dict = {
   // settings — group headings (Mac-style grouped cards)
   'settings.groupConnection': 'Connexion au modèle',
   'settings.groupInterface': 'Interface',
+  'settings.groupImage': 'Génération d’images',
+  'settings.groupImageDesc': 'Paramètres Ideogram optionnels utilisés uniquement par l’outil create_image.',
   'settings.groupBehavior': 'Comportement de l’agent',
   'settings.groupBehaviorDesc': 'Comment l’agent mène une tâche.',
   'settings.groupGeneration': 'Génération',
@@ -505,6 +512,7 @@ const FR: Dict = {
   'settings.endpointUrl': 'URL de base du point de terminaison',
   'settings.apiKey': 'Clé d’API',
   'settings.model': 'Modèle',
+  'settings.ideogramApiKey': 'Clé d’API Ideogram (facultatif)',
   'settings.apiVersion': 'Version d’API Azure (facultatif)',
   'settings.apiVersionNote':
     'À remplir uniquement pour Azure OpenAI (p. ex. 2024-02-01). Si renseigné, les requêtes utilisent le paramètre api-version et l’en-tête api-key d’Azure. L’URL du point de terminaison doit viser le déploiement, p. ex. https://NOM.openai.azure.com/openai/deployments/DEPLOIEMENT',
