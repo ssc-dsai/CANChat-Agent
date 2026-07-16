@@ -45,6 +45,28 @@ export async function createWorkflow(name: string, skillNames: string[], descrip
   return workflow;
 }
 
+export async function updateWorkflow(
+  id: string,
+  patch: Partial<Pick<Workflow, 'name' | 'description' | 'skillNames'>>,
+): Promise<Workflow | null> {
+  const workflows = await getWorkflows();
+  const idx = workflows.findIndex((w) => w.id === id);
+  if (idx < 0) return null;
+  const nextName = patch.name !== undefined ? patch.name.trim() : workflows[idx].name;
+  const nextSkills = patch.skillNames !== undefined ? patch.skillNames.map((s) => s.trim()).filter(Boolean) : workflows[idx].skillNames;
+  if (!nextName) throw new Error('Workflow needs a name.');
+  if (nextSkills.length === 0) throw new Error('Workflow needs at least one skill.');
+  workflows[idx] = {
+    ...workflows[idx],
+    ...patch,
+    name: nextName,
+    description: patch.description !== undefined ? patch.description.trim() || undefined : workflows[idx].description,
+    skillNames: nextSkills,
+  };
+  await saveWorkflows(workflows);
+  return workflows[idx];
+}
+
 export async function deleteWorkflow(id: string): Promise<boolean> {
   const workflows = await getWorkflows();
   const next = workflows.filter((w) => w.id !== id);

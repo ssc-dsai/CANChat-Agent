@@ -21,6 +21,7 @@ import type {
   ToolActivity,
 } from './types';
 import type { EventTrigger } from './eventTriggers';
+import type { Workflow } from './workflows';
 
 /** Commands sent from the sidebar to the background over a long-lived port. */
 export type SidebarCommand =
@@ -146,10 +147,22 @@ export type RuntimeRequest =
   | { type: 'scheduled_task_delete'; id: string }
   | { type: 'workflow_list' }
   | { type: 'workflow_create'; name: string; skillNames: string[]; description?: string }
+  | { type: 'workflow_update'; id: string; patch: Partial<Pick<Workflow, 'name' | 'description' | 'skillNames'>> }
   | { type: 'workflow_delete'; id: string }
   | { type: 'event_trigger_list' }
-  | { type: 'event_trigger_create'; name: string; hostPattern: string; target: EventTrigger['target']; cooldownMinutes?: number }
-  | { type: 'event_trigger_update'; id: string; patch: Partial<Pick<EventTrigger, 'name' | 'hostPattern' | 'target' | 'cooldownMinutes' | 'enabled'>> }
+  | {
+      type: 'event_trigger_create';
+      name: string;
+      hostPattern: string;
+      target: EventTrigger['target'];
+      cooldownMinutes?: number;
+      matchSubPages?: boolean;
+    }
+  | {
+      type: 'event_trigger_update';
+      id: string;
+      patch: Partial<Pick<EventTrigger, 'name' | 'hostPattern' | 'target' | 'cooldownMinutes' | 'enabled' | 'matchSubPages'>>;
+    }
   | { type: 'event_trigger_delete'; id: string }
   | { type: 'trigger_runs_get' }
   // Products: durable OPFS-backed outputs from scheduled tasks/triggers (see

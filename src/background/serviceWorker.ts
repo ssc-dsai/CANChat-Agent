@@ -64,6 +64,7 @@ import {
   getWorkflows,
   maybeFireEventTriggers,
   updateEventTrigger,
+  updateWorkflow,
 } from './automation';
 import {
   getActiveProjectId,
@@ -638,6 +639,17 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
     })().then(sendResponse);
     return true;
   }
+  if (request.type === 'workflow_update') {
+    (async () => {
+      try {
+        const workflow = await updateWorkflow(request.id, request.patch);
+        return { ok: Boolean(workflow), workflow };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    })().then(sendResponse);
+    return true;
+  }
   if (request.type === 'workflow_delete') {
     deleteWorkflow(request.id).then((ok) => sendResponse({ ok }));
     return true;
@@ -654,6 +666,7 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
           hostPattern: request.hostPattern,
           target: request.target,
           cooldownMinutes: request.cooldownMinutes,
+          matchSubPages: request.matchSubPages,
           enabled: true,
         });
         return { ok: true, trigger };

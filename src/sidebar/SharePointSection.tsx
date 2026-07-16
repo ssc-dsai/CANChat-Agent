@@ -73,31 +73,35 @@ export function SharePointSection({ onChanged }: { onChanged: () => void }) {
   };
 
   return (
-    <div class={`repo-folder-drop${busy ? ' repo-folder-drop--busy' : ''}`}>
-      <strong>{busy ? t('sharepoint.working') : t('sharepoint.title')}</strong>
-      <span class="settings-note">{t('sharepoint.hint')}</span>
-      <label class="field">
-        <span>{t('sharepoint.libraryUrl')}</span>
-        <input
-          type="url"
-          value={libraryUrl}
-          placeholder="https://contoso.sharepoint.com/sites/team/Shared%20Documents"
-          onInput={(e) => {
-            const v = (e.target as HTMLInputElement).value;
-            setLibraryUrl(v);
-            if (!repo) setRepo(repoNameFor(v));
-          }}
-        />
-      </label>
-      <label class="field">
-        <span>{t('sharepoint.repo')}</span>
-        <input
-          type="text"
-          value={repo}
-          placeholder={t('sharepoint.repoPlaceholder')}
-          onInput={(e) => setRepo((e.target as HTMLInputElement).value)}
-        />
-      </label>
+    <div class={`sharepoint-card${busy ? ' sharepoint-card--busy' : ''}`}>
+      <div class="sharepoint-head">
+        <strong>{busy ? t('sharepoint.working') : t('sharepoint.title')}</strong>
+        <span class="settings-note">{t('sharepoint.hint')}</span>
+      </div>
+      <div class="field-row sharepoint-fields">
+        <label class="field">
+          <span>{t('sharepoint.libraryUrl')}</span>
+          <input
+            type="url"
+            value={libraryUrl}
+            placeholder="https://contoso.sharepoint.com/sites/team/Shared%20Documents"
+            onInput={(e) => {
+              const v = (e.target as HTMLInputElement).value;
+              setLibraryUrl(v);
+              if (!repo) setRepo(repoNameFor(v));
+            }}
+          />
+        </label>
+        <label class="field">
+          <span>{t('sharepoint.repo')}</span>
+          <input
+            type="text"
+            value={repo}
+            placeholder={t('sharepoint.repoPlaceholder')}
+            onInput={(e) => setRepo((e.target as HTMLInputElement).value)}
+          />
+        </label>
+      </div>
       <div class="repo-folder-row">
         <button class="btn" disabled={busy || !libraryUrl.trim()} onClick={() => void submit()}>
           {t('sharepoint.index')}

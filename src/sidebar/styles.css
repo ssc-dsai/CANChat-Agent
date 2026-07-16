@@ -1126,18 +1126,23 @@ body {
   gap: 8px;
   text-align: center;
   margin-top: 10px;
-  padding: 16px 12px;
-  border: 1.5px dashed var(--border);
-  border-radius: 10px;
-  background: var(--bg-input);
-  transition: border-color 0.12s ease, background 0.12s ease;
+  padding: 20px 14px;
+  border: 2px dashed color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-input));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
 }
 .repo-folder-drop--over {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-input));
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-input));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 .repo-folder-drop--busy {
   opacity: 0.6;
+}
+.repo-folder-drop strong {
+  font-size: 14px;
 }
 .repo-folder-drop .settings-note {
   margin: 0;
@@ -1145,6 +1150,32 @@ body {
 .repo-folder-status {
   margin: 6px 0 0;
   font-style: italic;
+}
+
+.sharepoint-card {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sharepoint-card--busy {
+  opacity: 0.7;
+}
+.sharepoint-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sharepoint-fields {
+  margin: 0;
+}
+.sharepoint-fields .field {
+  flex: 1 1 0;
 }
 
 .btn-primary {
