@@ -27,19 +27,43 @@ import {
   waitForElement,
 } from './domExtractor';
 
+type MessageHandler = (
+  request: ContentRequest,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response?: unknown) => void,
+) => boolean | undefined;
+
 declare global {
   interface Window {
     __browserAgentInjected?: boolean;
+    __browserAgentHandler?: MessageHandler;
     __browserAgentPointerTarget?: PointerTarget | null;
   }
 }
 
-// Guard against double injection: ensureContentScript pings first, but a
-// navigation race can still inject twice.
-if (!window.__browserAgentInjected) {
-  window.__browserAgentInjected = true;
+// Re-register on every injection rather than short-circuiting on a boolean flag.
+//
+// The old `if (!window.__browserAgentInjected)` guard made re-injection a no-op
+// once the flag was set — but the flag outlives the *listener*. After an
+// extension reload/update the previous content script is orphaned ("Extension
+// context invalidated"): its listener is dead while the flag is still true, so
+// executeScript would silently register nothing and that tab could never be read
+// again. chrome.tabs.sendMessage then resolves `undefined` (it does not reject),
+// which used to surface as a bogus "extraction failed" on every site.
+//
+// Removing the prior handler before adding the new one keeps double-injection
+// from registering two listeners (which would double-call sendResponse).
+{
+  const prior = window.__browserAgentHandler;
+  if (prior) {
+    try {
+      chrome.runtime.onMessage.removeListener(prior);
+    } catch {
+      // Prior context already invalidated — nothing to remove.
+    }
+  }
 
-  chrome.runtime.onMessage.addListener((request: ContentRequest, _sender, sendResponse) => {
+  const handler: MessageHandler = (request: ContentRequest, _sender, sendResponse) => {
     try {
       switch (request.kind) {
         case 'ba_ping':
@@ -91,8 +115,14 @@ if (!window.__browserAgentInjected) {
           return true;
       }
     } catch (err) {
+      // Marked with `ok: false` so the background can tell a genuine in-page
+      // failure apart from a missing listener, and report the real reason.
       sendResponse({ ok: false, detail: String(err) });
     }
     return false;
-  });
+  };
+
+  window.__browserAgentHandler = handler;
+  window.__browserAgentInjected = true;
+  chrome.runtime.onMessage.addListener(handler);
 }
