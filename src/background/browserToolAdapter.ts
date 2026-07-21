@@ -42,6 +42,10 @@ const READ_PDF_CONTEXT_CHARS = 60_000;
 const READ_DOC_CONTEXT_CHARS = 60_000;
 // Cap a video transcript put into the model's context (mirrors read_pdf).
 const VIDEO_TRANSCRIPT_CONTEXT_CHARS = 60_000;
+// Below this much extracted text, a readable page is treated as "sparse" and the
+// readAppContent fallback is attempted (see getTabContent). Kept low so it only
+// fires on genuinely empty extractions, not merely short pages.
+const MIN_MEANINGFUL_TEXT_CHARS = 200;
 
 function toTabSummary(tab: chrome.tabs.Tab, groupTitles?: Map<number, string>): TabSummary {
   const groupId = tab.groupId !== undefined && tab.groupId !== -1 ? tab.groupId : undefined;
@@ -96,15 +100,32 @@ async function sendToTab<T>(tabId: number, request: ContentRequest): Promise<T> 
   return (await chrome.tabs.sendMessage(tabId, request)) as T;
 }
 
-/** Inject the content script if it is not already present in the tab. */
+/**
+ * Inject the content script if it is not already present in the tab, then prove
+ * a listener is actually live.
+ *
+ * The post-injection ping matters: `chrome.tabs.sendMessage` RESOLVES WITH
+ * `undefined` when nothing answers (it only rejects when there is no receiver at
+ * all), so without this check a tab whose listener is dead looks fine here and
+ * then fails confusingly deeper in, with the real cause long gone.
+ */
 async function ensureContentScript(tabId: number): Promise<void> {
-  try {
-    await sendToTab(tabId, { kind: 'ba_ping' });
-    return;
-  } catch {
-    // Not injected yet.
-  }
+  const ping = async (): Promise<boolean> => {
+    try {
+      const pong = await sendToTab<{ ok?: boolean } | undefined>(tabId, { kind: 'ba_ping' });
+      return pong?.ok === true;
+    } catch {
+      return false; // No receiver in this tab yet.
+    }
+  };
+
+  if (await ping()) return;
   await chrome.scripting.executeScript({ target: { tabId }, files: ['contentScript.js'] });
+  if (await ping()) return;
+  throw new Error(
+    'The content script could not be reached in this tab after injection. Reload the page ' +
+      'and try again — a tab left open across an extension reload can be left without a live listener.',
+  );
 }
 
 export async function listTabs(): Promise<TabSummary[]> {
@@ -196,11 +217,56 @@ export async function getTabContent(tabId: number): Promise<PageContent> {
   }
   try {
     await ensureContentScript(tabId);
-    const extracted = await sendToTab<Omit<PageContent, 'tabId'>>(tabId, { kind: 'ba_extract' });
-    const content: PageContent = { tabId, ...extracted };
+    const extracted = await sendToTab<Omit<PageContent, 'tabId'> | { ok: false; detail: string } | undefined>(
+      tabId,
+      { kind: 'ba_extract' },
+    );
+    // Validate before use. Two non-page-content replies are possible and both
+    // used to blow up in analyzeAuthState (which dereferences .metadata/.text),
+    // turning a precise cause into a generic "extraction failed":
+    //   - `undefined`, when no listener answered (sendMessage resolves, not rejects);
+    //   - `{ ok: false, detail }`, when extractPage threw inside the page.
+    if (!extracted || typeof (extracted as PageContent).text !== 'string') {
+      const detail =
+        extracted && typeof (extracted as { detail?: unknown }).detail === 'string'
+          ? (extracted as { detail: string }).detail
+          : 'the content script returned no page content (no listener answered in this tab)';
+      return emptyContent(tabId, url, title, 'unsupported', `Extraction failed: ${detail}`);
+    }
+    const content: PageContent = { tabId, ...(extracted as Omit<PageContent, 'tabId'>) };
+    // Defensive defaults so a partial reply can't crash downstream consumers.
+    content.metadata ??= {};
+    content.links ??= [];
+    content.headings ??= [];
     // Flag auth walls at extraction time so callers see it immediately.
     if (analyzeAuthState(content).status === 'auth_required') {
       content.extractionStatus = 'auth_required';
+      return content;
+    }
+    // Sparse-text fallback: when the DOM/shadow extraction comes back nearly
+    // empty on a page that isn't a login wall, try readAppContent (selection +
+    // copy-interception + innerText). This rescues canvas-rendered apps (Google
+    // Docs/Sheets) and stubborn SPAs where the accessible DOM carries little
+    // text. It costs a select-all flash on the page, so it only runs when the
+    // primary text is genuinely thin.
+    if (
+      (content.extractionStatus === 'ok' || content.extractionStatus === 'partial') &&
+      content.text.trim().length < MIN_MEANINGFUL_TEXT_CHARS
+    ) {
+      try {
+        const app = await sendToTab<{ method: string; text: string; truncated: boolean }>(tabId, {
+          kind: 'ba_app_content',
+        });
+        if (app.method !== 'none' && app.text.trim().length > content.text.trim().length) {
+          content.text = app.text;
+          content.metadata['ba:extractMethod'] = app.method;
+          content.metadata['ba:note'] =
+            `Primary text extraction was sparse; recovered content via the "${app.method}" fallback.`;
+          content.extractionStatus = app.truncated ? 'partial' : 'ok';
+        }
+      } catch {
+        // Fallback unavailable — keep the sparse primary result.
+      }
     }
     return content;
   } catch (err) {
