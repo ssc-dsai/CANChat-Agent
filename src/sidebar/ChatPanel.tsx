@@ -40,6 +40,7 @@ function downloadBase64(dataBase64: string, type: string, filename: string): voi
 
 /** Download card for a generated binary document (e.g. a .docx). */
 function FileArtifactCard({ file }: { file: FileArtifact }) {
+  const t = useT();
   const isImage = file.mimeType.startsWith('image/');
   const download = () => downloadBase64(file.dataBase64, file.mimeType, file.filename);
   return (
@@ -57,7 +58,7 @@ function FileArtifactCard({ file }: { file: FileArtifact }) {
       </div>
       <div class="export-actions">
         <button class="btn btn-small btn-primary" onClick={download}>
-          Download
+          {t('export.download')}
         </button>
       </div>
     </div>
@@ -65,6 +66,7 @@ function FileArtifactCard({ file }: { file: FileArtifact }) {
 }
 
 function DataExportCard({ data }: { data: DataExport }) {
+  const t = useT();
   const csv = () => toCsv(data.columns, data.rows);
   const json = () =>
     JSON.stringify(
@@ -106,16 +108,16 @@ function DataExportCard({ data }: { data: DataExport }) {
       </div>
       <div class="export-actions">
         <button class="btn btn-small btn-primary" onClick={() => downloadBlob(csv(), 'text/csv', data.filename)}>
-          Download CSV
+          {t('export.csv')}
         </button>
         <button
           class="btn btn-small"
           onClick={() => downloadBlob(json(), 'application/json', data.filename.replace(/\.csv$/, '.json'))}
         >
-          Download JSON
+          {t('export.json')}
         </button>
         <button class="btn btn-small" onClick={() => void navigator.clipboard.writeText(csv())}>
-          Copy CSV
+          {t('export.copyCsv')}
         </button>
       </div>
     </div>
@@ -567,7 +569,7 @@ export function ChatPanel({
                     title="Copy to clipboard"
                     onClick={() => copyMessage(i, m.text)}
                   >
-                    {copiedIndex === i ? '✓ Copied' : '⧉ Copy'}
+                    {copiedIndex === i ? tr('chat.copied') : tr('chat.copy')}
                   </button>
                 </div>
               </>
@@ -617,7 +619,7 @@ export function ChatPanel({
         {approval && (
           <div class="prompt-card" data-testid="approval">
             <div>
-              <strong>Approve action?</strong>
+              <strong>{tr('approval.title')}</strong>
               {approval.approvalContext && (
                 <div class="approval-context">
                   {approval.approvalContext.capabilityKind && <span class="approval-tag approval-cap">{approval.approvalContext.capabilityKind}</span>}
@@ -632,27 +634,27 @@ export function ChatPanel({
               )}
               <div class="prompt-reason">{approval.description}</div>
               <details class="prompt-tech">
-                <summary>Technical detail</summary>
+                <summary>{tr('approval.tech')}</summary>
                 <div class="prompt-detail">{approval.detail}</div>
               </details>
             </div>
             <div class="prompt-actions-col">
               <label class="approval-remember">
                 <input type="checkbox" checked={rememberSession} onChange={() => setRememberSession(!rememberSession)} />
-                <span>Allow for this session</span>
+                <span>{tr('approval.allow')}</span>
               </label>
               <div class="prompt-btn-row">
                 <button
                   class="btn btn-primary"
                   onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: true, rememberForSession: rememberSession })}
                 >
-                  Approve
+                  {tr('approval.approve')}
                 </button>
                 <button
                   class="btn"
                   onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: false })}
                 >
-                  Deny
+                  {tr('approval.deny')}
                 </button>
               </div>
             </div>
@@ -673,9 +675,9 @@ export function ChatPanel({
         )}
         {canDistill && (
           <div class="distill-chip">
-            <span>Save this workflow as a reusable skill?</span>
+            <span>{tr('distill.offer')}</span>
             <button class="btn btn-small btn-primary" onClick={() => send({ type: 'distill_skill' })}>
-              Save skill
+              {tr('distill.save')}
             </button>
             <button class="icon-btn" title="Dismiss" onClick={() => send({ type: 'dismiss_distill' })}>
               ✕
@@ -797,7 +799,7 @@ export function ChatPanel({
         )}
         <div class="chat-buttons">
           <button class="btn btn-primary" data-testid="send" onClick={submit} disabled={disabled || busy || !text.trim()}>
-            Send
+            {tr('chat.send')}
           </button>
           <button
             class="btn attach-btn"
@@ -844,11 +846,11 @@ export function ChatPanel({
             </button>
           ) : (
             <button class="btn" onClick={() => send({ type: 'pause_agent' })} disabled={!busy}>
-              Pause
+              {tr('chat.pause')}
             </button>
           )}
           <button class="btn" onClick={() => send({ type: 'stop_task' })} disabled={status === 'idle'}>
-            Stop
+            {tr('chat.stop')}
           </button>
         </div>
       </div>

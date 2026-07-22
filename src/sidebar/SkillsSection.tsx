@@ -17,6 +17,7 @@ import {
 import type { Project, Skill } from '../shared/types';
 import { normalizeHost } from '../shared/url';
 import { loadIndexUrl, saveIndexUrl } from './playbookSettings';
+import { useT } from './i18n';
 
 async function loadProjects(): Promise<Project[]> {
   const r = await chrome.storage.local.get('ba_projects');
@@ -82,6 +83,7 @@ async function persistSkills(skills: Skill[]): Promise<void> {
 }
 
 export function SkillsSection() {
+  const t = useT();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
@@ -412,10 +414,9 @@ export function SkillsSection() {
     <div class="sites-section skills-section">
       <div class="settings-header skills-header">
         <div class="skills-title-block">
-          <strong>Skills</strong>
+          <strong>{t('skillsUi.title')}</strong>
           <p class="settings-note">
-            Reusable procedures for the agent. Skills can auto-trigger from the task, load from a
-            site, or be launched with /name in chat.
+            {t('skillsUi.desc')}
           </p>
         </div>
         <span class="sites-count">{skills.length}</span>
@@ -426,25 +427,25 @@ export function SkillsSection() {
           <input
             type="search"
             class="skills-search"
-            placeholder="Search skills"
+            placeholder={t('skillsUi.search')}
             value={search}
             onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
           />
           <div class="skills-toolbar-actions">
             <button class="btn btn-small btn-primary" onClick={() => setShowForm(true)}>
-              Add skill
+              {t('skillsUi.add')}
             </button>
             <button class="btn btn-small" onClick={() => setShowUrl(!showUrl)}>
-              Import from URL
+              {t('skillsUi.importUrl')}
             </button>
             <button class="btn btn-small" onClick={() => setShowJson(!showJson)}>
-              Import JSON
+              {t('skillsUi.importJson')}
             </button>
             <button class="btn btn-small" onClick={exportJson} disabled={skills.length === 0}>
-              Export JSON
+              {t('skillsUi.exportJson')}
             </button>
             <label class={`btn btn-small ${importing ? 'btn-disabled' : ''}`}>
-              Import zip
+              {t('skillsUi.importZip')}
               <input
                 type="file"
                 accept="application/zip,.zip"
@@ -459,7 +460,7 @@ export function SkillsSection() {
               />
             </label>
             <button class="btn btn-small" onClick={() => setShowLibrary(!showLibrary)}>
-              App playbook library
+              {t('skillsUi.library')}
             </button>
           </div>
         </div>
