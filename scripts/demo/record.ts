@@ -4,10 +4,13 @@
 // ffmpeg. Also regenerates docs/demo/SCRIPT.md with the ACTUAL timecodes
 // measured from the finished segments, so script and video can never drift.
 //
+//   npm run demo:setup              — one-time: Kokoro TTS venv (uv + MLX-Audio)
 //   npm run demo:record             — full tour → docs/demo/canagent-demo.mp4
 //   DEMO_SCENES=title,plan npm run demo:record   — subset (plumbing iteration)
 //
-// Requirements: macOS (`say`), ffmpeg on PATH, `npm run build` output in dist/.
+// Requirements: Apple Silicon macOS, ffmpeg on PATH, `npm run build` output in
+// dist/. Narration uses Kokoro-82M via MLX-Audio when scripts/demo/.venv
+// exists (run demo:setup once); otherwise it falls back to macOS `say`.
 
 import { execFile } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -27,7 +30,14 @@ const ROOT = resolve(__dirname, '../..');
 const DIST = join(ROOT, 'dist');
 const OUT_DIR = join(ROOT, 'docs', 'demo');
 const WORK = join(tmpdir(), `canagent-demo-${process.pid}`);
-const VOICE = process.env.DEMO_VOICE ?? 'Samantha';
+// TTS: Kokoro-82M via MLX-Audio (scripts/demo/.venv — see README section in
+// SCRIPT.md header) with macOS `say` as the fallback engine.
+//   DEMO_TTS=say            force the fallback
+//   DEMO_VOICE=af_heart     Kokoro voice (or a `say` voice with DEMO_TTS=say)
+const VENV_PY = join(ROOT, 'scripts', 'demo', '.venv', 'bin', 'python');
+const USE_KOKORO = process.env.DEMO_TTS !== 'say' && existsSync(VENV_PY);
+const VOICE = process.env.DEMO_VOICE ?? (USE_KOKORO ? 'af_heart' : 'Samantha');
+const KOKORO_MODEL = process.env.DEMO_TTS_MODEL ?? 'mlx-community/Kokoro-82M-bf16';
 
 async function ffprobeDuration(file: string): Promise<number> {
   const { stdout } = await exec('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]);
@@ -78,8 +88,29 @@ async function recordScene(id: string, mockBase: string, staticBase: string): Pr
 }
 
 async function synthNarration(id: string, text: string): Promise<string> {
-  const aiff = join(WORK, 'tts', `${id}.aiff`);
-  mkdirSync(dirname(aiff), { recursive: true });
+  const dir = join(WORK, 'tts');
+  mkdirSync(dir, { recursive: true });
+  if (USE_KOKORO) {
+    // Kokoro splits long text into sentences; --join_audio merges them into
+    // one <prefix>.wav. Generation is ~1s of audio per second on M-series.
+    await exec(VENV_PY, [
+      '-m', 'mlx_audio.tts.generate',
+      '--model', KOKORO_MODEL,
+      '--voice', VOICE,
+      '--speed', '1.05',
+      '--join_audio',
+      '--output_path', dir,
+      '--file_prefix', id,
+      '--text', text,
+    ]);
+    const wav = join(dir, `${id}.wav`);
+    if (existsSync(wav)) return wav;
+    // Single-segment runs may skip the join and emit <prefix>_000.wav.
+    const seg = join(dir, `${id}_000.wav`);
+    if (existsSync(seg)) return seg;
+    throw new Error(`Kokoro produced no audio for scene "${id}"`);
+  }
+  const aiff = join(dir, `${id}.aiff`);
   await exec('say', ['-v', VOICE, '-o', aiff, text]);
   return aiff;
 }

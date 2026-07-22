@@ -19,7 +19,8 @@
     "addin:sideload": "office-addin-debugging start word-addin/manifest.xml",
     "addin:stop": "office-addin-debugging stop word-addin/manifest.xml",
     "addin:proxy": "node word-addin/proxy.mjs",
-    "demo:record": "npm run build && node scripts/demo/record.ts"
+    "demo:record": "npm run build && node scripts/demo/record.ts",
+    "demo:setup": "uv venv scripts/demo/.venv --python 3.12 && uv pip install --python scripts/demo/.venv/bin/python mlx-audio \"misaki[en]\" espeakng-loader phonemizer-fork https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
