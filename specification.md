@@ -38,11 +38,11 @@ tool name, a default), it is stated exactly.
 - **Language:** TypeScript (strict).
 - **UI:** Preact + `@preact/preset-vite` (the side panel is a small SPA).
 - **Bundler:** Vite, **two builds**:
-  - `vite.config.ts` — the app, as ES modules. `rollupOptions.input` has five HTML
+  - `vite.config.ts` — the app, as ES modules. `rollupOptions.input` has four HTML
     pages — side panel (`sidebar.html`), offscreen document (`offscreen.html`),
-    microphone capture page (`microphone.html`), the map workspace (`map.html`), and
-    the full-tab **workspace** (`workspace.html`) — plus the service worker
-    (`serviceWorker.js`, `type: module`).
+    microphone capture page (`microphone.html`), and the full-tab **workspace**
+    (`workspace.html`) — plus the service worker (`serviceWorker.js`,
+    `type: module`).
   - `vite.content.config.ts` — the **content script** built as a single **IIFE**
     (`contentScript.js`), because content scripts cannot be ES modules.
   - `package.json` build script: `vite build && vite build --config vite.content.config.ts`.
@@ -51,9 +51,6 @@ tool name, a default), it is stated exactly.
 - **Office (OOXML):** `fflate` (~8KB, pure JS — unzip `.docx`/`.pptx`/`.xlsx`) + `DOMParser`, in the offscreen document.
 - **Document generation:** `docx` (build `.docx` from Markdown) and `pptxgenjs`
   (build `.pptx` from a slide spec), both **lazy-imported in the offscreen document**.
-- **Map:** `leaflet` (+ `@types/leaflet`) on a dedicated `map.html` page (raster OSM tiles).
-- **Data engine:** `@duckdb/duckdb-wasm` — an in-browser SQL engine, lazy-imported in
-  the offscreen document, with datasets persisted to OPFS.
 - **Runtime/tasks:** **mise** pins Node 26 and exposes tasks:
   `mise run install` (npm install), `mise run build`, `mise run typecheck` (`tsc --noEmit`),
   `mise run test`.
@@ -64,9 +61,8 @@ tool name, a default), it is stated exactly.
 - **Target:** Chromium ≥ 116 (side panel + offscreen APIs).
 
 Dependencies: `preact`, `marked`, `dompurify`, `pdfjs-dist`, `fflate`, `docx`,
-`pptxgenjs`, `leaflet`, `@duckdb/duckdb-wasm`. Dev: `vite`, `@preact/preset-vite`,
-`typescript`, `@types/chrome`, `@types/leaflet`, `vitest`, `@vitest/coverage-v8`,
-`@playwright/test`.
+`pptxgenjs`. Dev: `vite`, `@preact/preset-vite`, `typescript`, `@types/chrome`,
+`vitest`, `@vitest/coverage-v8`, `@playwright/test`, `jsdom`, `knip`.
 
 ---
 
@@ -100,8 +96,8 @@ Dependencies: `preact`, `marked`, `dompurify`, `pdfjs-dist`, `fflate`, `docx`,
   (`chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })`).
 - Icon: a maple-leaf mark (the "CAN" in CANChat Agent), four sizes.
 - **CSP:** `extension_pages` adds `'wasm-unsafe-eval'` so the offscreen document can
-  compile DuckDB-WASM; the engine's worker + wasm are bundled as same-origin assets
-  (no CDN) to satisfy `script-src 'self'`.
+  compile the on-device embedder's ONNX wasm; the runtime's worker + wasm are bundled
+  as same-origin assets (no CDN) to satisfy `script-src 'self'`.
 
 Permission roles: `sidePanel` (UI surface) · `tabs`/`activeTab`/`scripting`
 (read & drive pages) · `search` (default search engine) · `bookmarks` (@-mention
@@ -118,12 +114,11 @@ mail, calendar, and draft creation) · `alarms` (hourly mailbox auto-refresh).
 ## 4. Architecture & contexts
 
 MV3 splits execution across several contexts. The split is forced by platform limits
-and is load-bearing. The four core contexts are below; three more **purpose pages** are
+and is load-bearing. The four core contexts are below; two more **purpose pages** are
 created on demand — a hidden **microphone page** (`microphone.html`, getUserMedia for
-voice prompts), a visible **map page** (`map.html`, the persistent Leaflet workspace),
-and the full-tab **workspace** (`workspace.html`, the expanded work environment) —
-each talking to the worker over `chrome.runtime.sendMessage` with a `target`
-discriminator, exactly like the offscreen document:
+voice prompts) and the full-tab **workspace** (`workspace.html`, the expanded work
+environment) — each talking to the worker over `chrome.runtime.sendMessage` with a
+`target` discriminator, exactly like the offscreen document:
 
 ```
 ┌──────────────┐  long-lived Port   ┌────────────────────┐
@@ -156,9 +151,9 @@ discriminator, exactly like the offscreen document:
   created on demand, because the service worker can't host pdf.js or the async OPFS
   API. Hosts **PDF text extraction**, **Office (OOXML) extraction** (`fflate`
   unzip + `DOMParser`), document/presentation generation, the **OPFS vector store**,
-  and the **DuckDB-WASM data engine**. Three message channels distinguished by a
-  `target` field: `'offscreen'` (PDF / Office / doc-gen, by `type`), `'offscreen-repo'`
-  (RAG), and `'offscreen-duckdb'` (SQL data engine).
+  and the on-device embedder. Two message channels distinguished by a `target`
+  field: `'offscreen'` (PDF / Office / doc-gen, by `type`) and `'offscreen-repo'`
+  (RAG).
 
 ### File responsibilities
 
@@ -186,13 +181,10 @@ discriminator, exactly like the offscreen document:
   `SlideSpec[]` for `create_powerpoint`.
 - `uploadFile.ts` — `classifyUpload(name, mime)`, `MAX_UPLOAD_BYTES`, `UPLOAD_ACCEPT`
   for the repo file-upload flow.
-- `geo.ts` — lat/lng/zoom validation & clamping for the `map_*` tools.
 - `capabilities.ts` — the **Capability Registry** model: `CapabilityRegistryEntry`
   (kinds: bookmark/mcp/rest/webmcp/model/knowledge/skill), trust levels, auth methods,
   `migrateSitesToCapabilities` (legacy `ba_sites` → registry), and `resolveAuth` /
   `isTrustedForAutoApproval` helpers used by the approval gate.
-- `unifiedTools.ts` — `UnifiedToolDefinition` (kind: builtin/rest/mcp/webmcp/browser)
-  + `toLlmToolDefinition`/`kindForToolName`; currently powers the Workspace tool list.
 - `labelColors.ts` — deterministic color assignment for conversation labels.
 - `backupFormat.ts` — validate/shape the Backup & Restore JSON bundle.
 - `skillImport.ts` — parse imported skill files. `curatedPlaybooks.ts` — seed app
@@ -213,8 +205,6 @@ discriminator, exactly like the offscreen document:
 - `loopHelpers.ts` — pure, unit-tested loop helpers: `parseSummaryArray` (eviction
   digest) and `parseReflectionVerdict` (self-check JSON), both fail-open, plus
   `repairToolPairing` (see below).
-- `mapClient.ts` — `ensureMapTab()` (singleton map tab + `map_ready` handshake) +
-  `mapCommand(cmd)`; mirrors `offscreenClient`.
 - `llmProvider.ts` — `complete(settings, messages, tools?, signal?, onRetry?)`,
   `embed(settings, texts)`, `transcribe(settings, audio)`, `testConnection(settings)`,
   `resolveModelForRole(settings, role)` (model orchestration — see §9 *Model
@@ -236,9 +226,8 @@ discriminator, exactly like the offscreen document:
   loop producing downscaled JPEG frames for the vision model.
 - `offscreenClient.ts` — `ensureOffscreen` + wrappers: `extractPdf(url, maxChars?)`,
   `extractOffice(url, maxChars?)`, `generateDocument(title, markdown)`,
-  `generatePresentation(title, slides)`, the DuckDB wrappers
-  (`duckDbQuery/Import.../listTables/describeTable/persistTable/loadTable/dropTable`),
-  and `repoAdd/repoSearch/repoList/repoDelete/repoDocs/repoDeleteDoc/repoExport/repoImport`.
+  `generatePresentation(title, slides)`, and
+  `repoAdd/repoSearch/repoList/repoDelete/repoDocs/repoDeleteDoc/repoExport/repoImport`.
 - `storage.ts` — `chrome.storage.local` helpers; settings, skills (seeded once),
   the **Capability Registry** (`getCapabilities` reads `ba_capabilities`, lazily
   migrating legacy `ba_sites`), memory, and **conversation history** (`ba_conv_index`,
@@ -262,15 +251,7 @@ discriminator, exactly like the offscreen document:
   and the `offscreen-repo` router into `repoStore`.
 - `docGen.ts` — `markdownToDocxBase64(title, markdown)` (lazy `docx`).
 - `pptGen.ts` — `slidesToPptxBase64(title, slides)` (lazy `pptxgenjs`).
-- `duckDb.ts` — the DuckDB-WASM engine (lazy `@duckdb/duckdb-wasm`): `query`,
-  `importCsv`/`importJson`, `listTables`, `describeTable`, and OPFS-backed
-  `persistTable`/`loadTable`/`dropTable` with auto-restore on first use.
 - `repoStore.ts` — the OPFS vector store (below).
-
-**`src/map/`** — `main.ts`: creates **one** Leaflet map on load, handles
-`target:'map'` commands (view/fly/basemap/markers/GeoJSON/shapes/animate/fit/clear/
-state), persists/restores its view to `chrome.storage.session`, and posts the
-`map_ready` handshake.
 
 **`src/microphone/`** — `microphone.ts`: a hidden page that records a voice prompt
 via `getUserMedia` and returns the audio for `/audio/transcriptions`.
@@ -283,33 +264,40 @@ panel), **Projects** (`ProjectsPage.tsx` — full CRUD + active-project switch;
 see §9 *Projects*), **Knowledge** (`RepositoriesSection`, reused from the
 sidebar), **Memory** (`MemoryPage.tsx` — see §9), **Skills** (`SkillsSection`, reused), **Tools**
 (`CapabilitiesSection`, reused, opened with `defaultOpen` so the console isn't a
-collapsed accordion on load), **Models** (`ModelSection.tsx` — a self-contained
-endpoint/key/model/temperature/max-tokens editor, independent of `SettingsScreen` so
-it can't regress onboarding — plus `ModelProfilesSection.tsx` below it for named
-alternate-endpoint profiles and role routing; see §9 *Model orchestration*),
+collapsed accordion on load), **Models** (`ModelSection.tsx` — the connection card
+(endpoint/key/model/Azure version/image key), `AdvancedSettingsSection.tsx` — the
+behaviour / generation / retrieval / connected-services groups, and
+`ModelProfilesSection.tsx` below them for named alternate-endpoint profiles and
+role routing; see §9 *Model orchestration*. Both settings sections share the
+`SettingsControls.tsx` Group/Toggle card chrome and **patch-save** — each save
+re-reads `ba_settings` and merges only its own fields, so one section's save
+can't revert the other's),
 **Automations** (`AutomationsPage.tsx` — scheduled tasks, workflows, and
 event triggers; see §9 *Agent platform*),
 **Products** (`ProductsPage.tsx` — files those runs generate, OPFS-backed;
-see §9 *Agent platform*),
-**Datasets** (`DatasetBrowser.tsx` — DuckDB: list/preview
-tables, import CSV/JSON, run SQL via the `duckdb` `RuntimeRequest`), **Data**
+see §9 *Agent platform*), **Data**
 (`DataViewer.tsx`, over `export_data` results), **Image** (`ImageViewer.tsx`, full-size
-generated images), and **Settings** (`ConsoleSettingsPage.tsx` — language switcher +
-reused `BackupRestoreSection`, also opened with `defaultOpen`). The reused sidebar
-sections (`CapabilitiesSection`, `BackupRestoreSection`) take an optional
-`defaultOpen` prop so the same component collapses in the sidebar's stacked accordion
-but starts expanded as a dedicated console page. The sidebar's `SettingsScreen` is
-unchanged — the console pages are additive, not a replacement, so onboarding and its
-E2E coverage stay untouched.
+generated images), and **Settings** (`ConsoleSettingsPage.tsx` — language switcher,
+the App playbook library index URL, + reused `BackupRestoreSection`, also opened
+with `defaultOpen`). The reused sidebar sections (`CapabilitiesSection`,
+`BackupRestoreSection`) take an optional `defaultOpen` prop so the same component
+collapses in the sidebar's stacked accordion but starts expanded as a dedicated
+console page. **The Workspace is the settings surface**: the sidebar's tabbed
+`SettingsScreen` overlay was removed; the sidebar keeps only first-run onboarding,
+and its gear opens `workspace.html#settings` (the no-model banner and onboarding's
+"Advanced setup…" open `#models`). The sidebar tracks configuredness via
+`chrome.storage.onChanged` since there is no overlay close event.
 
 **`src/sidebar/`** — `main.tsx` (bootstrap + UI scale), `Sidebar.tsx` (shell,
 header, text-size control, **Undo** + **History** controls), `ChatPanel.tsx` (composer,
 drag-drop + 📎 attach, document download cards), `Markdown.tsx`, `PlanPanel.tsx`,
 `ToolActivityPanel.tsx`, `TabContextPanel.tsx` (context + snapshot/OCR + repo
 capture), `ConversationsScreen.tsx` (the **History** list with title+summary, labels,
-load/delete/import/export), `OnboardingScreen.tsx` (first-run setup), `SettingsScreen.tsx`,
-the Settings sub-sections `CapabilitiesSection.tsx` (the Capability Registry editor;
-supersedes `KnownSitesSection.tsx`), `SkillsSection.tsx`,
+load/delete/import/export), `OnboardingScreen.tsx` (first-run setup),
+`OverflowMenu.tsx` (the header's accessible "More" menu),
+the settings sub-sections (rendered by Workspace pages) `CapabilitiesSection.tsx`
+(the Capability Registry editor; supersedes `KnownSitesSection.tsx`),
+`SkillsSection.tsx`,
 `MemorySection.tsx`, `RepositoriesSection.tsx`, `BackupRestoreSection.tsx`,
 `ProjectSwitcher.tsx` (compact active-project dropdown in the header), the shared
 `RepoUpload.tsx` + `UploadBanner.tsx` uploader and `LabelPicker.tsx`; helpers
@@ -417,24 +405,19 @@ A turn-based loop over the OpenAI chat API with tool calling.
   `search_known_sites`, `list_mcp_tools`, `list_webmcp_tools`, `sharepoint_search`,
   `microsoft365_search`, `read_tab_group`, `search_repo`, `list_repos`, `use_skill`, `set_plan`,
   `update_plan`, `record_finding`, `export_data`, `create_word_document`, `read_pdf`,
-  `read_office_document`, `get_video_transcript`, `read_app_content`, `map_get_state`,
-  and the data-engine tools `query_data`, `import_data`, `list_datasets`,
-  `describe_dataset`, `persist_dataset`, `load_dataset`, `drop_dataset` (they act on
-  the local DuckDB engine, not the user's session — non-gated, run in parallel).
+  `read_office_document`, `get_video_transcript`, `read_app_content`, and
+  `query_pointer_target`.
 - Everything else (e.g. `navigate`, `open_url`, `search_web`, `capture_full_page`,
-  `add_to_repo`, `create_powerpoint`, the `map_*` mutators, memory tools) is
-  stateful-but-benign: sequential, no approval card. (The `map_*` tools and
-  `create_*` act on the extension's own sandboxed surfaces — not the user's session —
-  so they are non-gated.)
-- `UNATTENDED_BLOCKED_TOOLS` = `query_data` — a narrower gate than
-  `APPROVAL_REQUIRED`, checked separately in `executeToolCall` before the
-  normal approval logic: stays frictionless in attended chat (not
-  approval-gated interactively — it only touches the local DuckDB engine, per
-  the read-only enforcement below) but is refused outright
+  `add_to_repo`, `create_powerpoint`, memory tools) is stateful-but-benign:
+  sequential, no approval card. (The `create_*` tools act on the extension's own
+  sandboxed surfaces — not the user's session — so they are non-gated.)
+- `UNATTENDED_BLOCKED_TOOLS` — a narrower gate than `APPROVAL_REQUIRED`, checked
+  separately in `executeToolCall` before the normal approval logic: tools listed
+  here stay frictionless in attended chat but are refused outright
   (`this.unattendedApprovalBlocked = true`, same signal as a denied approval)
-  when `this.unattended` is true, since a scheduled task or event trigger
-  running model-authored SQL with nobody watching is a materially different
-  risk than the same call in an attended turn.
+  when `this.unattended` is true. Currently **empty** — its former sole member,
+  `query_data`, left with the DuckDB engine's removal — and kept as the gate for
+  any future tool with the same "fine attended, not fine silent" shape.
 
 ---
 
@@ -557,108 +540,12 @@ Each is a JSON-schema function the model can call. Grouped by purpose.
   document_start bridge (`content/webmcpBridge.ts`) that shims `navigator.modelContext`.
   `call` is gated.
 
-**Map workspace** (one persistent Leaflet map in a singleton tab; all non-gated, and
-`map_get_state` is read-only)
-- `map_set_view {lat,lng,zoom}` / `map_fly_to {lat,lng,zoom?}` — set or animate the view.
-- `map_set_basemap {basemap}` — swap the tile layer.
-- `map_add_marker {lat,lng,label?,openPopup?}`, `map_add_geojson {geojson}`,
-  `map_add_shape {…}` — add overlays to the same map.
-- `map_animate {…}`, `map_fit_bounds {bounds}`, `map_clear {…}` — animate / frame / reset.
-- `map_get_state` — read the current center/zoom/basemap/markers/shapes.
-
 **Document generation** (output a downloadable file as a `FileArtifact` card — the
 sandbox can't write back in place, so creation is delivered as a download)
 - `create_word_document {title, markdown, filename?}` — render Markdown to a `.docx`
   via the offscreen `docx` generator. (Read-only: builds a fresh artifact.)
 - `create_powerpoint {title, slides:[{title,bullets[],notes}], filename?}` — build a
   `.pptx` from a structured slide spec via the offscreen `pptxgenjs` generator.
-
-**Data analysis (DuckDB)** (all run against the local in-browser SQL engine — read-only
-classification, non-gated; datasets persist to OPFS)
-- `open_data_url {url, tableName?}` — fetch a data file (CSV/TSV/JSON/NDJSON/Parquet, or
-  geospatial GeoJSON/KML/GPX/FGB, or a ZIP of those) from an http(s) URL or the current
-  tab and load it into the engine (one table per file; a ZIP yields one per supported
-  member). Geospatial files load via the bundled **spatial** extension, with geometry
-  converted to a GeoJSON-text `geometry` column so the persistence layer round-trips.
-  Returns the created table names + row counts. The system prompt steers the agent to
-  reach for this whenever a URL or ZIP likely holds structured/geospatial data, or the
-  user asks to open/query an archive's data. **XML and SQLite/database files are not
-  supported** — an archive of only those returns a clear "no supported data files" error
-  (relayed to the model) rather than silently no-op.
-
-  **Offline extensions.** `@duckdb/duckdb-wasm` is pinned to **1.32.0** (engine
-  **v1.4.3**). The `spatial` extension binary is vendored under
-  `public/duckdb-ext/<engineVersion>/wasm_eh/` and loaded with no network access via
-  `SET custom_extension_repository='chrome-extension://<id>/duckdb-ext'` →
-  `INSTALL spatial; LOAD spatial` (the `INSTALL … FROM <base>` form hits a broken code
-  path over `chrome-extension://`). Re-vendor on a duckdb-wasm bump — see
-  `public/duckdb-ext/README.md`. XML was scoped in but dropped: the only DuckDB XML
-  extension (community `webbed`) fails to load (`bad export type for 'xmlFree'`) even from
-  the official CDN for this engine, so it is not vendored.
-- `import_data {tableName, format:'csv'|'json', data}` — load inline CSV/JSON text into a
-  table (auto-persisted).
-- `query_data {sql}` — run DuckDB SQL (SELECT/WHERE/GROUP BY/JOIN/window fns…),
-  returns rows as JSON. The model translates natural-language questions to SQL.
-  **Read-only enforced**: `shared/sqlGuard.ts`'s `validateReadOnlySql` (pure,
-  unit-tested) rejects anything but a single `SELECT`/`WITH…SELECT` statement
-  before it reaches DuckDB — no semicolon-separated multi-statements, no
-  `INSERT`/`UPDATE`/`DELETE`/DDL/`ATTACH`/`COPY`/`PRAGMA`/etc, checked by
-  word-boundary keyword matching (a string literal containing a keyword as a
-  whole word can false-positive; this is defense-in-depth, not a real SQL
-  parser). Results are capped at 500 rows (`MAX_QUERY_ROWS`, via `Table.slice`
-  on the Arrow result before conversion, so an oversized result isn't fully
-  materialized into JS) and the query is wrapped in a 15s timeout
-  (`QUERY_TIMEOUT_MS`) — DuckDB-WASM exposes no engine-side cancellation here,
-  so this bounds the caller's wait rather than truly stopping execution. A
-  truncated response is flagged (`truncated: true` + a note telling the model
-  to narrow the query, not treat the sample as complete) and surfaced in the
-  Datasets workspace page too. See `UNATTENDED_BLOCKED_TOOLS` above for why
-  this tool is additionally refused outright in scheduled tasks/triggers.
-- `list_datasets` — list loaded tables. `describe_dataset {tableName}` — schema, row
-  count, and a per-column profile: null ratio, approximate distinct count, min/max
-  (`duckDb.ts`'s `profileColumns`, one bounded query via DuckDB's built-in
-  `SUMMARIZE`, not a per-column round trip — computed on demand by
-  `describeTable`, not `listTables`, so plain table metadata still appears
-  before any profiling cost). `null_percentage` is cast to `DOUBLE` inside the
-  SQL rather than parsed from the raw Arrow `DECIMAL` in JS — the latter
-  silently drops the scale (reads 33.33 as 3333). Structured Data RAG MVP
-  item #2 — deliberately no sampling/bounding beyond the single pass; large
-  tables are a known follow-up, not solved here. Surfaced in the Datasets
-  workspace page via a **Profile** button per table.
-- `persist_dataset {tableName}` / `load_dataset {tableName}` / `drop_dataset {tableName}`
-  — explicitly persist, reload, or permanently delete a dataset (memory + OPFS).
-  **Project-scoped** (Structured Data RAG MVP item #3, mirroring the existing
-  memory/skills/capabilities pattern — see `visibleToProject`,
-  `shared/memoryGraph.ts`): persisting a table (via `import_data`,
-  `open_data_url`, or `persist_dataset`) tags its OPFS `meta.json` with
-  `AgentRuntime.activeProjectId`; a routine re-persist that doesn't pass a
-  project id preserves whatever the table already had rather than clearing it.
-  `list_datasets` filters to datasets visible under the active project (global
-  = no `projectId`, else exact match) before returning names, so a
-  differently-scoped dataset's name is never disclosed to the model at all;
-  `describe_dataset`/`persist_dataset`/`load_dataset`/`drop_dataset` each
-  re-check visibility by name (`AgentRuntime.isDatasetVisible`) before acting,
-  so guessing an exact name from a different project still fails. This is a
-  filter, not a partition — `query_data`'s free-form SQL is **not** scanned
-  for table references, so a model that already knows another project's exact
-  table name (e.g. from stale context) could still `SELECT` it directly; true
-  per-query enforcement is a known gap, not solved here. The Datasets
-  workspace page applies the same filter client-side, reading
-  `ba_active_project` the same way `ProjectSwitcher.tsx` does.
-- **Hybrid structured + document retrieval** (Structured Data RAG MVP item
-  #4) — no new tool, no new orchestration code: a system-prompt rule (next to
-  the NL→SQL guidance above) tells the model to answer a question spanning
-  both a dataset and narrative documents (e.g. "which projects exceeded
-  budget, and what do their status reports say?") by running `query_data`
-  first for the exact filtered answer, then `search_repo` (or `add_to_repo`
-  first, if the pages aren't captured yet) using identifiers/names *from that
-  result* as the query, and citing both — never substituting one source's
-  numbers for the other's prose. Dataset/repo selection stays name-based (no
-  schema/column embeddings — out of MVP scope per §25 of the feature spec this
-  phase implements). Proven end-to-end by a mock-driven E2E test that opens a
-  document as the active tab, asks a hybrid question, and asserts the tool
-  trace contains both the SQL result (`Alpha`) and retrieved document text
-  (`vendor delays`) — not just that a plausible-sounding answer came back.
 
 **Knowledge & output**
 - `save_app_playbook {origin, name, description, content, reason}` — persist a
@@ -1178,8 +1065,8 @@ untouched by any of this):
   the service worker reaches it via `offscreenClient.ts`'s
   `productSave`/`productList`/`productGet`/`productDelete` → `target:
   'offscreen-product'` messages) but laid out one self-contained item per
-  directory (`products/<id>/{meta.json, blob}`), closer to `duckDb.ts`'s
-  per-dataset directories than `repoStore.ts`'s single shared corpus. Each
+  directory (`products/<id>/{meta.json, blob}`) rather than
+  `repoStore.ts`'s single shared corpus. Each
   `ProductMeta {id, filename, mimeType, createdAt, sizeBytes, sourceTitle?,
   conversationId?}` is retrievable by id (base64 round-trip through the same
   bridge) and listed newest-first. UI: `src/workspace/ProductsPage.tsx` — a
@@ -1253,17 +1140,10 @@ group's name + URLs (`collectGroupUrls`); on restore the agent best-effort re-op
 the active tab and the group's pages into a collapsed, same-named group (deduped
 against already-open tabs, capped), so a resumed thread can be queried again.
 
-**Map workspace.** One persistent Leaflet map lives in a singleton browser tab
-(`map.html`), opened/focused on demand by `mapClient.ensureMapTab()` and driven by the
-`map_*` tools over a `target:'map'` message channel; it restores its last view from
-`chrome.storage.session`. A seeded **map skill** documents the workflow. The map page
-is reachable via this channel (not `run_javascript`/WebMCP, which Chrome forbids on
-`chrome-extension://` pages).
-
 **File upload into repositories.** Besides ingesting tabs, the user can upload files
 (`.pdf/.docx/.pptx/.xlsx/.txt/.md/.csv`, capped at `MAX_UPLOAD_BYTES`) straight into a
 repo. The shared `RepoUpload.tsx` (a reveal-on-demand, vertically-stacked card with a
-drop zone + repo picker) appears both in **Settings → Knowledge bases** and in the
+drop zone + repo picker) appears both in **Workspace → Knowledge** and in the
 **composer** (drag-drop onto the panel or the 📎 attach button). Files cross to the
 worker as a `add_files_to_repo` request; text files send their text, PDF/Office send a
 base64 data URL the offscreen extractor parses; each runs through `ingestFile` →
@@ -1282,38 +1162,14 @@ drops the text into the composer. Enabled only when a `transcriptionModel` is se
 **Onboarding.** On first run with no endpoint configured, `OnboardingScreen.tsx`
 walks the user through setting a base URL / key / model before the chat is usable.
 
-**DuckDB data engine.** A local SQL engine (DuckDB-WASM) runs in the offscreen
-document (`duckDb.ts`, `target:'offscreen-duckdb'` channel). Its worker + wasm are
-**bundled as same-origin assets** (Vite `?url` imports, not the jsDelivr CDN) so the
-Worker passes the MV3 CSP, and `'wasm-unsafe-eval'` in the manifest lets the module
-compile. `ensureDb` is **single-flight** (concurrent cold-start callers share one
-instantiation), and offscreen sends retry briefly on the listener-not-ready race.
-**Opening data files:** `openBuffer(name, bytes)` loads CSV/TSV/JSON/NDJSON/Parquet
-(via `registerFileBuffer` + `read_*`), and **unzips ZIP archives** (`fflate.unzipSync`)
-into one table per member — driven by the `open_data_url` tool (URL/tab), the chat
-**destination chooser** (attach/drop → "Open as data"), or the Workspace "Open file"
-(both via the `open_data_files` `RuntimeRequest`). The agent also imports inline CSV/JSON
-with `import_data`, then explores with `query_data`
-(translating natural-language questions into DuckDB SQL — no SQL-generation skill, the
-model is the query planner). Tables are stored as `meta.json` + `data.json` under OPFS
-`/datasets/<name>/`, **auto-persisted on import and auto-restored** on first engine use;
-`persist_dataset` / `load_dataset` / `drop_dataset` manage them explicitly. Datasets are
-**conversation-scoped**: starting a new chat or switching to another thread resets the
-engine (`reset_all` drops every in-memory table and clears the OPFS `/datasets/`
-directory), so a fresh conversation always begins with an empty engine. Extension
-pages (the Workspace) drive the engine through a `duckdb` `RuntimeRequest` so the
-service worker — which owns the offscreen document — routes the op. Everything stays
-on-device.
-
-**Workspace (full tab).** An "Open workspace" header button opens `workspace.html`
+**Workspace (full tab).** The sidebar's **Settings** gear opens `workspace.html`
 (`chrome.tabs.create`) — a management console that mirrors the conversation state
 over the same `Port` **and** is interactive: a **composer** sends `user_message`s like
 the side panel. Its nav gives every management surface a dedicated page — Knowledge,
-Memory, Skills, Tools, Models, Settings — largely by reusing the sidebar's own section
-components rather than duplicating their logic (see `src/workspace/` above), plus
-panels too cramped for the side panel: a **DuckDB dataset browser** (`DatasetBrowser`
-— list/preview tables, import pasted CSV/JSON, run SQL), a data/table viewer
-(`DataViewer`, over `export_data` results), and a full-size image viewer
+Memory, Skills, Tools, Models, Automations, Products, Settings — largely by reusing
+the sidebar's own section components rather than duplicating their logic (see
+`src/workspace/` above), plus panels too cramped for the side panel: a data/table
+viewer (`DataViewer`, over `export_data` results) and a full-size image viewer
 (`ImageViewer`). It shares the side panel's **brand theme**: the palette +
 light/dark variables live in `src/shared/theme.css`, imported by both `styles.css` and
 `workspace.css`, so the workspace renders in the same colours (gradient header, purple
@@ -1352,19 +1208,22 @@ folder in that order) and returns the top 20.
 ## 10. Side-panel UI (`src/sidebar/`)
 
 - **Header** (`Sidebar.tsx`): title + agent **status** (idle/thinking/acting/…),
-  prominent; a **text-size control** (A− / percentage-reset / A+, whole-panel CSS
-  `zoom`, persisted in `localStorage`, applied before first paint to avoid flash);
-  an **Undo** button (disabled when nothing to undo or while running); a **History**
-  button (opens `ConversationsScreen`); an **Open workspace** button (opens
-  `workspace.html` in a full tab); a **new/clear-conversation** button that also
-  aborts any running task; a **settings** (gear) button.
+  prominent; a **History** button (opens `ConversationsScreen`); a **New Chat**
+  button that also aborts any running task; a **⋯ More** overflow menu
+  (`OverflowMenu.tsx` — ARIA menu with roving focus, Escape/click-outside dismiss)
+  holding the **text-size control** (A− / percentage-reset / A+, whole-panel CSS
+  `zoom`, persisted in `localStorage`, applied before first paint to avoid flash;
+  clicking it does not dismiss the menu), **Save conversation as HTML**, **Undo**
+  (disabled when nothing to undo or while running), and **Learn mode**; and a
+  **settings** (gear) button that opens the Workspace (`workspace.html#settings`).
+  The overflow menu exists so the brand title renders untruncated at the
+  narrowest (~360px) panel width — guarded by `tests/e2e/header.spec.ts`.
 - **Chat** (`ChatPanel.tsx` + `Markdown.tsx`): Markdown via `marked` + `dompurify`;
   bold, small citations with full URLs; per-message **copy** button; image
   thumbnails for snapshots; CSV/JSON download chips for `export_data` and **download
   cards** for generated `.docx`/`.pptx` (`FileArtifact`); a 📎 attach button and
-  panel-wide drag-drop that open a **destination chooser** — "Open as data (query)"
-  (→ DuckDB) or "Add to knowledge base" (→ the `RepoUpload` card); a voice (🎤) prompt
-  control when transcription is configured.
+  panel-wide drag-drop that open the **`RepoUpload` card** (files go into a
+  knowledge base); a voice (🎤) prompt control when transcription is configured.
 - **History** (`ConversationsScreen.tsx`): titled+summarized thread list with search,
   labels, and load / delete / clear-all / export / import.
 - **Plan panel** (`PlanPanel.tsx`): the live plan with per-step status.
@@ -1374,32 +1233,15 @@ folder in that order) and returns the top 20.
   Snapshot, Snapshot Page, Refresh; a **repo capture** row — a repo-name box that is a
   `<datalist>` dropdown of existing repos *and* accepts a new typed name, plus
   **+ Tab** / **+ Group** buttons.
-- **Settings** (`SettingsScreen.tsx`): **five tabs** — **Model**, **Advanced**,
-  **Skills**, **Knowledge bases**, **Data & privacy**. *Model*: a **Language** selector
-  (Auto/EN/FR); endpoint base URL, API key (password), model, optional **Azure
-  `api-version`** (enables Azure mode). *Advanced*: temperature / max-tokens,
-  **repo-search passages** (`repoSearchK`), **max steps per task** (`maxSteps`), toggles
-  for **retry on rate limit**, **summarize observations**, and **verify answers**;
-  **embedding** and **transcription** model/endpoint/key (each service may use its own
-  endpoint+key); SharePoint base URL; custom instructions; a **Test connection** button.
-  *Skills* (`SkillsSection.tsx`) manages skills + the **App playbook library**, which
-  polls a configurable **hosted playbook index** (`playbookIndexUrl`, default bundled) of
-  installable `SKILL.md` files for one-click install. *Knowledge bases*
-  (`RepositoriesSection.tsx`, on its own tab) — expand a repo to delete individual
-  documents, or delete the whole repo. *Data & privacy*: **Capabilities** (the Capability
-  Registry editor, `CapabilitiesSection.tsx`), **Memory**, and **Backup & Restore**
-  (`BackupRestoreSection.tsx`) — export all config (the `ba_*` storage keys) plus every
-  repository (`repo_export`, vectors base64-encoded) to one JSON file, and restore it
-  (overwrites storage keys; replaces same-name repos via `repo_import`).
-  An "Include API key" toggle (default on) controls whether the credential is in the file.
-
-**Defaults & behaviors:** assume "the page" means the active tab; render Markdown;
-on first run with no settings, prompt the user to configure an endpoint.
-
----
-
-## 11. Messaging protocol (`messages.ts`)
-
+- **Settings**: the sidebar has no settings overlay — the gear opens the
+  **Workspace**, where configuration is split across pages: **Models**
+  (connection + the Advanced groups: behaviour, generation, retrieval,
+  connected services), **Skills** (`SkillsSection.tsx`, incl. the **App
+  playbook library** polling a configurable hosted index — `playbookIndexUrl`,
+  editable there and on the Workspace Settings page), **Knowledge**
+  (`RepositoriesSection.tsx`), **Tools** (`CapabilitiesSection.tsx`),
+  **Memory** (`MemorySection.tsx` + `MemoryPage.tsx`), and **Settings**
+  (language, playbook URL, `BackupRestoreSection.tsx`).
 - **Panel → worker** (`SidebarCommand`, over the `Port`): `user_message`
   (with optional `mentions: {kind,value}[]`),
   `stop_task`, `clear_conversation`, `undo_exchange`, `load_conversation`,
@@ -1414,10 +1256,7 @@ on first run with no settings, prompt the user to configure an endpoint.
   `error`, and a `full_state` snapshot (incl. `canDistill`, `canUndo`) sent on connect.
 - **One-shot** (`RuntimeRequest` via `chrome.runtime.onMessage`): `test_connection`,
   `repo_list`, `repo_delete`, `repo_docs`, `repo_doc_delete`, `repo_export`,
-  `repo_import`, `add_files_to_repo`, `transcribe_audio`, `duckdb` (the Workspace's
-  data browser → `{op, sql?, tableName?, data?}` → `DuckDbResponse`), `open_data_files`
-  (UI file-open → `{files: {name, bytesB64}[]}` → `{ok, results, tables}`; the worker
-  loads each into DuckDB and `notifyDatasetsLoaded`s the runtime), and
+  `repo_import`, `add_files_to_repo`, `transcribe_audio`, and
   `probe_environment` (→ `{ok, facts?, notes?, error?}`; gathers signed-in M365
   identity + open work systems + locale for Memory, only when memory is enabled).
 - **Offscreen:** `ExtractPdfRequest {target:'offscreen', type:'extract_pdf', url,
@@ -1427,11 +1266,7 @@ on first run with no settings, prompt the user to configure an endpoint.
   `GenerateDocumentRequest {…, type:'generate_document', format:'docx', title, markdown}`
   and `GeneratePresentationRequest {…, type:'generate_presentation', title, slides}` →
   `GenerateDocumentResponse {ok, dataBase64?, mimeType?, error?}`; the
-  `RepoRequest` union on `target:'offscreen-repo'` → `RepoResponse {ok, result?, error?}`;
-  and `DuckDbRequest {target:'offscreen-duckdb', op, sql?, tableName?, data?, persist?}`
-  → `DuckDbResponse {ok, columns?, columnTypes?, rows?, rowCount?, tables?, error?}`.
-- **Map page** (`target:'map'`): `MapCommandMessage {type:'map_command', command, args}`
-  → `MapResponse {ok, result?, state?, error?}` (handled by `mapClient`/`src/map`).
+  `RepoRequest` union on `target:'offscreen-repo'` → `RepoResponse {ok, result?, error?}`.
 
 The `approval_request` event additionally carries the sourcing capability's context
 (`capabilityKind`, `capabilityName`, `trustLevel`, `authMethod`, `authConfigured`) so
@@ -1478,7 +1313,7 @@ fields and drops empties on save. Other `chrome.storage.local` keys: `ba_capabil
 (automatic lessons, §5 step 7; cap 50), `mailAutoRefreshStatus` (last background mailbox
 refresh outcome); `ba_conv_index` / `ba_conv_<id>` / `ba_conv_labels` (conversation
 history). OPFS holds
-the RAG repos (`/repos/`) and DuckDB datasets (`/datasets/<name>/{meta,data}.json`).
+the RAG repos (`/repos/`) and the Products store (`/products/`).
 The UI **language** preference is a separate key
 (`ba_language`: `'auto'|'en'|'fr'`); in-app EN/FR localization lives in
 `src/sidebar/i18n.tsx` (catalogue + `LanguageProvider`/`useT`), with a partial-coverage
@@ -1493,12 +1328,12 @@ caveat in `technical-debt.md`.
 3. `mise run test` — Vitest unit suite green. `npm run test:e2e` builds then runs the
    Playwright suite against the offline mock LLM (no live keys, no spend).
 4. `mise run build` — emits `dist/` with `serviceWorker.js`, `sidebar.html`,
-   `offscreen.html`, `microphone.html`, `map.html`, `contentScript.js`, assets (incl.
+   `offscreen.html`, `microphone.html`, `contentScript.js`, assets (incl.
    the pdf.js worker), icons, and `manifest.json`.
 5. Load **dist/** as an unpacked extension (`chrome://extensions`, Developer mode);
    accept the install permissions.
-6. Open the side panel from the toolbar; configure an endpoint in Settings and
-   **Test connection**.
+6. Open the side panel from the toolbar; configure an endpoint (the welcome card,
+   or Workspace → Models) and **Test connection**.
 
 **End-to-end checks:**
 - "What does this page say?" on any article → reads the active tab and answers with
@@ -1511,21 +1346,18 @@ caveat in `technical-debt.md`.
   full `charCount`.
 - `+ Tab` a long PDF into a repo, then `search_repo` → passages from late pages
   (whole document ingested); re-adding the same page prompts to replace.
-- Settings → Knowledge bases → expand a repo → delete one document → its chunks drop
+- Workspace → Knowledge → expand a repo → delete one document → its chunks drop
   and it stops appearing in search.
 - `sharepoint_search` while signed into SharePoint → ranked snippets with URLs.
 - "Make a 3-slide deck on X" / "write that up as a Word doc" → a `.pptx` / `.docx`
   download card appears and opens correctly (titles, bullets, speaker notes).
-- "Show Ottawa, then fly to Toronto and drop a marker" → one `map.html` tab opens and
-  the same map pans/animates/gains a marker; a follow-up reuses it.
 - Drag a file onto the panel (or use 📎) → it ingests into the chosen repo with a
   success banner and becomes searchable via `#repo` / `search_repo`.
 - Send a few messages, open **History** → a titled+summarized row; load it to restore
   the thread (and reopen its tab group); **Undo** removes the last exchange.
-- "Load this CSV and tell me the top 5 by revenue" → `import_data` then `query_data`
-  run locally (DuckDB); the dataset survives a worker restart (auto-restored).
-- **Open workspace** → a full tab opens sharing the conversation; the data viewer shows
-  the last table and the image viewer shows a generated image full-size.
+- **Settings gear** → the Workspace opens sharing the conversation; the data viewer
+  shows the last `export_data` table and the image viewer shows a generated image
+  full-size.
 
 ---
 
@@ -1551,16 +1383,6 @@ caveat in `technical-debt.md`.
 - **Generate, don't edit:** the browser sandbox can't write a file back in place, so
   `create_word_document` / `create_powerpoint` produce a downloadable `FileArtifact`
   rather than editing a source document.
-- **The map page is driven over a message channel**, not `run_javascript`/WebMCP:
-  Chrome forbids `executeScript({world:'MAIN'})` and the WebMCP `<all_urls>` bridge on
-  `chrome-extension://` pages, so a singleton tab + `target:'map'` messaging is the
-  only reachable design.
-- **DuckDB-WASM lives in the offscreen document** (it needs Workers + OPFS the worker
-  lacks) and is **built-in, not a skill** — so structured-data analysis is always
-  available offline and stays on-device. The model writes the SQL; there is deliberately
-  no SQL-generation skill. Its worker + wasm are **bundled locally** (not the CDN
-  default) and the manifest CSP grants `'wasm-unsafe-eval'` — both are required, or the
-  MV3 CSP blocks the engine outright.
 - **One Capability Registry, not parallel subsystems.** Bookmarks, MCP, WebMCP, REST,
   models, knowledge sources, and skills are all `CapabilityRegistryEntry` kinds. Legacy
   "Known Sites" are migrated, not maintained as a second store — don't reintroduce a
@@ -1593,19 +1415,19 @@ all `CapabilityRegistryEntry` *kinds* (see §9). What remains is mostly **automa
 discovery** to populate that registry, plus deeper data/output handling.
 
 ### Shipped (now in the body)
-- **✅ 15.1 Expandable workspace** — the **Open workspace** button opens `workspace.html`,
-  a full management console (Chat/Knowledge/Memory/Skills/Tools/Models/Datasets/Data/
-  Image/Settings pages, most built by reusing the sidebar's own section components)
-  sharing conversation state. See §9 *Workspace* and §10.
+- **✅ 15.1 Expandable workspace** — the **Settings** gear opens `workspace.html`,
+  a full management console (Chat/Projects/Knowledge/Memory/Automations/Products/
+  Skills/Tools/Models/Data/Image/Settings pages, most built by reusing the sidebar's
+  own section components) sharing conversation state. It is also the settings
+  surface — the sidebar's tabbed overlay was removed. See §9 *Workspace* and §10.
 - **✅ 15.2 Capability Registry** — replaces Known Sites; `ba_capabilities`,
   `CapabilitiesSection`, legacy-site migration. See §9 *Capability Registry*.
-- **✅ 15.12 Built-in DuckDB data engine** — DuckDB-WASM in the offscreen document, OPFS
-  dataset persistence + auto-restore, the `*_data`/`*_dataset` tools, and **opening data
-  files** — CSV/TSV/JSON/NDJSON/**Parquet** and **ZIP archives** — via attach/drop, the
-  Workspace, or `open_data_url`. See §6 *Data analysis* and §9 *DuckDB data engine*.
-  *(SQLite / XLSX still ⬜.)*
-- **✅ 15.14 Natural-language data queries** — the model writes DuckDB SQL via
-  `query_data`; no SQL-generation skill. See §9.
+- **🗑 15.12 Built-in DuckDB data engine** — shipped, then **removed** (unused):
+  the engine, its `*_data`/`*_dataset` tools, the Datasets browser, and the
+  ~23 MB of bundled wasm were deleted; `export_data`/`DataViewer` (collect rows
+  while browsing → CSV) remain. The **map workspace** (one Leaflet tab + `map_*`
+  tools) was removed at the same time for the same reason.
+- **🗑 15.14 Natural-language data queries** — removed with the data engine.
 - **🟡 15.6 Unified tool architecture** — `UnifiedToolDefinition` (kinds
   builtin/rest/mcp/webmcp/browser) exists and powers the Workspace tool browser, but
   the runtime's tool **dispatch** is not yet routed through it (built-in/MCP/WebMCP
@@ -1615,8 +1437,8 @@ discovery** to populate that registry, plus deeper data/output handling.
   auth resolution. See §9 *Trust & auth model*. **OAuth/OIDC flows are ⬜ not yet
   implemented** — only browser-session and static-token auth work today.
 - **🟡 15.15 Rich browser output** — the Workspace provides a data-table viewer and a
-  full-size image viewer, and §9's map workspace covers maps; **charts and formatted
-  reports are ⬜ not yet built**.
+  full-size image viewer; **charts and formatted reports are ⬜ not yet built**
+  (the map workspace shipped here previously but has been removed).
 
 ### Still planned (not yet implemented)
 
@@ -1658,9 +1480,10 @@ but models are still configured via Settings rather than being selectable regist
 entries with endpoint / auth / cost / capabilities / context-window metadata.
 
 **⬜ 15.13 Structured data-handler framework.** A uniform open/preview/query/convert/
-export interface across CSV, JSON, SQLite, DuckDB, Parquet, GeoParquet, XLSX, DOCX,
-PPTX, PDF. Today these are handled piecemeal (DuckDB for CSV/JSON; offscreen extractors
-for PDF/Office); a single handler registry is not yet built.
+export interface across CSV, JSON, Parquet, XLSX, DOCX, PPTX, PDF. Today these are
+handled piecemeal (offscreen extractors for PDF/Office; `export_data` for tables out);
+a single handler registry is not yet built. (A DuckDB-based engine shipped and was
+later removed as unused — a future framework should re-justify that weight first.)
 
 ---
 
@@ -1722,7 +1545,7 @@ app, not borrowed from the browser:
 - **Auth auto-pause (§5).** A detected login wall pauses the task for the user to sign in,
   rather than the agent attempting credentials.
 - **Local-only persistence.** Settings, skills, memory, conversations, RAG vectors, and
-  DuckDB datasets live in `chrome.storage.local` / OPFS on-device; the only outbound
+  generated products live in `chrome.storage.local` / OPFS on-device; the only outbound
   traffic is to endpoints the user explicitly configures (model, embeddings, transcription)
   plus the tool actions the agent takes in the browser.
 

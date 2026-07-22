@@ -137,8 +137,8 @@ things — endpoint, key, and model — rather than the full settings screen:
 
 *What you're seeing:* the **Get started** card with **Endpoint base URL**, **API
 key**, and **Model**, a **Test connection** button, a **Save & start** button,
-and an **Advanced setup…** link (bottom) for Azure, embeddings, and other
-options. Fill these in and you're ready; see [Quick start](#3-quick-start).
+and an **Advanced setup…** link (bottom) that opens the Workspace **Models**
+page for Azure, embeddings, and other options. Fill these in and you're ready; see [Quick start](#3-quick-start).
 
 If you close setup without saving a model, the panel shows a gentle reminder
 banner and the agent won't run until configured:
@@ -151,7 +151,7 @@ banner and the agent won't run until configured:
 
 ### Step 1 — Connect an AI provider
 
-In the welcome card (or **Settings → Model**), fill in:
+In the welcome card (or **Workspace → Models**), fill in:
 
 | Field | What to enter | Examples |
 |---|---|---|
@@ -371,7 +371,7 @@ skill**, **Import from URL**, **Import JSON**, **Export JSON**, **Import zip**, 
 them, with citations. **Add pages** with the toolbar's knowledge-base row
 (**Add tab** / **Add group**) or by asking the agent to "save this page to a
 knowledge base called X." **Ask** by typing `#name` in the chat, or "search my X
-knowledge base for …". **Manage** them under **Settings → Knowledge bases**
+knowledge base for …". **Manage** them under **Workspace → Knowledge**
 (see documents, chunk counts, and delete).
 
 > Everything is stored **on your device** (in the browser's private file storage,
@@ -379,7 +379,7 @@ knowledge base for …". **Manage** them under **Settings → Knowledge bases**
 > (no network) — see [Embeddings](#settings--advanced) to switch to an external
 > endpoint, and [Privacy](#8-privacy-and-security).
 
-**Index a local folder.** In **Settings → Knowledge bases**, **drag a folder from
+**Index a local folder.** In **Workspace → Knowledge**, **drag a folder from
 Finder/Explorer onto the drop box**. Its files and subfolders (text, Markdown, PDF,
 Word/PowerPoint/Excel) are read, embedded **on your device**, and made searchable.
 Drag the same folder again later to re-index only what changed. (Folder indexing uses
@@ -390,7 +390,7 @@ builds.)
 API) via a one-time sign-in — it needs a small **Azure AD app registration** first (your IT
 admin can set this up in a few minutes; see below), because it works reliably regardless of
 which Outlook web experience your organization uses. Once a **Client ID** is set in
-**Settings → Advanced**, go to **Knowledge bases** and click **Connect & index** — this opens
+**Workspace → Models → Advanced**, go to **Knowledge** and click **Connect & index** — this opens
 a normal Microsoft sign-in/consent window once, then indexes your mailbox. Messages are
 embedded **on your device**. Re-run later (the button becomes **Index my Outlook mailbox**)
 to add only new messages. (A whole mailbox can take a while on the first pass.) **Disconnect**
@@ -402,7 +402,7 @@ the app's docs/repo), and request the delegated permissions **Mail.Read**, **Mai
 (needed even just to create a draft — there's no narrower scope for that), and
 **Calendars.Read**, plus **offline_access** and **openid**. Most organizations require an
 admin to grant consent for this combination. Paste the resulting **Client ID** into
-Settings → Advanced (Tenant is optional — leave blank unless your organization needs a
+Workspace → Models → Advanced (Tenant is optional — leave blank unless your organization needs a
 specific tenant id).
 
 Once you've indexed it at least once, you can turn on **Auto-refresh hourly** to keep the
@@ -417,7 +417,7 @@ with exact keyword matching (so an exact ID, code, or name still surfaces even i
 phrased differently), tries a couple of rephrasings of your question automatically, and
 does a final relevance pass over the top candidates before answering. This costs a little
 extra time per search in exchange for better answers; no setting to configure beyond the
-**Hybrid search** toggle in Settings → Advanced (on by default).
+**Hybrid search** toggle in Workspace → Models → Advanced (on by default).
 
 ### 5.8 Documents in and out
 
@@ -439,7 +439,7 @@ extra time per search in exchange for better answers; no setting to configure be
 
 ### 5.9 Voice prompts
 
-If you set a **transcription model** (Settings → Advanced), a **microphone**
+If you set a **transcription model** (Workspace → Models → Advanced), a **microphone**
 button appears beside Send. Tap to record, tap again to stop; your speech is
 transcribed into the composer. *One-time setup:* the side panel can't show the
 microphone permission prompt itself, so the first time it opens a small tab where
@@ -476,34 +476,41 @@ Open **History** (clock icon, top-right). Conversations are saved automatically.
 
 ### 5.12 "New chat" and saving the current conversation
 
-In the header: the **compose** icon starts a **New chat** (your current
-conversation is kept in History — it isn't deleted), and the **download** icon
-saves the current conversation as an HTML file.
+In the header: **New Chat** starts a fresh conversation (your current
+conversation is kept in History — it isn't deleted). **Save conversation as
+HTML** lives in the **⋯ More** menu.
 
-### 5.13 Text size and language
+### 5.13 The More menu, text size, and language
 
-The header **`A− 100% A+`** control scales the panel's text — handy for
-readability. Language (Auto / English / Français) is in **Settings → Model** and
-switches the whole interface immediately.
+The header's **⋯ More** menu collects the less-frequent actions: the
+**`A− 100% A+`** text-size control (scales the whole panel; click the
+percentage to reset), **Save conversation as HTML**, **Undo last exchange**,
+and **Learn mode**. Language (Auto / English / Français) is in
+**Workspace → Settings** and switches the whole interface immediately.
 
 ---
 
 ## 6. Settings reference
 
-Open **Settings** (gear icon). Settings are split into five tabs.
+Click **Settings** (gear icon) in the side-panel header — it opens the
+**Workspace**, a full browser tab where all configuration lives. Model and
+agent options are on the **Models** page; skills, knowledge bases, tools,
+memory, and backup each have their own page (described below).
 
-### Model tab
+### Models page — connection
 
 ![Settings — Model tab](usability/screenshots/08-settings-model-tab.png)
 
 | Setting | Default | Description | Recommended |
 |---|---|---|---|
-| **Language** | Auto (follows browser) | Interface language: Auto / English / Français. | Leave on Auto unless you prefer to fix it. |
 | **Endpoint base URL** | *(empty)* | The OpenAI-compatible API base, ending in `/v1` for most providers. | Required. Use your provider's URL. |
 | **API key** | *(empty)* | Secret key, shown as dots; stored only on your device. | Required (unless a local model needs none — enter any placeholder it accepts). |
 | **Model** | *(empty)* | Exact model name the endpoint expects. | Required. Pick a tool-calling model for automation. |
 
-### Advanced tab
+(The interface **Language** picker now lives on the Workspace **Settings**
+page.)
+
+### Models page — Advanced section
 
 ![Settings — Advanced tab](user-guide/screenshots/01-settings-advanced.png)
 
@@ -524,33 +531,36 @@ Open **Settings** (gear icon). Settings are split into five tabs.
 | **Azure tenant** | *(empty → `organizations`)* | Graph OAuth tenant id. | Leave blank unless your organization requires a specific tenant. |
 | **Custom instructions** | *(empty)* | Extra guidance appended to the agent's built-in instructions (tone, defaults, house style). | Optional. Keep it short and general. |
 
-**Test connection** and **Save** appear on the Model and Advanced tabs. Settings
-take effect on Save.
+**Test connection** and **Save** sit under the connection card; the Advanced
+section has its own **Save**. Each saves only its own fields, so saving one
+section never reverts the other. Settings take effect on Save.
 
-### Skills tab
+### Skills page
 
 Manage reusable skills and app playbooks — see [§5.6](#56-skills). The **App
 playbook library** here also polls a configurable **playbook index** (a hosted
 JSON list of installable `SKILL.md` files; defaults to the project's `skills/`
 folder) so listed skills install with one click.
 
-### Knowledge bases tab
+### Knowledge page
 
 Your on-device page collections, with document/chunk counts and delete controls.
 Upload files or capture pages into a named base, then ask questions across them —
 see [§5.7](#57-knowledge-bases-save-pages-and-ask-later).
 
-### Data & privacy tab
+### Tools, Memory, and Settings pages
 
-Three collapsible sections (collapsed by default — click to expand):
+The remaining device-data areas each have a Workspace page: **Tools** (known
+sites and MCP tool servers), **Memory**, and **Settings** (language, the App
+playbook library URL, and Backup & Restore):
 
-![Settings — Data & privacy tab (collapsed)](usability/screenshots/09-settings-data-tab.png)
+![Workspace — Settings page](usability/screenshots/09-settings-data-tab.png)
 
-- **Known sites** — a directory of sites worth checking first. Each entry has a
+- **Known sites** (Tools page) — a directory of sites worth checking first. Each entry has a
   name, a web address (optional), a description, an optional search shortcut
   (a URL with `{query}` in it), and optionally a **tool server (MCP endpoint)**
   with a token. The agent consults this before falling back to a web search.
-- **Memory** — toggle **"Remember things about me (stored only on this device)."**
+- **Memory** (Memory page) — toggle **"Remember things about me (stored only on this device)."**
   When on, the agent builds a small personal knowledge graph. Two kinds of things
   get saved automatically after each turn: durable facts about you (work,
   projects, preferences), and — if you ask it to remember or discuss an article
@@ -587,25 +597,23 @@ Three collapsible sections (collapsed by default — click to expand):
   personal facts, page content, or secrets — only agent behavior — and are capped
   at 50, stored on-device, and included in Backup & Restore. There's no separate
   UI for them yet; turning Memory off stops new lessons from being saved and used.
-- **Backup & Restore** — export everything to one JSON file and restore it later
+- **Backup & Restore** (Settings page) — export everything to one JSON file and restore it later
   or on another machine. Options: **Include API key** (warned — plain text) and
   **Include conversations** (warned). Restore overwrites current settings, hints,
   skills, memory, and lessons, and replaces same-named knowledge bases.
 
 ### The Workspace console
 
-For more room than the side panel offers, click **Open workspace** to open a full
-browser tab with the same conversation plus a dedicated page per management area:
-**Chat**, **Projects**, **Knowledge**, **Memory**, **Automations**, **Products**,
-**Skills**, **Tools**, **Models**, **Datasets**, and **Settings** (language +
-Backup & Restore), alongside result viewers for data tables and images. Knowledge, Skills, and Tools are the same
-editors described above, just given a full page instead of a collapsible section;
-**Models** is a focused connection editor (endpoint, key, model, API version,
-temperature, max tokens) for when you just need to swap or test a model without
-opening the rest of Settings, plus a **Model profiles & routing** section below
-it (see next) for routing background work to a different model. Changes made
-in the workspace and the side panel share the same on-device storage, so
-either surface always reflects the latest state.
+The Workspace is the full-tab console the **Settings** gear opens: the same
+conversation plus a dedicated page per management area — **Chat**,
+**Projects**, **Knowledge**, **Memory**, **Automations**, **Products**,
+**Skills**, **Tools**, **Models**, and **Settings** (language, playbook
+library, Backup & Restore) — alongside result viewers for data tables and
+images. **Models** carries the connection card, the full **Advanced**
+section, and **Model profiles & routing** (see next) for routing background
+work to a different model. Changes made in the workspace and the side panel
+share the same on-device storage, so either surface always reflects the
+latest state.
 
 ### Model profiles and routing
 
@@ -811,10 +819,12 @@ about gaps.
 - **Enter** sends; **Shift+Enter** inserts a newline.
 - The `@`/`#`/`/` menus are fully keyboard-driven: **↑/↓** move, **Enter/Tab**
   accept, **Esc** dismisses.
-- Settings tabs expose `role="tablist"`/`role="tab"`/`aria-selected`.
+- The header's **More** menu is a real ARIA menu: `aria-haspopup` trigger,
+  `role="menu"`/`menuitem`, arrow-key navigation, and Escape returns focus to
+  the trigger.
 - Controls show a visible **focus ring** for keyboard users (`:focus-visible`),
   added in the recent visual pass.
-- Collapsible Data & privacy sections use native `<details>`, so they're
+- Collapsible workspace sections use native `<details>`, so they're
   keyboard-operable by default.
 
 ### Screen-reader compatibility — mostly good
@@ -868,7 +878,7 @@ The status-dot pulse and the mic-recording pulse respect
 
 | Symptom | Likely cause | Resolution |
 |---|---|---|
-| **"No model configured" banner; agent won't run** | No endpoint/key/model saved | Open Settings → Model, fill all three, **Save**. |
+| **"No model configured" banner; agent won't run** | No endpoint/key/model saved | Open Workspace → Models, fill all three, **Save**. |
 | **Test connection fails: "check your API key"** | Wrong/expired key, or wrong auth style | Re-enter the key. For **Azure**, set **API version** (Advanced) so it uses the `api-key` header. |
 | **"Could not reach the model endpoint"** | Wrong URL, server down, or CORS blocking | Verify the base URL (include `/v1` for OpenAI-style). If the endpoint blocks cross-origin requests, **re-save settings** to grant access; approve any **Allow site** prompt. |
 | **"returned 400 … model"** | Model name not recognized by the endpoint | Correct the model name to one the endpoint lists. |
@@ -877,7 +887,7 @@ The status-dot pulse and the mic-recording pulse respect
 | **"Approve action?" keeps appearing** | Working as designed | Each state-changing step asks once; **Approve** to proceed or **Deny** to stop. |
 | **Task paused, asks me to log in** | Page hit a sign-in wall | Sign in to the site in the browser, then **Resume**. |
 | **Permission card: "Allow this site"** | Agent needs access to that site | Choose **Allow this site** (preferred) or **Allow all sites**. |
-| **Microphone button missing** | No transcription model set | Add one under Settings → Advanced. |
+| **Microphone button missing** | No transcription model set | Add one under Workspace → Models → Advanced. |
 | **Mic does nothing / permission error** | Side panel can't prompt for the mic | Use the tab it opens to allow the microphone once, then tap the mic again. |
 | **"Screenshot" does nothing** | Restricted page (`chrome://`, Web Store, PDF viewer) | These can't be captured; ask about the page's text instead. |
 | **PDF/Office file "no text"** | Scanned/image-only PDF, or legacy `.doc/.xls/.ppt` | Use a text-based PDF or a modern `.docx/.pptx/.xlsx`. |
@@ -924,7 +934,7 @@ itself. Both external/page tool calls require your approval.
 **Where did my conversation go when I clicked the compose icon?** Nowhere — "New
 chat" keeps the old conversation in **History**.
 
-**Can I move my setup to another computer?** Yes — **Settings → Data & privacy →
+**Can I move my setup to another computer?** Yes — **Workspace → Settings →
 Backup & Restore** exports one JSON file you can restore elsewhere.
 
 **Which languages are supported?** The interface is English and French; answers
@@ -947,10 +957,10 @@ Edge) version 116+.
 | Research / multi-tab | `/research …` or "compare my open tabs" |
 | Insert a bookmark / knowledge base / skill | `@` / `#` / `/` in the composer |
 | Save a page to ask later | Toolbar → name → **Add tab** / **Add group** |
-| Start fresh (keep history) | Header **compose** (New chat) icon |
-| Save conversation to a file | Header **download** icon |
+| Start fresh (keep history) | Header **New Chat** button |
+| Save conversation to a file | Header **⋯ More** → Save conversation |
 | Find a past conversation | Header **clock** (History) → search / sort / labels |
-| Change text size / language | Header **`A− 100% A+`** / Settings → Model |
+| Change text size / language | **⋯ More** → `A− 100% A+` / Workspace → Settings |
 
 **Keyboard**
 
@@ -962,14 +972,17 @@ Edge) version 116+.
 | **Enter / Tab** | Accept the highlighted menu item |
 | **Esc** | Dismiss the menu |
 
-**Settings locations**
+**Settings locations** (all in the Workspace — the header gear opens it)
 
-| Setting | Tab |
+| Setting | Workspace page |
 |---|---|
-| Endpoint, key, model, language | **Model** |
-| Azure version, temperature, max tokens, embeddings, transcription, SharePoint, custom instructions | **Advanced** |
+| Endpoint, key, model, Azure version, image key | **Models** |
+| Behaviour, temperature, max tokens, custom instructions, embeddings, transcription, SharePoint, Graph | **Models → Advanced** |
 | Skills & app playbooks | **Skills** |
-| Known sites, memory, knowledge bases, backup/restore | **Data & privacy** |
+| Known sites & tool servers | **Tools** |
+| Memory toggle & editor | **Memory** |
+| Knowledge bases | **Knowledge** |
+| Language, playbook library URL, backup/restore | **Settings** |
 
 **Run controls:** Send · Pause/Resume · Stop. **Safety:** Approve/Deny on each
 state-changing step.
@@ -1000,7 +1013,7 @@ state-changing step.
   chunk text (not just the query) to your **LLM endpoint** for reranking, and the
   query itself for paraphrase generation — this happens even with the on-device
   embedder, which only keeps *embedding* local, not the reranking pass. Turn off
-  **Hybrid search** in Settings → Advanced only removes the keyword-fusion step,
+  **Hybrid search** in Workspace → Models → Advanced only removes the keyword-fusion step,
   not the rerank/paraphrase calls.
 - **Languages.** Interface localization is English and French only.
 
@@ -1020,7 +1033,7 @@ state-changing step.
 **Shell & chat**
 - Side-panel UI, opens from toolbar icon ✅ (`serviceWorker.ts`, `manifest.json`)
 - English/French in-app localization ✅ (`i18n.tsx`)
-- Text-size scaler `A− 100% A+` ✅ (`Sidebar.tsx`)
+- Text-size scaler `A− 100% A+` in the header More menu ✅ (`Sidebar.tsx`, `OverflowMenu.tsx`)
 - Status pill: idle/thinking/acting/paused/awaiting_approval/auth_required/error
   with reduced-motion-aware pulse ✅ (`types.ts`, `styles.css`)
 - Composer with Enter-to-send, `@` bookmark / `#` knowledge-base / `/` skill
