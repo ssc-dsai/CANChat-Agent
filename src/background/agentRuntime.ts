@@ -72,7 +72,6 @@ import * as browser from './browserToolAdapter';
 import type { M365SearchFilters } from '../shared/microsoftSearch';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
-import { mapCommand } from './mapClient';
 import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, resolveModelForRole, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
 import { generateDocument, generatePresentation, productSave, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
@@ -324,7 +323,6 @@ const READ_ONLY_TOOLS = new Set([
   'read_office_document',
   'get_video_transcript',
   'read_app_content',
-  'map_get_state',
   'query_pointer_target',
 ]);
 
@@ -436,7 +434,6 @@ Working method:
 - When the user asks to schedule a future or recurring task/workflow, call schedule_task with a concrete future runAt or recurrence. Scheduled tasks run unattended in the background; they may use read-only tools, but approval-gated tools will not run unattended and will be recorded as needing approval. Use list_scheduled_tasks/cancel_scheduled_task for management.
 - For files-only retrieval you can also use sharepoint_search (the simpler SharePoint-only tool): pass sortBy:'modified' + editedByMe:true for "recent files"/"files I edited"; cite the URLs.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
-- Map workspace: when the user wants to see or work with a map, use the map_* tools. They all act on ONE persistent map that opens automatically in its own tab and is reused across requests — never assume a new map each time; build on the current state (call map_get_state to see what's there). map_set_view/map_fly_to move it, map_set_basemap switches tiles, map_add_marker/map_add_geojson/map_add_shape add elements, map_animate moves a marker along a path, map_fit_bounds frames things, map_clear removes overlays. These act on the extension's own map page, so they don't need approval.
 
 Answer format:
 - Format answers in Markdown (headings, lists, tables, links) — the sidebar renders it.
@@ -2885,17 +2882,6 @@ export class AgentRuntime {
         return this.updatePlan(Number(args.step), args.status as PlanStepStatus);
       case 'record_finding':
         return this.recordFinding(String(args.text));
-      case 'map_set_view':
-      case 'map_fly_to':
-      case 'map_set_basemap':
-      case 'map_add_marker':
-      case 'map_add_geojson':
-      case 'map_add_shape':
-      case 'map_animate':
-      case 'map_fit_bounds':
-      case 'map_clear':
-      case 'map_get_state':
-        return JSON.stringify(await mapCommand(name.slice(4), args));
       case 'save_memory': {
         if (this.memoryGraph.nodes.length >= MEMORY_NODE_CAP) {
           return `Error: memory is full (${MEMORY_NODE_CAP} entries). Consolidate or delete entries before saving more.`;

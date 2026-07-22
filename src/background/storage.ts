@@ -439,20 +439,6 @@ export async function seedSkillsIfEmpty(): Promise<void> {
         'Fallback — ONLY if the response has a "mailError" or session error: explain that the endpoint could not establish an Outlook/Microsoft 365 session and ask the user to sign in once, then retry. If it still fails, drive the Outlook web UI. Open https://outlook.office.com/mail/ (the task pauses for sign-in if a login wall appears; if an outlook-owa / outlook-live playbook is active, follow it). Focus the search box (press_keys "/", else fill_input it), type a keyword query (e.g. from:"Brian Ray" received>=2024-01-01), press_keys "Enter", then read the list with get_tab_content. These page actions are approval-gated — give a clear reason like "search your mailbox for X".',
       ].join('\n'),
     },
-    {
-      id: 'skill-example-map',
-      name: 'map',
-      description: 'Show and manipulate a live map — center/zoom, fly, basemaps, markers, shapes, GeoJSON, animation.',
-      body: [
-        'There is ONE persistent map (opens automatically in its own tab on first use and is reused every time — never start a new one). All map_* tools act on it and need no approval.',
-        '1. Call map_get_state first to see the current center/zoom, basemap, and what is already on the map; build on it rather than resetting.',
-        '2. Move the view with map_set_view (instant) or map_fly_to (animated). Switch the basemap with map_set_basemap (osm | carto-light | carto-dark, or a custom tile url).',
-        '3. Add elements: map_add_marker (returns an id), map_add_shape (circle/polyline/polygon/rectangle), map_add_geojson (set fit:true to frame it).',
-        '4. Animate a marker along a route with map_animate using its id and a path of [lat,lng] points.',
-        '5. Use map_fit_bounds to frame multiple features, and map_clear (all | markers | shapes) to reset overlays.',
-        '6. Tell the user what you placed/changed; the map stays open for follow-up requests.',
-      ].join('\n'),
-    },
   ];
   await chrome.storage.local.set({ [SKILLS_KEY]: examples });
 }

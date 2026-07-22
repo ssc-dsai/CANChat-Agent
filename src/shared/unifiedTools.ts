@@ -30,7 +30,6 @@ export function toLlmToolDefinition(u: UnifiedToolDefinition): ToolDefinition {
 }
 
 export function kindForToolName(name: string): ToolKind {
-  if (name.startsWith('map_')) return 'builtin';
   if (name.startsWith('call_mcp_') || name.startsWith('list_mcp_')) return 'mcp';
   if (name.startsWith('call_webmcp_') || name.startsWith('list_webmcp_')) return 'webmcp';
   return 'builtin';
