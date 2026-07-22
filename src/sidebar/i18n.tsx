@@ -357,6 +357,10 @@ const EN: Dict = {
   'settings.saved': 'Settings saved.',
   'settings.testing': 'Testing…',
   'settings.testConnection': 'Test connection',
+  'settings.playbookIndexUrl': 'App playbook library URL',
+  'settings.playbookIndexUrlNote':
+    'Where the Skills panel’s “App playbook library” looks for installable skills — a JSON index listing SKILL.md files. Leave blank to use the built-in default.',
+  'settings.playbookIndexUrlReset': 'Reset to default',
   // History overlay
   'conversations.title': 'Conversation history',
   'conversations.empty': 'No saved conversations yet. Conversations are saved automatically as you chat.',
@@ -730,6 +734,10 @@ const FR: Dict = {
   'settings.saved': 'Paramètres enregistrés.',
   'settings.testing': 'Essai en cours…',
   'settings.testConnection': 'Tester la connexion',
+  'settings.playbookIndexUrl': 'URL de la bibliothèque de guides d’applications',
+  'settings.playbookIndexUrlNote':
+    'Emplacement consulté par la « Bibliothèque de guides » du panneau Compétences pour les compétences installables — un index JSON listant des fichiers SKILL.md. Laissez vide pour utiliser la valeur par défaut intégrée.',
+  'settings.playbookIndexUrlReset': 'Réinitialiser',
   // Historique
   'conversations.title': 'Historique des conversations',
   'conversations.empty':

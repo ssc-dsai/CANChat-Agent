@@ -16,25 +16,11 @@ import {
 } from '../shared/skillImport';
 import type { Project, Skill } from '../shared/types';
 import { normalizeHost } from '../shared/url';
+import { loadIndexUrl, saveIndexUrl } from './playbookSettings';
 
 async function loadProjects(): Promise<Project[]> {
   const r = await chrome.storage.local.get('ba_projects');
   return Array.isArray(r.ba_projects) ? (r.ba_projects as Project[]) : [];
-}
-
-async function loadIndexUrl(): Promise<string> {
-  const r = await chrome.storage.local.get('ba_settings');
-  const s = r.ba_settings as { playbookIndexUrl?: string } | undefined;
-  return s?.playbookIndexUrl?.trim() || DEFAULT_PLAYBOOK_INDEX_URL;
-}
-
-async function saveIndexUrl(url: string): Promise<void> {
-  const r = await chrome.storage.local.get('ba_settings');
-  const s = (r.ba_settings as Record<string, unknown>) ?? {};
-  const trimmed = url.trim();
-  if (trimmed && trimmed !== DEFAULT_PLAYBOOK_INDEX_URL) s.playbookIndexUrl = trimmed;
-  else delete s.playbookIndexUrl;
-  await chrome.storage.local.set({ ba_settings: s });
 }
 
 const EMPTY_FORM: Omit<Skill, 'id'> = {
