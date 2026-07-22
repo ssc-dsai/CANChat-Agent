@@ -72,7 +72,7 @@ async function recordScene(id: string, mockBase: string, staticBase: string): Pr
     const video = page.video();
     if (!video) throw new Error('recordVideo did not attach to the page');
 
-    await spec.run({ context, extensionId, mockBase, staticBase, page });
+    await spec.run({ context, serviceWorker: sw, extensionId, mockBase, staticBase, page });
 
     await context.close(); // flushes the video file
     const raw = await video.path();
@@ -119,12 +119,18 @@ async function buildSegment(id: string, webm: string, aiff: string): Promise<{ m
   const [videoDur, audioDur] = await Promise.all([ffprobeDuration(webm), ffprobeDuration(aiff)]);
   // The scene must stay on screen at least as long as its narration (+ a beat).
   const target = Math.max(videoDur, audioDur + 0.8);
-  const padVideo = Math.max(0, target - videoDur) + 0.2;
+  // Keep the ACTION in pace with the voice: time-stretch the footage toward the
+  // narration length (up to 1.45x — beyond that motion looks syrupy), and only
+  // freeze-frame the remainder. Without this, a scene whose actions finish
+  // early sits on a static end frame while the narration keeps going.
+  const stretch = Math.min(Math.max(target / Math.max(videoDur, 0.1), 1), 1.45);
+  const stretchedDur = videoDur * stretch;
+  const padVideo = Math.max(0, target - stretchedDur) + 0.2;
   const mp4 = join(WORK, 'seg', `${id}.mp4`);
   await exec('ffmpeg', [
     '-y', '-i', webm, '-i', aiff,
     '-filter_complex',
-    `[0:v]scale=1280:800:force_original_aspect_ratio=decrease,pad=1280:800:(ow-iw)/2:(oh-ih)/2:color=0x1c1726,fps=30,tpad=stop_mode=clone:stop_duration=${padVideo.toFixed(2)}[v];` +
+    `[0:v]setpts=${stretch.toFixed(4)}*PTS,scale=1280:800:force_original_aspect_ratio=decrease,pad=1280:800:(ow-iw)/2:(oh-ih)/2:color=0x1c1726,fps=30,tpad=stop_mode=clone:stop_duration=${padVideo.toFixed(2)}[v];` +
       `[1:a]aresample=44100,loudnorm=I=-18:TP=-2,apad[a]`,
     '-map', '[v]', '-map', '[a]',
     '-t', target.toFixed(2),
@@ -156,6 +162,18 @@ function writeScript(rows: Array<{ id: string; start: number; end: number }>): v
   writeFileSync(join(OUT_DIR, 'SCRIPT.md'), lines.join('\n'));
 }
 
+const STAGE_FILES = ['stage.html', 'stage.js'];
+
+/** The stage must be an extension page (it iframes sidebar.html and reads
+ *  chrome.tabs), so it is copied into dist/ for the recording session only —
+ *  it is not part of the product build. */
+function deployStage(): void {
+  for (const f of STAGE_FILES) copyFileSync(join(ROOT, 'scripts', 'demo', f), join(DIST, f));
+}
+function removeStage(): void {
+  for (const f of STAGE_FILES) rmSync(join(DIST, f), { force: true });
+}
+
 async function main(): Promise<void> {
   if (!existsSync(join(DIST, 'manifest.json'))) {
     throw new Error(`Extension build not found at ${DIST} — run "npm run build" first.`);
@@ -165,6 +183,7 @@ async function main(): Promise<void> {
   if (ids.length === 0) throw new Error('DEMO_SCENES matched no scenes.');
 
   mkdirSync(WORK, { recursive: true });
+  deployStage();
   const mock = await startMockLlm();
   const staticServer = await startStatic(join(ROOT, 'tests', 'fixtures'));
   const segments: Array<{ id: string; mp4: string; duration: number }> = [];
@@ -181,6 +200,7 @@ async function main(): Promise<void> {
   } finally {
     await mock.close();
     await staticServer.close();
+    removeStage();
   }
 
   // Concatenate (all segments share codec/size/fps, so stream-copy works).
