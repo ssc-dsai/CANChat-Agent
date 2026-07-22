@@ -11,10 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+      # Same toolchain as ci.yml: Node pinned by mise.toml (the lockfile is
+      # maintained with its npm; older npm versions reject it).
+      - uses: jdx/mise-action@v2
 
       - name: Install dependencies
         run: npm ci
