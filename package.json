@@ -18,7 +18,8 @@
     "addin:certs": "office-addin-dev-certs install",
     "addin:sideload": "office-addin-debugging start word-addin/manifest.xml",
     "addin:stop": "office-addin-debugging stop word-addin/manifest.xml",
-    "addin:proxy": "node word-addin/proxy.mjs"
+    "addin:proxy": "node word-addin/proxy.mjs",
+    "demo:record": "npm run build && node scripts/demo/record.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",

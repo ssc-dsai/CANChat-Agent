@@ -1409,9 +1409,17 @@ body {
   gap: 4px;
   font-size: 12px;
   color: var(--text-dim);
-  /* Grow/shrink but allow wrapping to one-per-row when the panel is narrow. */
-  flex: 1 1 150px;
+  flex: initial;
   min-width: 0;
+}
+
+/* Inside a .field-row (horizontal), let fields grow/shrink and wrap to
+   one-per-row when narrow. This must not apply to standalone .field elements
+   stacked directly in a column container (e.g. the onboarding card or
+   .site-form), where flex-basis is read along the column's main axis (height)
+   and stretches each field to ~150px tall. */
+.field-row .field {
+  flex: 1 1 150px;
 }
 
 .field input,
