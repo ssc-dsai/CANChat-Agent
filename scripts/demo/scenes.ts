@@ -15,13 +15,99 @@
 
 import type { BrowserContext, FrameLocator, Locator, Page, Worker } from '@playwright/test';
 import { installCursor, moveClick, moveTo } from './cursor.ts';
+import type { DemoLang } from './narration.ts';
 
-export const LIVE = {
-  rideau: 'https://en.wikipedia.org/wiki/Rideau_Canal',
-  parliament: 'https://en.wikipedia.org/wiki/Parliament_Hill',
-  benefits: 'https://www.canada.ca/en/services/benefits.html',
-  majorsHill: 'https://en.wikipedia.org/wiki/Major%27s_Hill_Park',
-};
+const LIVE_BY_LANG = {
+  en: {
+    rideau: 'https://en.wikipedia.org/wiki/Rideau_Canal',
+    rideauTitle: 'Rideau Canal — Wikipedia',
+    parliament: 'https://en.wikipedia.org/wiki/Parliament_Hill',
+    parliamentTitle: 'Parliament Hill — Wikipedia',
+    benefits: 'https://www.canada.ca/en/services/benefits.html',
+    benefitsTitle: 'Benefits — Canada.ca',
+    park: 'https://en.wikipedia.org/wiki/Major%27s_Hill_Park',
+    parkTitle: 'Major’s Hill Park — Wikipedia',
+    workspaceTitle: 'CANChat Agent — Workspace',
+  },
+  fr: {
+    rideau: 'https://fr.wikipedia.org/wiki/Canal_Rideau',
+    rideauTitle: 'Canal Rideau — Wikipédia',
+    parliament: 'https://fr.wikipedia.org/wiki/Colline_du_Parlement',
+    parliamentTitle: 'Colline du Parlement — Wikipédia',
+    benefits: 'https://www.canada.ca/fr/services/prestations.html',
+    benefitsTitle: 'Prestations — Canada.ca',
+    park: 'https://fr.wikipedia.org/wiki/Parc_de_la_Gatineau',
+    parkTitle: 'Parc de la Gatineau — Wikipédia',
+    workspaceTitle: 'CANChat Agent — Espace de travail',
+  },
+} as const;
+
+/** UI labels the scenes click, per interface language (the extension renders
+ *  its chrome from ba_language, so locator names must match). */
+const UI_BY_LANG = {
+  en: {
+    testConnection: 'Test connection',
+    saveStart: /Save & start/i,
+    approve: 'Approve',
+    addFiles: 'Add files',
+    more: 'More actions',
+    larger: 'Larger text',
+    resetText: 'Reset text size',
+    newChat: /New chat/i,
+    memory: 'Memory',
+    automations: 'Automations',
+    products: 'Products',
+    download: 'Download',
+    retryProbe: 'retrying',
+    copy: 'Copy',
+  },
+  fr: {
+    testConnection: 'Tester la connexion',
+    saveStart: /Enregistrer et démarrer/i,
+    approve: 'Approuver',
+    addFiles: 'Ajouter des fichiers',
+    more: 'Plus d’actions',
+    larger: 'Texte plus grand',
+    resetText: 'Réinitialiser la taille du texte',
+    newChat: /Nouvelle conversation/i,
+    memory: 'Mémoire',
+    automations: 'Automatisations',
+    products: 'Produits',
+    download: 'Télécharger',
+    retryProbe: 'nouvel essai',
+    copy: 'Copier',
+  },
+} as const;
+
+/** Prompts typed into the composer; each pairs with a demoLlm.ts handler. */
+const PROMPTS_BY_LANG = {
+  en: {
+    summarize: 'Summarize this page for me.',
+    research: 'Compare Canada’s historic waterways, starting from this Rideau Canal article.',
+    approval: 'What is this page’s exact title? Check it directly.',
+    kb: 'What does my briefing note say about the canal season? ',
+    deck: 'Build a three-slide deck from this article.',
+    busy: 'The endpoint looks busy — summarize it anyway.',
+    repo: 'briefing notes',
+    noteFile: 'canal-brief.txt',
+    note:
+      'Briefing note — Rideau Canal operations.\nThe navigation season runs mid-May to mid-October; lock staffing is reduced in the shoulder weeks. Official visits should be planned for June through September.',
+    answerProbe: { summarize: 'Rideau', plan: 'Comparison across', approval: 'Parliament', kb: 'navigation', busy: 'recovered' },
+  },
+  fr: {
+    summarize: 'Résume cette page pour moi.',
+    research: 'Compare les voies navigables historiques du Canada, à partir de cet article sur le canal Rideau.',
+    approval: 'Quel est le titre exact de cette page? Vérifie-le directement.',
+    kb: 'Que dit ma note d’information sur la saison du canal? ',
+    deck: 'Prépare un jeu de trois diapositives à partir de cet article.',
+    busy: 'Le point de terminaison semble occupé — résume-la quand même.',
+    repo: 'notes d’information',
+    noteFile: 'note-canal.txt',
+    note:
+      'Note d’information — exploitation du canal Rideau.\nLa saison de navigation s’étend de la mi-mai à la mi-octobre; le personnel des écluses est réduit en début et en fin de saison. Planifier les visites officielles de juin à septembre.',
+    answerProbe: { summarize: 'canal Rideau', plan: 'Comparaison entre', approval: 'Colline du Parlement', kb: 'saison de navigation', busy: 'rétabli' },
+  },
+} as const;
 
 export interface SceneCtx {
   context: BrowserContext;
@@ -34,7 +120,12 @@ export interface SceneCtx {
   /** Beat checkpoints: seconds into the scene, by name (record.ts collects). */
   marks: Array<{ name: string; at: number }>;
   sceneStart: number;
+  lang: DemoLang;
 }
+
+const live = (ctx: SceneCtx) => LIVE_BY_LANG[ctx.lang];
+const ui = (ctx: SceneCtx) => UI_BY_LANG[ctx.lang];
+const prompts = (ctx: SceneCtx) => PROMPTS_BY_LANG[ctx.lang];
 
 export interface SceneSpec {
   id: string;
@@ -58,11 +149,17 @@ async function typeSlowly(page: Page, target: Locator, text: string, delay = 42)
 
 /** Seed the model connection straight through the service worker's storage. */
 function seedModel(ctx: SceneCtx): Promise<void> {
-  return ctx.serviceWorker.evaluate((baseUrl) => {
+  return ctx.serviceWorker.evaluate(({ baseUrl, lang }) => {
     return chrome.storage.local.set({
       ba_settings: { baseUrl, apiKey: 'demo-key', model: 'mock-model' },
+      ba_language: lang,
     });
-  }, `${ctx.mockBase}/v1`) as Promise<void>;
+  }, { baseUrl: `${ctx.mockBase}/v1`, lang: ctx.lang }) as Promise<void>;
+}
+
+/** Language only (for the unseeded onboarding scene's UI). */
+function seedLanguage(ctx: SceneCtx): Promise<void> {
+  return ctx.serviceWorker.evaluate((lang) => chrome.storage.local.set({ ba_language: lang }), ctx.lang) as Promise<void>;
 }
 
 interface StageOpts {
@@ -75,7 +172,7 @@ async function openStage(ctx: SceneCtx, opts: StageOpts): Promise<{ web: FrameLo
   const q = new URLSearchParams({
     web: opts.web,
     panel: opts.panel === false ? '0' : '1',
-    title: opts.title ?? 'Rideau Canal — Wikipedia',
+    title: opts.title ?? LIVE_BY_LANG[ctx.lang].rideauTitle,
   });
   await ctx.page.goto(`chrome-extension://${ctx.extensionId}/stage.html?${q.toString()}`);
   await installCursor(ctx.page);
@@ -114,7 +211,8 @@ export const sceneSpecs: SceneSpec[] = [
     id: 'onboarding',
     viewport: VIEW,
     run: async (ctx) => {
-      const { panel } = await openStage(ctx, { web: LIVE.rideau });
+      await seedLanguage(ctx);
+      const { panel } = await openStage(ctx, { web: live(ctx).rideau });
       const page = ctx.page;
       const card = panel.locator('.onboarding-card');
       await card.waitFor();
@@ -125,11 +223,11 @@ export const sceneSpecs: SceneSpec[] = [
       await typeSlowly(page, fields.nth(2), 'mock-model', 30);
       mark(ctx, 'typed');
       await pace(page, 700);
-      await moveClick(page, card.getByRole('button', { name: 'Test connection' }));
+      await moveClick(page, card.getByRole('button', { name: ui(ctx).testConnection }));
       await panel.locator('.banner-ok').waitFor();
       mark(ctx, 'tested');
       await pace(page, 1200);
-      await moveClick(page, card.getByRole('button', { name: /Save & start/i }));
+      await moveClick(page, card.getByRole('button', { name: ui(ctx).saveStart }));
       await panel.locator('.chat-empty').waitFor();
       mark(ctx, 'ready');
       await pace(page, 1500);
@@ -141,15 +239,15 @@ export const sceneSpecs: SceneSpec[] = [
     viewport: VIEW,
     run: async (ctx) => {
       await seedModel(ctx);
-      const { panel } = await openStage(ctx, { web: LIVE.rideau });
+      const { panel } = await openStage(ctx, { web: live(ctx).rideau });
       await pace(ctx.page, 1400);
-      await typeSlowly(ctx.page, panel.getByTestId('chat-input'), 'Summarize this page for me.');
+      await typeSlowly(ctx.page, panel.getByTestId('chat-input'), prompts(ctx).summarize);
       await moveClick(ctx.page, panel.getByTestId('send'));
       mark(ctx, 'asked');
-      await panel.locator('.msg-assistant', { hasText: 'Rideau Canal' }).waitFor();
+      await panel.locator('.msg-assistant', { hasText: prompts(ctx).answerProbe.summarize }).waitFor();
       mark(ctx, 'answered');
       await pace(ctx.page, 1000);
-      await moveTo(ctx.page, panel.locator('.msg-assistant button', { hasText: 'Copy' }).first());
+      await moveTo(ctx.page, panel.locator('.msg-assistant button', { hasText: ui(ctx).copy }).first());
       await pace(ctx.page, 1500);
     },
   },
@@ -159,8 +257,8 @@ export const sceneSpecs: SceneSpec[] = [
     viewport: VIEW,
     run: async (ctx) => {
       await seedModel(ctx);
-      const { panel } = await openStage(ctx, { web: LIVE.rideau });
-      await sendDemo(ctx, panel, 'Compare Canada’s historic waterways, starting from this Rideau Canal article.');
+      const { panel } = await openStage(ctx, { web: live(ctx).rideau });
+      await sendDemo(ctx, panel, prompts(ctx).research);
       await panel.locator('.plan-panel').waitFor();
       mark(ctx, 'planned');
       // The agent's open_url calls create REAL tabs; wait until both exist so
@@ -171,7 +269,7 @@ export const sceneSpecs: SceneSpec[] = [
         await ctx.page.waitForTimeout(200);
       }
       mark(ctx, 'tabs');
-      await panel.locator('.msg-assistant', { hasText: 'Comparison across' }).waitFor({ timeout: 30000 });
+      await panel.locator('.msg-assistant', { hasText: prompts(ctx).answerProbe.plan }).waitFor({ timeout: 30000 });
       mark(ctx, 'answered');
       await pace(ctx.page, 1400);
       await moveClick(ctx.page, panel.locator('.activity-toggle'));
@@ -186,15 +284,15 @@ export const sceneSpecs: SceneSpec[] = [
     viewport: VIEW,
     run: async (ctx) => {
       await seedModel(ctx);
-      const { panel } = await openStage(ctx, { web: LIVE.parliament, title: 'Parliament Hill — Wikipedia' });
+      const { panel } = await openStage(ctx, { web: live(ctx).parliament, title: live(ctx).parliamentTitle });
       await pace(ctx.page, 1200);
-      await sendDemo(ctx, panel, 'What is this page’s exact title? Check it directly.');
+      await sendDemo(ctx, panel, prompts(ctx).approval);
       const approval = panel.getByTestId('approval');
       await approval.waitFor();
       mark(ctx, 'card');
       await pace(ctx.page, 2600); // let the viewer read the reason
-      await moveClick(ctx.page, approval.getByRole('button', { name: 'Approve' }));
-      await panel.locator('.msg-assistant', { hasText: 'Parliament Hill' }).waitFor();
+      await moveClick(ctx.page, approval.getByRole('button', { name: ui(ctx).approve }));
+      await panel.locator('.msg-assistant', { hasText: prompts(ctx).answerProbe.approval }).waitFor();
       mark(ctx, 'approved');
       await pace(ctx.page, 1800);
     },
@@ -205,37 +303,33 @@ export const sceneSpecs: SceneSpec[] = [
     viewport: VIEW,
     run: async (ctx) => {
       await seedModel(ctx);
-      const { web } = await openStage(ctx, { web: 'workspace.html#knowledge', panel: false, title: 'CANChat Agent — Workspace' });
+      const { web } = await openStage(ctx, { web: 'workspace.html#knowledge', panel: false, title: live(ctx).workspaceTitle });
       const page = ctx.page;
       await pace(page, 1200);
       await moveClick(page, web.locator('.repo-upload-toggle'));
-      await typeSlowly(page, web.locator('.repo-upload input[type="text"]'), 'briefing notes', 40);
+      await typeSlowly(page, web.locator('.repo-upload input[type="text"]'), prompts(ctx).repo, 40);
       await web.locator('.repo-drop input[type="file"]').setInputFiles({
-        name: 'canal-brief.txt',
+        name: prompts(ctx).noteFile,
         mimeType: 'text/plain',
-        buffer: Buffer.from(
-          'Briefing note — Rideau Canal operations.\n' +
-            'The navigation season runs mid-May to mid-October; lock staffing is reduced in the shoulder weeks. ' +
-            'Official visits should be planned for June through September.',
-        ),
+        buffer: Buffer.from(prompts(ctx).note),
       });
-      await web.locator('.repo-file', { hasText: 'canal-brief.txt' }).waitFor();
+      await web.locator('.repo-file', { hasText: prompts(ctx).noteFile }).waitFor();
       await pace(page, 600);
-      await moveClick(page, web.getByRole('button', { name: 'Add files', exact: true }));
+      await moveClick(page, web.getByRole('button', { name: ui(ctx).addFiles, exact: true }));
       await web.locator('.upload-banner').waitFor();
       mark(ctx, 'uploaded');
       await pace(page, 1800);
 
-      const { panel } = await openStage(ctx, { web: LIVE.benefits, title: 'Benefits — Canada.ca' });
+      const { panel } = await openStage(ctx, { web: live(ctx).benefits, title: live(ctx).benefitsTitle });
       mark(ctx, 'panel');
       const input = panel.getByTestId('chat-input');
-      await typeSlowly(page, input, 'What does my briefing note say about the canal season? ', 40);
+      await typeSlowly(page, input, prompts(ctx).kb, 40);
       await input.pressSequentially('#', { delay: 80 });
       await pace(page, 1400);
       await page.keyboard.press('Enter').catch(() => {});
       await pace(page, 400);
       await moveClick(page, panel.getByTestId('send'));
-      await panel.locator('.msg-assistant', { hasText: 'navigation season' }).waitFor({ timeout: 20000 });
+      await panel.locator('.msg-assistant', { hasText: prompts(ctx).answerProbe.kb }).waitFor({ timeout: 20000 });
       mark(ctx, 'answered');
       await pace(page, 1800);
     },
@@ -246,9 +340,9 @@ export const sceneSpecs: SceneSpec[] = [
     viewport: VIEW,
     run: async (ctx) => {
       await seedModel(ctx);
-      const { panel } = await openStage(ctx, { web: LIVE.rideau });
-      await sendDemo(ctx, panel, 'Summarize this page for me.');
-      await panel.locator('.msg-assistant', { hasText: 'Rideau Canal' }).waitFor();
+      const { panel } = await openStage(ctx, { web: live(ctx).rideau });
+      await sendDemo(ctx, panel, prompts(ctx).summarize);
+      await panel.locator('.msg-assistant', { hasText: prompts(ctx).answerProbe.summarize }).waitFor();
       await pace(ctx.page, 600);
       await moveClick(ctx.page, panel.locator('.header-controls .icon-btn').first()); // History
       await panel.locator('.conv-item').first().waitFor();
@@ -256,16 +350,19 @@ export const sceneSpecs: SceneSpec[] = [
       await pace(ctx.page, 2400);
       await moveClick(ctx.page, panel.locator('.settings-header .icon-btn')); // close
       await pace(ctx.page, 600);
-      await moveClick(ctx.page, panel.getByRole('button', { name: 'More actions' }));
+      await moveClick(ctx.page, panel.getByRole('button', { name: ui(ctx).more }));
       await panel.getByRole('menu').waitFor();
       mark(ctx, 'more');
       await pace(ctx.page, 1400);
-      await moveClick(ctx.page, panel.getByRole('menu').getByRole('button', { name: 'Larger text' }));
-      await pace(ctx.page, 800);
-      await moveClick(ctx.page, panel.getByRole('menu').getByRole('button', { name: 'Reset text size' }));
-      await pace(ctx.page, 1200);
+      // Hover (don't click) the text-size controls: clicking applies CSS zoom
+      // inside the panel iframe, which breaks Playwright's coordinate math for
+      // every later locator and once stalled a scene for 15 minutes.
+      await moveTo(ctx.page, panel.getByRole('menu').getByRole('button', { name: ui(ctx).larger }));
+      await pace(ctx.page, 900);
+      await moveTo(ctx.page, panel.getByRole('menu').getByRole('button', { name: ui(ctx).resetText }));
+      await pace(ctx.page, 1100);
       await ctx.page.keyboard.press('Escape');
-      await moveTo(ctx.page, panel.getByRole('button', { name: /New chat/i }));
+      await moveTo(ctx.page, panel.getByRole('button', { name: ui(ctx).newChat }));
       mark(ctx, 'done');
       await pace(ctx.page, 1500);
     },
@@ -276,10 +373,10 @@ export const sceneSpecs: SceneSpec[] = [
     viewport: VIEW,
     run: async (ctx) => {
       await seedModel(ctx);
-      const { web } = await openStage(ctx, { web: 'workspace.html#skills', panel: false, title: 'CANChat Agent — Workspace' });
+      const { web } = await openStage(ctx, { web: 'workspace.html#skills', panel: false, title: live(ctx).workspaceTitle });
       await web.getByText('/research').waitFor();
       await pace(ctx.page, 3000);
-      const { panel } = await openStage(ctx, { web: LIVE.rideau });
+      const { panel } = await openStage(ctx, { web: live(ctx).rideau });
       await typeSlowly(ctx.page, panel.getByTestId('chat-input'), '/res', 90);
       mark(ctx, 'slash');
       await pace(ctx.page, 2400);
@@ -309,7 +406,7 @@ export const sceneSpecs: SceneSpec[] = [
           ],
         });
       }, now);
-      const { web } = await openStage(ctx, { web: 'workspace.html#models', panel: false, title: 'CANChat Agent — Workspace' });
+      const { web } = await openStage(ctx, { web: 'workspace.html#models', panel: false, title: live(ctx).workspaceTitle });
       await ctx.page.evaluate((t) => {
         return chrome.runtime.sendMessage({
           type: 'products_import',
@@ -326,17 +423,17 @@ export const sceneSpecs: SceneSpec[] = [
         await ctx.page.mouse.wheel(0, 520);
         await pace(ctx.page, 1300);
       }
-      await moveClick(ctx.page, web.getByRole('button', { name: 'Memory' }));
+      await moveClick(ctx.page, web.getByRole('button', { name: ui(ctx).memory }));
       mark(ctx, 'memory');
       await pace(ctx.page, 2200);
-      await moveClick(ctx.page, web.getByRole('button', { name: 'Automations' }));
+      await moveClick(ctx.page, web.getByRole('button', { name: ui(ctx).automations }));
       await web.locator('.ws-item').first().waitFor();
       mark(ctx, 'automations');
       await pace(ctx.page, 2600);
-      await moveClick(ctx.page, web.getByRole('button', { name: 'Products' }));
+      await moveClick(ctx.page, web.getByRole('button', { name: ui(ctx).products }));
       await web.locator('.ws-item', { hasText: 'digest-monday.docx' }).waitFor();
       mark(ctx, 'products');
-      await moveTo(ctx.page, web.getByRole('button', { name: 'Download' }).first());
+      await moveTo(ctx.page, web.getByRole('button', { name: ui(ctx).download }).first());
       await pace(ctx.page, 2200);
     },
   },
@@ -346,16 +443,16 @@ export const sceneSpecs: SceneSpec[] = [
     viewport: VIEW,
     run: async (ctx) => {
       await seedModel(ctx);
-      const { panel } = await openStage(ctx, { web: LIVE.rideau });
+      const { panel } = await openStage(ctx, { web: live(ctx).rideau });
       await pace(ctx.page, 1000);
-      await typeSlowly(ctx.page, panel.getByTestId('chat-input'), 'Build a three-slide deck from this article.');
+      await typeSlowly(ctx.page, panel.getByTestId('chat-input'), prompts(ctx).deck);
       await moveClick(ctx.page, panel.getByTestId('send'));
       mark(ctx, 'asked');
       const card = panel.locator('.export-card', { hasText: '.pptx' });
       await card.waitFor({ timeout: 20000 });
       mark(ctx, 'card');
       await pace(ctx.page, 900);
-      await moveTo(ctx.page, card.getByRole('button', { name: 'Download' }));
+      await moveTo(ctx.page, card.getByRole('button', { name: ui(ctx).download }));
       await pace(ctx.page, 1800);
     },
   },
@@ -365,11 +462,11 @@ export const sceneSpecs: SceneSpec[] = [
     viewport: VIEW,
     run: async (ctx) => {
       await seedModel(ctx);
-      const { panel } = await openStage(ctx, { web: LIVE.majorsHill, title: 'Major’s Hill Park — Wikipedia' });
-      await sendDemo(ctx, panel, 'The endpoint looks busy — summarize it anyway.');
-      await panel.locator('.msg-notice', { hasText: 'retrying' }).waitFor();
+      const { panel } = await openStage(ctx, { web: live(ctx).park, title: live(ctx).parkTitle });
+      await sendDemo(ctx, panel, prompts(ctx).busy);
+      await panel.locator('.msg-notice', { hasText: ui(ctx).retryProbe }).waitFor();
       mark(ctx, 'retrying');
-      await panel.locator('.msg-assistant', { hasText: 'recovered' }).waitFor({ timeout: 20000 });
+      await panel.locator('.msg-assistant', { hasText: prompts(ctx).answerProbe.busy }).waitFor({ timeout: 20000 });
       mark(ctx, 'answered');
       await pace(ctx.page, 2000);
     },

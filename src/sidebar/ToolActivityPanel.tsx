@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { useT } from './i18n';
 import type { ToolActivity } from '../shared/types';
 
 const STATUS_ICONS: Record<ToolActivity['status'], string> = {
@@ -9,12 +10,13 @@ const STATUS_ICONS: Record<ToolActivity['status'], string> = {
 };
 
 export function ToolActivityPanel({ activities }: { activities: ToolActivity[] }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
 
   return (
     <div class="activity-panel">
       <button class="activity-toggle" onClick={() => setOpen(!open)}>
-        Tool activity ({activities.length}) {open ? '▾' : '▸'}
+        {t('activity.title')} ({activities.length}) {open ? '▾' : '▸'}
       </button>
       {open && (
         <ul class="activity-list">

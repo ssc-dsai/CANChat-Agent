@@ -64,9 +64,12 @@ function decide(req: ChatRequest): ChatMessage {
     return { role: 'assistant', content: JSON.stringify(new Array(n).fill('digest of an earlier step')) };
   }
   if (system.includes('label a conversation')) {
+    const fr = /résume|canal rideau|diapositives|point de terminaison/.test(prompt);
     return {
       role: 'assistant',
-      content: '{"title":"Rideau Canal research","summary":"Read the Rideau Canal article, compared Canadian waterways across sources, and produced a briefing deck."}',
+      content: fr
+        ? '{"title":"Recherche sur le canal Rideau","summary":"Lecture de l’article sur le canal Rideau, comparaison des voies navigables et production d’un jeu de diapositives."}'
+        : '{"title":"Rideau Canal research","summary":"Read the Rideau Canal article, compared Canadian waterways across sources, and produced a briefing deck."}',
     };
   }
   if (system.includes('Extract durable knowledge from this exchange')) {
@@ -81,6 +84,144 @@ function decide(req: ChatRequest): ChatMessage {
       content: '{"name":"waterway-brief","description":"Compare Canadian waterways and produce a short brief","body":"1. Read the sources. 2. Compare. 3. Brief."}',
     };
   }
+
+  // ============================ French scenes ============================
+
+  if (prompt.includes('résume cette page')) {
+    if (!hasToolCall(req.messages, 'get_tab_content')) {
+      return { role: 'assistant', content: null, tool_calls: [toolCall('get_tab_content', {})] };
+    }
+    return {
+      role: 'assistant',
+      content:
+        'Voici la page en trois points :\n\n' +
+        '- Le **canal Rideau** relie Ottawa à Kingston sur 202 km de rivières, de lacs et d’écluses construites à la main; il fonctionne sans interruption depuis **1832**.\n' +
+        '- Il est inscrit au **patrimoine mondial de l’UNESCO** depuis 2007 — la plupart de ses écluses sont encore manœuvrées à la main.\n' +
+        '- L’hiver, le tronçon d’Ottawa devient la **patinoire du canal Rideau**, l’une des plus grandes patinoires naturelles au monde.\n\n' +
+        'Source : l’article Wikipédia ouvert dans cet onglet.',
+    };
+  }
+
+  if (prompt.includes('voies navigables historiques')) {
+    if (!hasToolCall(req.messages, 'set_plan')) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          toolCall('set_plan', {
+            steps: [
+              'Lire l’article sur le canal Rideau dans l’onglet actuel',
+              'Ouvrir l’article sur le passage du Nord-Ouest',
+              'Ouvrir l’article sur la voie navigable Trent-Severn',
+              'Synthétiser une comparaison avec les sources',
+            ],
+          }),
+        ],
+      };
+    }
+    if (countToolCalls(req.messages, 'open_url') === 0) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [toolCall('open_url', { url: 'https://fr.wikipedia.org/wiki/Passage_du_Nord-Ouest' }, 'open1')],
+      };
+    }
+    if (countToolCalls(req.messages, 'open_url') === 1) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [toolCall('open_url', { url: 'https://fr.wikipedia.org/wiki/Voie_navigable_Trent-Severn' }, 'open2')],
+      };
+    }
+    if (!hasToolCall(req.messages, 'update_plan')) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          toolCall('update_plan', { step: 1, status: 'done' }, 'up1'),
+          toolCall('update_plan', { step: 2, status: 'done' }, 'up2'),
+          toolCall('update_plan', { step: 3, status: 'done' }, 'up3'),
+        ],
+      };
+    }
+    return {
+      role: 'assistant',
+      content:
+        'Comparaison entre les trois sources maintenant ouvertes dans ce groupe d’onglets :\n\n' +
+        '- **Canal Rideau (1832)** — construit pour le ravitaillement militaire après la guerre de 1812; aujourd’hui un corridor patrimonial et récréatif, navigable de bout en bout.\n' +
+        '- **Voie navigable Trent-Severn** — 386 km à travers le centre de l’Ontario; comme le Rideau, elle est exploitée par Parcs Canada.\n' +
+        '- **Passage du Nord-Ouest** — une route maritime arctique, pas un canal : longtemps prisonnière des glaces, de plus en plus franchie l’été.\n\n' +
+        'Fil conducteur : les trois ont façonné les routes commerciales canadiennes, mais seuls les deux canaux ont été construits — le passage est un système naturel en mutation.\n\n' +
+        'Onglets sources : Canal Rideau · Passage du Nord-Ouest · Voie navigable Trent-Severn.',
+    };
+  }
+
+  if (prompt.includes('titre exact')) {
+    if (!hasToolCall(req.messages, 'run_javascript')) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          toolCall('run_javascript', {
+            reason: 'Lire le titre de cette page pour le rapporter exactement',
+            code: 'document.title',
+          }),
+        ],
+      };
+    }
+    return {
+      role: 'assistant',
+      content: 'Le titre exact de la page est **« Colline du Parlement — Wikipédia »**. Il vient directement du titre du document, lu avec votre approbation.',
+    };
+  }
+
+  if (prompt.includes('note d’information') || prompt.includes("note d'information")) {
+    if (!hasToolCall(req.messages, 'search_repo')) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [toolCall('search_repo', { repo: 'notes d’information', query: 'saison de navigation canal Rideau' })],
+      };
+    }
+    return {
+      role: 'assistant',
+      content:
+        'D’après votre base **notes d’information** : la note indique que la saison de navigation du canal Rideau s’étend de la **mi-mai à la mi-octobre**, avec un personnel d’écluses réduit en début et en fin de saison — planifiez les visites officielles de juin à septembre.\n\nSource : « note-canal.txt » dans notes d’information.',
+    };
+  }
+
+  if (prompt.includes('trois diapositives')) {
+    if (!hasToolCall(req.messages, 'create_powerpoint')) {
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          toolCall('create_powerpoint', {
+            title: 'Canal Rideau — Note de présentation',
+            filename: 'canal-rideau-presentation.pptx',
+            slides: [
+              { title: 'Un canal patrimonial en service', bullets: ['202 km, d’Ottawa à Kingston', 'En service continu depuis 1832', 'Patrimoine mondial de l’UNESCO (2007)'] },
+              { title: 'Son fonctionnement aujourd’hui', bullets: ['Écluses encore manœuvrées à la main', 'Navigation gérée par Parcs Canada', 'Saison : mi-mai à mi-octobre'] },
+              { title: 'Pourquoi c’est important', bullets: ['Plus ancien canal en service continu en Amérique du Nord', 'La patinoire d’hiver attire ~1 M de visites', 'Pilier du tourisme à Ottawa'], notes: 'Terminer avec la photo de la patinoire.' },
+            ],
+          }),
+        ],
+      };
+    }
+    return {
+      role: 'assistant',
+      content: 'Terminé — **canal-rideau-presentation.pptx** est prêt ci-dessous : trois diapositives avec titres, puces, et une note d’allocution sur la dernière.',
+    };
+  }
+
+  if (prompt.includes('quand même')) {
+    return {
+      role: 'assistant',
+      content: 'Malgré la limitation de débit passagère, le réessai s’est **rétabli** proprement — et la page est résumée : le parc de la Gatineau est le grand parc de conservation de la capitale, aux portes d’Ottawa-Gatineau.',
+    };
+  }
+
+  // ============================ English scenes ============================
 
   // ----- scene: summarize the live Rideau Canal article -----
   if (prompt.includes('summarize this page')) {
@@ -248,7 +389,7 @@ export async function startDemoLlm(): Promise<DemoLlm> {
       }
       // Rate-limit theatre for the resilience scene: 429 the first attempt.
       const prompt = latestUserText(parsed.messages).toLowerCase();
-      if (prompt.includes('summarize it anyway') && !systemTextOf(parsed.messages).includes('strict reviewer')) {
+      if ((prompt.includes('summarize it anyway') || prompt.includes('quand même')) && !systemTextOf(parsed.messages).includes('strict reviewer')) {
         const seen = (busySeen.get(prompt) ?? 0) + 1;
         busySeen.set(prompt, seen);
         if (seen === 1) {

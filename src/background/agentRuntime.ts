@@ -26,6 +26,7 @@ import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import { isTrustedForAutoApproval, resolveAuth } from '../shared/capabilities';
 import type { BackgroundEvent } from '../shared/messages';
 import { MEMORY_TOOL_DEFINITIONS, TOOL_DEFINITIONS } from '../shared/schemas';
+import { LANGUAGE_STORAGE_KEY, resolveLang, translate, type LangPref } from '../sidebar/i18n';
 import type {
   AgentStatus,
   AuthState,
@@ -120,6 +121,12 @@ const HARD_STEP_CEILING = 40; // absolute cap to bound cost
 const SITES_PROMPT_LIMIT = 25;
 // LLM_TIMEOUT_MS now lives in llmProvider (applied per request attempt) and is
 // imported for the "timed out" message below.
+/** Resolve the UI language for background-generated notice strings. */
+async function currentLang() {
+  const r = await chrome.storage.local.get(LANGUAGE_STORAGE_KEY);
+  return resolveLang(r[LANGUAGE_STORAGE_KEY] as LangPref | undefined);
+}
+
 const SINGLE_TAB_CHARS = 12000;
 // Size cap for a downloaded generated image (was shared/dataFile's MAX_DATA_BYTES
 // before the DuckDB data engine was removed).
@@ -2022,8 +2029,9 @@ export class AgentRuntime {
   // rather than a stall.
   private rateLimitNotice = (info: { attempt: number; delayMs: number; status: number }): void => {
     const secs = Math.max(1, Math.round(info.delayMs / 1000));
-    this.notice(
-      `⏳ The model endpoint is busy (HTTP ${info.status}). Waiting ${secs}s, then retrying (attempt ${info.attempt})…`,
+    // Fire-and-forget: the language read is async but the notice is advisory.
+    void currentLang().then((lang) =>
+      this.notice(translate(lang, 'notice.busyRetry', { status: info.status, secs, attempt: info.attempt })),
     );
   };
 

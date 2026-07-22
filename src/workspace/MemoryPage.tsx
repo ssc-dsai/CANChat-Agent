@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { useT } from '../sidebar/i18n';
 import type { MemoryGraph, MemoryNode, MemoryStatus } from '../shared/memoryGraph';
 
 type StatusFilter = MemoryStatus | 'all';
@@ -10,6 +11,7 @@ function statusLabel(status: MemoryStatus): string {
 }
 
 export function MemoryPage() {
+  const t = useT();
   const [graph, setGraph] = useState<MemoryGraph | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [editSummary, setEditSummary] = useState('');
@@ -89,23 +91,23 @@ export function MemoryPage() {
         <input
           class="ws-memory-search"
           type="search"
-          placeholder="Search memories…"
+          placeholder={t('memoryPage.search')}
           value={query}
           onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
         />
         <div class="ws-memory-filters">
           <select value={statusFilter} onChange={(e) => setStatusFilter((e.target as HTMLSelectElement).value as StatusFilter)}>
-            <option value="active">Active</option>
-            <option value="stale">Stale</option>
-            <option value="superseded">Superseded</option>
-            <option value="all">All statuses</option>
+            <option value="active">{t('memoryPage.active')}</option>
+            <option value="stale">{t('memoryPage.stale')}</option>
+            <option value="superseded">{t('memoryPage.superseded')}</option>
+            <option value="all">{t('memoryPage.allStatuses')}</option>
           </select>
           <select value={kindFilter} onChange={(e) => setKindFilter((e.target as HTMLSelectElement).value)}>
-            <option value="all">All kinds</option>
-            <option value="entity">Entity</option>
-            <option value="fact">Fact</option>
-            <option value="preference">Preference</option>
-            <option value="event">Event</option>
+            <option value="all">{t('memoryPage.allKinds')}</option>
+            <option value="entity">{t('memoryPage.entity')}</option>
+            <option value="fact">{t('memoryPage.fact')}</option>
+            <option value="preference">{t('memoryPage.preference')}</option>
+            <option value="event">{t('memoryPage.event')}</option>
           </select>
         </div>
         <ul class="ws-memory-list">
@@ -177,7 +179,7 @@ export function MemoryPage() {
             )}
           </>
         ) : (
-          <div class="ws-placeholder">Select a memory to view or edit it.</div>
+          <div class="ws-placeholder">{t('memoryPage.select')}</div>
         )}
       </main>
     </div>
