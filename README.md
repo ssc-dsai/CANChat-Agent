@@ -13,6 +13,10 @@ You bring your own model: any OpenAI-compatible endpoint works, from OpenAI's AP
 > knowledge bases *inside Word* by importing a backup. See **[word-addin/](word-addin/)** for what it
 > does and how to install it.
 
+**🎬 Demo video:** a narrated five-minute tour of every feature —
+[English](docs/demo/canagent-demo.mp4) · [Français](docs/demo/canagent-demo-fr.mp4)
+(timecoded scripts: [EN](docs/demo/SCRIPT.md) · [FR](docs/demo/SCRIPT-fr.md)).
+
 ---
 
 ## Table of contents
