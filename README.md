@@ -117,12 +117,12 @@ Notes:
 - Every model request times out after **120 seconds**, so a hung endpoint can never freeze a task permanently.
 
 <p align="center">
-  <img src="docs/usability/screenshots/08-settings-model-tab.png" alt="Workspace Models page with connection fields and the advanced groups" width="400"><br>
+  <img src="docs/usability/screenshots/08-settings-model-tab.png" alt="Workspace Models page with connection fields and the advanced groups" width="700"><br>
   <sub><em>Workspace → Models: the connection essentials (endpoint, key, model) with Test connection, followed by the advanced groups.</em></sub>
 </p>
 
 <p align="center">
-  <img src="docs/user-guide/screenshots/01-settings-advanced.png" alt="Workspace Models page Advanced section showing behaviour, embeddings and transcription options" width="400"><br>
+  <img src="docs/user-guide/screenshots/01-settings-advanced.png" alt="Workspace Models page Advanced section showing behaviour, embeddings and transcription options" width="700"><br>
   <sub><em>Workspace → Models → Advanced: agent behaviour, auto-retry on rate limits (429), and separate embedding/transcription endpoints — all optional.</em></sub>
 </p>
 
@@ -274,8 +274,8 @@ Honest limits: your endpoint must expose an `/embeddings` route (set a separate 
 Everything CANChat Agent stores on your device — your **endpoint settings**, **language**, **known sites**, **skills/app playbooks**, **memory**, and all your **repositories** (text + vectors) — can be saved to a single JSON file and restored later or on another machine. Use it before reinstalling, to move your setup to a new device, or to share a starter configuration with a colleague.
 
 <p align="center">
-  <img src="docs/usability/screenshots/09-settings-data-tab.png" alt="Settings Data & privacy tab with collapsible Known sites, Memory, Knowledge bases, and Backup sections" width="400"><br>
-  <sub><em>Settings → Data &amp; privacy groups everything stored on your device — Known sites, Memory, Knowledge bases, and Backup &amp; Restore — into collapsible sections.</em></sub>
+  <img src="docs/usability/screenshots/09-settings-data-tab.png" alt="Workspace Settings page with language, playbook library URL, and Backup &amp; Restore" width="700"><br>
+  <sub><em>Workspace → Settings: interface language, the App playbook library URL, and Backup &amp; Restore. Known sites live on the Tools page; memory controls on the Memory page.</em></sub>
 </p>
 
 - **Settings → Backup & Restore → Export backup** saves `canchat-agent-backup-<date>.json` (a Save As dialog lets you choose the name and folder). By default it includes your **API key**, so the file holds a live credential — store it securely. Untick **Include API key** to export everything except the key.
@@ -430,8 +430,8 @@ Two editable skills ship on first install. They're deliberately written the way 
 Note how `research` step 1 reaches into the **Known sites directory** — skills and the directory compose. A `jira-triage` skill doesn't need to hardcode your Jira URL; it can say "open the Team Jira board from your known sites" and stay valid even when the URL changes.
 
 <p align="center">
-  <img src="docs/user-guide/screenshots/02-settings-skills.png" alt="Settings Skills tab showing the two seeded skills and import/export buttons" width="400"><br>
-  <sub><em>Settings → Skills: the two seeded skills, plus Add / Import (URL or JSON) / Export and the curated App playbook library.</em></sub>
+  <img src="docs/user-guide/screenshots/02-settings-skills.png" alt="Workspace Skills page showing the seeded skills and import/export buttons" width="700"><br>
+  <sub><em>Workspace → Skills: the seeded skills, plus Add / Import (URL, JSON, or zip) / Export and the App playbook library.</em></sub>
 </p>
 
 ### 6.5 Authoring guidance
@@ -468,7 +468,7 @@ Playbooks appear in **Settings → Skills** with an `[app: <site>]` badge; edit 
 **Settings → Skills**: the same management model as Known sites — add/edit/delete, **Import JSON** / **Export JSON**, merge-by-name on import. Names must be lowercase-kebab and unique. A skill can also be **pinned as a toolbar button** (give it a button label and tick "Show as a button") for one-click launching.
 
 <p align="center">
-  <img src="docs/user-guide/screenshots/03-skill-form.png" alt="Skill editor form with name, description, site binding, and instructions fields" width="400"><br>
+  <img src="docs/user-guide/screenshots/03-skill-form.png" alt="Skill editor form with name, description, site binding, and instructions fields" width="700"><br>
   <sub><em>The skill editor: a lowercase-kebab name (the <code>/command</code>), a trigger-shaped description, an optional site binding for app playbooks, and the markdown instructions.</em></sub>
 </p>
 
