@@ -1,17 +1,27 @@
 // The demo's narration — single source of truth for BOTH the TTS voiceover and
-// the generated docs/demo/SCRIPT.md. Timecodes are computed by record.ts from
-// the finished segments, never written here.
+// the generated docs/demo/SCRIPT.md.
 //
-// Pacing budget: macOS `say` speaks ~2.5 words/second at the default rate, and
-// each scene's video is stretched to fit its narration, so long narration =
-// long scene. Keep a scene under ~90 words unless the visuals need the time.
+// Narration is written in BEATS, each anchored to a named checkpoint that the
+// scene emits with mark() at the exact moment the narrated thing appears on
+// screen. record.ts cuts the scene's footage at those marks and pads each
+// chunk to its beat's audio length — so a sentence starts when its action
+// starts, and the video holds (never mid-action) when a sentence outruns the
+// screen. Every beat must describe ONLY what is visible from its mark onward;
+// write narration and scene code as a pair.
+//
+// The first beat of every scene is anchored at 'start' (scene time zero).
+
+export interface Beat {
+  mark: string;
+  text: string;
+}
 
 export interface SceneDef {
   id: string;
   title: string;
   /** What the viewer sees — used for the SCRIPT.md action column. */
   action: string;
-  narration: string;
+  beats: Beat[];
 }
 
 export const SCENES: SceneDef[] = [
@@ -19,84 +29,178 @@ export const SCENES: SceneDef[] = [
     id: 'title',
     title: 'Title card',
     action: 'Branded title card.',
-    narration:
-      'CANChat Agent is an A I agent that lives in your browser’s side panel — and uses the browser itself as its toolset. It reads the pages you already have open, works inside the sessions you are already signed into, and keeps its data on your device. Over the next few minutes we’ll set it up from scratch and walk through every major feature, at the pace you would actually use it.',
+    beats: [
+      {
+        mark: 'start',
+        text:
+          'CANChat Agent is an A I agent that lives in your browser’s side panel — and uses the browser itself as its toolset. Over the next few minutes we’ll set it up from scratch, on real pages, and walk through every major feature.',
+      },
+    ],
   },
   {
     id: 'onboarding',
     title: 'First run — connect a model',
-    action: 'Onboarding card: fill endpoint, key, and model; Test connection; Save & start.',
-    narration:
-      'Setup takes under a minute. On first run, a short welcome asks for just three things: the address of any OpenAI-compatible endpoint — a cloud A P I, a local model, or your organization’s gateway — an A P I key, and a model name. The key is stored only on this device, and it is never synced anywhere. Click Test connection, and the extension makes one tiny request and tells you plainly whether it worked. Then Save and start. That’s the whole setup — no account, no sign-up, nothing leaves your machine except the traffic to the endpoint you chose.',
+    action: 'Live Wikipedia page on the left; onboarding card in the panel: fill three fields, Test connection, Save & start.',
+    beats: [
+      {
+        mark: 'start',
+        text:
+          'On first run, the panel shows a short welcome beside whatever you’re reading — here, the Wikipedia article on the Rideau Canal. It asks for just three things: an endpoint, a key, and a model.',
+      },
+      {
+        mark: 'typed',
+        text:
+          'Any OpenAI-compatible endpoint works — a cloud A P I, a local model, or your organization’s gateway. The key is stored only on this device, never synced.',
+      },
+      { mark: 'tested', text: 'Test connection sends one tiny request, and reports plainly that it worked.' },
+      { mark: 'ready', text: 'Save and start — and that’s the whole setup.' },
+    ],
   },
   {
     id: 'summarize',
     title: 'Ask about the current page',
-    action: 'Type a question in the composer; the agent reads the page and answers with a Copy button.',
-    narration:
-      'The simplest thing you can do: open any page and ask about it. Type your question in the composer at the bottom and press enter. Watch the status pill under the title — it shows the agent thinking, then acting as it reads the page. The answer arrives as a chat bubble, with a one-click copy button underneath. The composer has shortcuts, too: type an at-sign to insert one of your bookmarks, a hash to reference a knowledge base, or a slash to run a saved skill. Every answer that draws on a page cites its source.',
+    action: 'Types a question; the agent reads the live article and answers with a real summary.',
+    beats: [
+      {
+        mark: 'start',
+        text: 'The simplest thing you can do: ask about the page you’re on.',
+      },
+      {
+        mark: 'asked',
+        text:
+          'The question goes in the composer in plain language. Watch the status pill — thinking, then acting, as the agent reads the tab.',
+      },
+      {
+        mark: 'answered',
+        text:
+          'And the answer is a genuine summary of this article — the canal’s length, its heritage status, the winter Skateway — with a one-click copy button and the source cited.',
+      },
+    ],
   },
   {
     id: 'plan',
     title: 'Research with a live plan',
-    action: 'A multi-step task: the plan panel fills in, tools run, and the tool-activity log expands.',
-    narration:
-      'For bigger tasks, the agent works in visible steps. Give it a research question and it lays out a plan you can watch — each step ticks off as it completes, so you always know where it is and what’s left. Pages it opens are gathered into a named tab group for the conversation. And below the chat, the tool activity log records every single tool call the agent made. Expand it any time to see exactly what ran, in what order, and how each step turned out. Nothing the agent does is hidden.',
+    action: 'A research task: plan appears, real tabs open across the fake tab strip, synthesis cites all sources; tool log expanded.',
+    beats: [
+      { mark: 'start', text: 'For bigger tasks, the agent plans in the open. Let’s ask it to compare Canada’s historic waterways.' },
+      { mark: 'planned', text: 'It lays out its plan first — four steps, each ticked off as it completes.' },
+      {
+        mark: 'tabs',
+        text:
+          'Then it opens real sources — watch the tab strip: the Northwest Passage and the Trent–Severn Waterway open as live tabs, gathered into this conversation’s tab group.',
+      },
+      { mark: 'answered', text: 'The synthesis draws on every tab it opened, and lists them as sources.' },
+      { mark: 'activity', text: 'And the tool activity log keeps the full trace — every call the agent made, in order.' },
+    ],
   },
   {
     id: 'approval',
     title: 'Approvals — you stay in control',
-    action: 'A state-changing action raises an approval card with a plain-language reason; Approve continues.',
-    narration:
-      'Here’s the most important design decision in the product. Anything that would change state — clicking a button, filling a form, submitting, or running code in a page — stops and asks you first. The approval card leads with a plain-language reason: what the agent wants to do, and why it helps your task. The mechanics are there too, under the technical detail toggle. You approve or deny every single one, or allow a tool for the rest of the session. Reading is frictionless; acting requires consent. Nothing outbound ever happens silently.',
+    action: 'A state-changing action raises the approval card; Approve runs it; the answer reports the page’s real title.',
+    beats: [
+      { mark: 'start', text: 'Now the most important design decision: consent.' },
+      {
+        mark: 'card',
+        text:
+          'Running code inside a page changes state, so the agent stops and asks first. The card leads with a plain-language reason; the mechanics sit under the technical-detail toggle. Nothing outbound ever happens silently.',
+      },
+      { mark: 'approved', text: 'Approve it, and the action runs — the agent reads and reports this page’s real title. Deny it, and nothing happens at all.' },
+    ],
   },
   {
     id: 'knowledge',
     title: 'Knowledge bases',
-    action: 'Workspace → Knowledge: upload a file into a named base; then ask a question against it from the panel.',
-    narration:
-      'Knowledge bases are on-device document stores the agent can search. In the workspace, open the Knowledge page and drop in files — P D Fs, Word documents, spreadsheets, or plain text — or index a whole local folder, and they are parsed and embedded right on your machine. Nothing is uploaded anywhere. Then, back in the panel, type a hash sign to reference a base by name, and just ask your question. The agent searches it with hybrid semantic and keyword retrieval, and answers with citations back to the exact source passages.',
+    action: 'Workspace Knowledge page: upload a briefing note; back in the panel, a # reference searches it and the answer cites the note.',
+    beats: [
+      {
+        mark: 'start',
+        text: 'Knowledge bases are on-device document stores. In the workspace, drop in files — or index whole folders.',
+      },
+      {
+        mark: 'uploaded',
+        text: 'This briefing note is parsed and embedded right on the machine. Nothing is uploaded anywhere.',
+      },
+      { mark: 'panel', text: 'Back in the panel, a hash sign references the base by name.' },
+      { mark: 'answered', text: 'The agent searches the note and answers from it — the canal’s navigation season, with the source file cited.' },
+    ],
   },
   {
     id: 'history',
     title: 'History, undo, and the More menu',
-    action: 'The History overlay with auto-summaries; the ⋯ More menu: text size, save conversation, undo.',
-    narration:
-      'Every conversation is saved automatically — no save button. The history overlay gives each thread a generated title and a one-line summary, with search, sorting, and colour labels for organizing. Continue any old thread right where you left off. The three-dot More menu in the header holds the everyday extras: a text-size control for the whole panel, saving the conversation as an H T M L file, undoing the last exchange — which puts your message back in the composer to edit — and learn mode. And New Chat starts fresh while keeping the old thread safely in history.',
+    action: 'History overlay with generated title and summary; the ⋯ More menu with text-size, save, undo, learn mode.',
+    beats: [
+      { mark: 'start', text: 'Every conversation is saved automatically — there is no save button to forget.' },
+      { mark: 'opened', text: 'Each thread gets a generated title and a one-line summary, with search, sorting, and colour labels.' },
+      {
+        mark: 'more',
+        text:
+          'The three-dot menu holds the everyday extras: the text-size control, saving the conversation as a file, undoing the last exchange, and learn mode.',
+      },
+      { mark: 'done', text: 'And New Chat starts fresh — the old thread stays safely in history.' },
+    ],
   },
   {
     id: 'skills',
     title: 'Skills and app playbooks',
-    action: 'Workspace → Skills: the seeded skills; slash-command autocomplete in the composer.',
-    narration:
-      'Skills are reusable procedures you teach the agent once and reuse forever. The workspace Skills page manages them: write your own, import one from a U R L or a zip, or install from the shared App playbook library. Each skill becomes a slash command — type a slash in the composer, and pick from the menu. App playbooks go further: they teach the agent how to drive one specific website reliably, and the agent can even write its own playbook after it figures a site out. After a substantial task, it will offer to save the whole workflow as a new skill.',
+    action: 'Workspace Skills page with the seeded skills; back in the panel, slash-command autocomplete.',
+    beats: [
+      {
+        mark: 'start',
+        text:
+          'Skills are procedures you teach the agent once and reuse forever — written by hand, imported, or installed from the shared playbook library.',
+      },
+      { mark: 'slash', text: 'Each one becomes a slash command: type a slash in the composer and pick it from the menu.' },
+    ],
   },
   {
     id: 'workspace',
     title: 'The Workspace console',
-    action: 'A tour of the full-tab console: Models with the Advanced section, Memory, Automations, Products.',
-    narration:
-      'The settings gear opens the workspace — a full browser tab with a page for everything, sharing the same conversation. Models holds your endpoint connection and every advanced option: agent behaviour, generation settings, custom instructions, embeddings, and connected services — scroll through one page instead of hunting through tabs. Memory shows what the agent has learned about you, fully searchable and editable. Automations runs scheduled tasks and site triggers unattended — here’s a morning news brief that ran on schedule. And the files those runs produce land in Products, kept on-device and ready to download whenever you are.',
+    action: 'Models page with the Advanced section scrolled through; then Memory, Automations (seeded run history), Products.',
+    beats: [
+      {
+        mark: 'start',
+        text: 'The settings gear opens the workspace — a full tab with a page for everything. Models holds the connection and every advanced option.',
+      },
+      { mark: 'scrolled', text: 'Behaviour, generation, embeddings, connected services — one page, one scroll.' },
+      { mark: 'memory', text: 'Memory shows what the agent has learned about you — searchable and fully editable.' },
+      { mark: 'automations', text: 'Automations runs scheduled tasks and site triggers unattended — here’s this morning’s news brief, run on schedule.' },
+      { mark: 'products', text: 'And the files those runs produce land in Products, kept on-device and ready to download.' },
+    ],
   },
   {
     id: 'documents',
     title: 'Documents out',
-    action: 'Ask for a slide deck; a downloadable .pptx card appears in the chat.',
-    narration:
-      'The agent produces real files, not just chat. Ask for a slide deck and it builds a PowerPoint on-device — titles, bullet points, and speaker notes — delivered as a download card right in the conversation. Word documents work the same way. And when you ask it to collect structured information across pages, it hands you the table as a C S V download. Files generated by scheduled runs go to the Products page, so nothing is lost if you weren’t watching.',
+    action: 'Asks for a three-slide deck on the article; a .pptx download card appears in the chat.',
+    beats: [
+      { mark: 'start', text: 'The agent produces real files, not just chat.' },
+      { mark: 'asked', text: 'Ask for a three-slide deck on this article…' },
+      {
+        mark: 'card',
+        text:
+          '…and a PowerPoint is built on-device — titles, bullets, and a speaker note — delivered as a download card right in the conversation.',
+      },
+    ],
   },
   {
     id: 'resilience',
     title: 'Built for imperfect networks',
-    action: 'A rate-limited request shows a retrying notice, then recovers to a clean answer.',
-    narration:
-      'One more thing worth seeing: failure handling. When an endpoint is busy or rate-limited, the agent doesn’t just die. It reads the server’s retry hint, backs off, tells you it’s retrying, and recovers to a clean answer. On capacity-limited enterprise endpoints, that’s the difference between a tool you trust and one you babysit. And when something genuinely fails, the error banner explains it in plain language, with a one-click retry.',
+    action: 'A request against a rate-limited endpoint: retrying notice, then a clean recovered answer.',
+    beats: [
+      { mark: 'start', text: 'One more thing: failure handling. This request is about to hit a rate-limited endpoint.' },
+      { mark: 'retrying', text: 'The agent reads the server’s retry hint, backs off, and says so — right in the conversation.' },
+      { mark: 'answered', text: 'Then it recovers to a clean answer on its own. No babysitting.' },
+    ],
   },
   {
     id: 'outro',
     title: 'Wrap-up',
     action: 'Outro card with the project location.',
-    narration:
-      'That’s CANChat Agent: your browser, your session, your data — with an agent that shows its plan, logs its tools, and asks before it acts. Everything you saw ran on-device against the model endpoint we configured at the start. It’s bilingual, it’s open source, and it loads as an unpacked extension in any Chromium browser. Grab it, connect a model, and try it on your own tabs.',
+    beats: [
+      {
+        mark: 'start',
+        text:
+          'That’s CANChat Agent: your browser, your session, your data — with an agent that shows its plan, logs its tools, and asks before it acts. Load the extension, connect a model, and try it on your own tabs.',
+      },
+    ],
   },
 ];
