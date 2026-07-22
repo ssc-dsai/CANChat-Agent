@@ -118,7 +118,6 @@ export type RuntimeRequest =
   | { type: 'mailbox_disconnect' }
   | { type: 'index_sharepoint_library'; repo: string; libraryUrl: string }
   | { type: 'sharepoint_session'; base?: string }
-  | { type: 'open_data_files'; files: DataFileUpload[]; projectId?: string }
   | { type: 'transcribe_audio'; audioDataUrl: string }
   | { type: 'learn_record_event'; event: import('./learning').LearnEvent }
   // Probe the signed-in environment (M365 identity, open work systems, locale) to
@@ -170,15 +169,12 @@ export type RuntimeRequest =
   | { type: 'trigger_runs_get' }
   // Products: durable OPFS-backed outputs from scheduled tasks/triggers (see
   // productStore.ts) — the service worker owns the offscreen document, so it
-  // routes these for the Workspace Products page same as the DuckDB ops below.
+  // routes these for the Workspace Products page.
   | { type: 'products_list' }
   | { type: 'product_get'; id: string }
   | { type: 'product_delete'; id: string }
   | { type: 'products_export' }
-  | { type: 'products_import'; products: ExportedProduct[] }
-  // Lets extension pages (the workspace data browser) drive the DuckDB engine; the
-  // service worker owns the offscreen document, so it routes the op for them.
-  | { type: 'duckdb'; op: DuckDbOp; sql?: string; tableName?: string; data?: string; projectId?: string };
+  | { type: 'products_import'; products: ExportedProduct[] };
 
 /** One picked file on its way into a repository (see shared/uploadFile.ts). */
 export interface UploadFile {
@@ -194,19 +190,6 @@ export interface UploadFile {
   mtime?: number;
   /** Folder ingestion: source file size in bytes. */
   size?: number;
-}
-
-/** One picked data file on its way into the DuckDB engine (base64 bytes). */
-export interface DataFileUpload {
-  name: string;
-  bytesB64: string;
-}
-
-/** Result of opening data files into the engine (one entry per created table). */
-export interface OpenDataResponse {
-  ok: boolean;
-  tables: DuckDbTableInfo[];
-  error?: string;
 }
 
 /** Per-file outcome of an upload, for the uploader's file list. */
@@ -463,61 +446,6 @@ export interface ProductResponse {
   ok: boolean;
   error?: string;
   result?: unknown;
-}
-
-// ----- DuckDB data engine (offscreen document) -----
-
-export type DuckDbOp = 'query' | 'import_csv' | 'import_json' | 'list_tables' | 'describe_table' | 'persist_table' | 'load_table' | 'drop_table' | 'open_file' | 'reset_all';
-
-export interface DuckDbRequest {
-  target: 'offscreen-duckdb';
-  op: DuckDbOp;
-  sql?: string;
-  tableName?: string;
-  data?: string;
-  /** Base64 file bytes for the `open_file` op (binary: parquet/zip/csv/json). */
-  bytesB64?: string;
-  /** Original filename for `open_file` — drives format detection + table naming. */
-  name?: string;
-  persist?: boolean;
-  /** Project to tag a newly persisted table with (import_csv/import_json/open_file/persist_table). */
-  projectId?: string;
-}
-
-/**
- * Bounded per-column profile from DuckDB's `SUMMARIZE`, computed on demand by
- * `describeTable` (not `listTables`, so metadata still appears before any
- * profiling cost — see the Structured Data RAG MVP's profiling item).
- */
-export interface ColumnProfile {
-  name: string;
-  nullRatio: number; // 0..1
-  approxDistinct: number;
-  min?: string;
-  max?: string;
-}
-
-export interface DuckDbTableInfo {
-  name: string;
-  columns: string[];
-  columnTypes: string[];
-  rowCount: number;
-  persisted?: boolean;
-  columnProfiles?: ColumnProfile[];
-  /** Nullable project scope for a persisted table; undefined/null means global (visible under every project). */
-  projectId?: string;
-}
-
-export interface DuckDbResponse {
-  ok: boolean;
-  error?: string;
-  columns?: string[];
-  columnTypes?: string[];
-  rows?: string[][];
-  rowCount?: number;
-  /** True when `rows` was capped below the query's true `rowCount` (see MAX_QUERY_ROWS in duckDb.ts). */
-  truncated?: boolean;
-  tables?: DuckDbTableInfo[];
 }
 
 /** Requests handled by the injected content script. */

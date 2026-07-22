@@ -184,23 +184,6 @@ html, body, #app { margin: 0; height: 100%; font-family: -apple-system, BlinkMac
 .ws-composer-input { width: 100%; min-height: 52px; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); color: var(--text); font-family: inherit; font-size: 13px; resize: vertical; }
 .ws-composer .ws-btn-primary { align-self: flex-end; }
 
-/* ===== Dataset browser (DuckDB) ===== */
-.ws-ds { display: flex; flex-direction: column; gap: 16px; max-width: 1000px; }
-.ws-ds-list, .ws-ds-query, .ws-ds-import, .ws-ds-result { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
-.ws-ds-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.ws-ds-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; border-top: 1px solid var(--border); }
-.ws-ds-row .ws-link { flex: 1; }
-.ws-ds-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
-.ws-ds-sql { width: 100%; min-height: 70px; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); color: var(--text); font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; resize: vertical; margin-bottom: 8px; }
-.ws-ds-name { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); color: var(--text); font-size: 13px; margin-bottom: 8px; }
-.ws-ds-paste { width: 100%; min-height: 90px; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-input); color: var(--text); font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; resize: vertical; margin-bottom: 8px; }
-.ws-ds-error { background: var(--chip-red-bg); border: 1px solid var(--error); color: var(--chip-red-fg); padding: 8px 12px; border-radius: 6px; font-size: 13px; }
-.ws-ds-scroll { overflow: auto; max-height: 420px; border: 1px solid var(--border); border-radius: 4px; margin-top: 6px; }
-.ws-ds-table { border-collapse: collapse; font-size: 13px; width: 100%; }
-.ws-ds-table th, .ws-ds-table td { padding: 4px 8px; border: 1px solid var(--border); text-align: left; white-space: nowrap; }
-.ws-ds-table th { background: var(--bg-panel); position: sticky; top: 0; }
-.ws-ds-table tbody tr:nth-child(even) { background: var(--bg-panel); }
-
 /* ===== Memory page ===== */
 .ws-memory-page { display: flex; height: 100%; gap: 16px; }
 .ws-memory-list-pane { width: 280px; display: flex; flex-direction: column; gap: 8px; }

@@ -21,7 +21,6 @@
     "addin:proxy": "node word-addin/proxy.mjs"
   },
   "dependencies": {
-    "@duckdb/duckdb-wasm": "1.32.0",
     "@huggingface/transformers": "^3.8.1",
     "docx": "^9.7.1",
     "dompurify": "^3.4.9",

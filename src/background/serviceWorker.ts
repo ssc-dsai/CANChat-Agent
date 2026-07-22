@@ -24,15 +24,6 @@ import { AgentRuntime } from './agentRuntime';
 import { recordLearnEvent, startLearnRecording, stopLearnRecording } from './learning';
 import { LlmError, testConnection, transcribe } from './llmProvider';
 import {
-  duckDbDescribeTable,
-  duckDbDropTable,
-  duckDbImportCsv,
-  duckDbImportJson,
-  duckDbListTables,
-  duckDbLoadTable,
-  duckDbOpenFile,
-  duckDbPersistTable,
-  duckDbQuery,
   productDelete,
   productExport,
   productGet,
@@ -732,43 +723,6 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, _sender, sendResp
   }
   if (request.type === 'products_import') {
     productImport(request.products).then((r) => sendResponse(r));
-    return true;
-  }
-  if (request.type === 'duckdb') {
-    const { op, sql, tableName, data, projectId } = request;
-    const run = (): Promise<unknown> => {
-      switch (op) {
-        case 'query': return duckDbQuery(sql ?? '');
-        case 'import_csv': return duckDbImportCsv(tableName ?? 'table', data ?? '', projectId);
-        case 'import_json': return duckDbImportJson(tableName ?? 'table', data ?? '', projectId);
-        case 'list_tables': return duckDbListTables();
-        case 'describe_table': return duckDbDescribeTable(tableName ?? '');
-        case 'persist_table': return duckDbPersistTable(tableName ?? '', projectId);
-        case 'load_table': return duckDbLoadTable(tableName ?? '');
-        case 'drop_table': return duckDbDropTable(tableName ?? '');
-        default: return Promise.resolve({ ok: false, error: `Unknown DuckDB op: ${String(op)}` });
-      }
-    };
-    run().then(sendResponse);
-    return true;
-  }
-  if (request.type === 'open_data_files') {
-    (async () => {
-      const results = [];
-      const allTables = [];
-      for (const file of request.files) {
-        const r = await duckDbOpenFile(file.name, file.bytesB64, request.projectId);
-        results.push({ name: file.name, ok: r.ok, error: r.error });
-        if (r.ok && r.tables) allTables.push(...r.tables);
-      }
-      if (allTables.length > 0) {
-        const source = request.files.length === 1 ? request.files[0].name : `${request.files.length} files`;
-        runtime.notifyDatasetsLoaded(allTables, source);
-      }
-      return { ok: results.some((r) => r.ok), results, tables: allTables };
-    })()
-      .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, results: [], tables: [], error: String(err) }));
     return true;
   }
   if (request.type === 'probe_environment') {

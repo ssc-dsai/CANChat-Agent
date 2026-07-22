@@ -13,9 +13,7 @@ import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import type { SidebarCommand } from '../shared/messages';
 import type { AgentStatus, ChatMessageView, DataExport, FileArtifact, SiteEntry, Skill } from '../shared/types';
 import { classifyUpload, UPLOAD_ACCEPT } from '../shared/uploadFile';
-import { classifyDataFile, DATA_ACCEPT } from '../shared/dataFile';
 import { capabilityBookmarkCandidates, dedupeBookmarkCandidates, filterBookmarkMentions, flattenBookmarkTree } from './bookmarkMentions';
-import { openDataFiles } from './dataOpenClient';
 import { DOCS_URL } from './links';
 import { RepoUpload } from './RepoUpload';
 import { UploadBanner } from './UploadBanner';
@@ -191,8 +189,6 @@ export function ChatPanel({
   const [micError, setMicError] = useState<string | null>(null);
   // Files dropped on / attached to the chat → the shared uploader opens with them.
   const [dropFiles, setDropFiles] = useState<File[] | null>(null);
-  // After the destination chooser: 'repo' commits the files to the RAG uploader.
-  const [dataChoice, setDataChoice] = useState<'repo' | null>(null);
   const [uploadBanner, setUploadBanner] = useState<string | null>(null);
   const [rememberSession, setRememberSession] = useState(false);
   const attachInputRef = useRef<HTMLInputElement>(null);
@@ -526,36 +522,19 @@ export function ChatPanel({
     setMicState('recording');
   };
 
-  // Queue picked/dropped files for the destination chooser (data vs knowledge base).
+  // Queue picked/dropped files for the knowledge-base uploader.
   const queueFiles = (files: File[]) => {
-    const supported = files.filter((f) => classifyUpload(f.name, f.type) || classifyDataFile(f.name, f.type));
+    const supported = files.filter((f) => classifyUpload(f.name, f.type));
     if (supported.length === 0) return;
-    setDataChoice(null);
     setDropFiles(supported);
   };
 
-  // Files dropped on the chat → open the destination chooser pre-loaded with them.
+  // Files dropped on the chat → open the uploader pre-loaded with them.
   const onDrop = (e: DragEvent) => {
     const files = Array.from(e.dataTransfer?.files ?? []);
-    if (!files.some((f) => classifyUpload(f.name, f.type) || classifyDataFile(f.name, f.type))) return;
+    if (!files.some((f) => classifyUpload(f.name, f.type))) return;
     e.preventDefault();
     queueFiles(files);
-  };
-
-  // Open the queued data-eligible files into the DuckDB engine.
-  const openAsData = async () => {
-    const files = (dropFiles ?? []).filter((f) => classifyDataFile(f.name, f.type));
-    setDropFiles(null);
-    setDataChoice(null);
-    const { results, tables } = await openDataFiles(files);
-    const ok = results.filter((r) => r.ok).length;
-    if (tables.length > 0) {
-      setUploadBanner(tr('data.open.done', { tables: tables.join(', ') }));
-    } else {
-      const err = results.find((r) => r.error)?.error ?? 'failed';
-      setUploadBanner(tr('data.open.failed', { error: err }));
-    }
-    void ok;
   };
 
   return (
@@ -683,21 +662,11 @@ export function ChatPanel({
 
       <div class="chat-input-row">
         {uploadBanner && <UploadBanner text={uploadBanner} onDismiss={() => setUploadBanner(null)} />}
-        {dropFiles && dataChoice !== 'repo' && dropFiles.some((f) => classifyDataFile(f.name, f.type)) && (
-          <div class="dest-chooser">
-            <div class="dest-chooser-files">{dropFiles.map((f) => f.name).join(', ')}</div>
-            <div class="dest-chooser-actions">
-              <button class="btn btn-primary" onClick={openAsData}>{tr('data.open.asData')}</button>
-              <button class="btn" onClick={() => setDataChoice('repo')}>{tr('data.open.asKnowledge')}</button>
-              <button class="icon-btn" title={tr('repos.upload.cancel')} onClick={() => setDropFiles(null)}>✕</button>
-            </div>
-          </div>
-        )}
-        {dropFiles && (dataChoice === 'repo' || !dropFiles.some((f) => classifyDataFile(f.name, f.type))) && (
+        {dropFiles && (
           <div class="repo-upload-card">
             <RepoUpload
               initialFiles={dropFiles}
-              onClose={() => { setDropFiles(null); setDataChoice(null); }}
+              onClose={() => setDropFiles(null)}
               onDone={(s) => setUploadBanner(tr('repos.upload.done', { n: String(s.added), repo: s.repo }))}
             />
           </div>
@@ -844,7 +813,7 @@ export function ChatPanel({
             ref={attachInputRef}
             type="file"
             multiple
-            accept={`${UPLOAD_ACCEPT},${DATA_ACCEPT}`}
+            accept={UPLOAD_ACCEPT}
             data-testid="attach-input"
             style="display:none"
             onChange={(e) => {
