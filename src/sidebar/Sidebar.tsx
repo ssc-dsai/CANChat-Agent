@@ -63,14 +63,6 @@ const IconSave = () => (
     <path d="M5 21h14" />
   </svg>
 );
-// "Open workspace" — an external-monitor icon for opening the workspace tab.
-const IconWorkspace = () => (
-  <svg {...svgProps}>
-    <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-    <path d="M8 21h8" />
-    <path d="M12 17v4" />
-  </svg>
-);
 
 // "New chat" (compose). Clearing keeps the previous conversation in History
 // (agentRuntime.clearConversation = "new chat", not delete), so a compose icon
@@ -353,9 +345,6 @@ export function Sidebar() {
           >
             <IconNew />
             <span>{t('header.newChatShort')}</span>
-          </button>
-          <button class="icon-btn" aria-label="Open workspace" title="Open workspace" onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html') })}>
-            <IconWorkspace />
           </button>
           <button
             class="icon-btn"

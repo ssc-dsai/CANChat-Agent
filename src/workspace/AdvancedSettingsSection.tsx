@@ -10,42 +10,10 @@
 // A whole-object write from a component's possibly-stale copy would silently
 // revert whatever another section saved after this one mounted.
 
-import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import type { Settings } from '../shared/types';
 import { useT } from '../sidebar/i18n';
-
-function Group({ title, desc, children }: { title: string; desc?: string; children: ComponentChildren }) {
-  return (
-    <section class="settings-group">
-      <h3 class="settings-group-title">{title}</h3>
-      {desc && <p class="settings-note">{desc}</p>}
-      {children}
-    </section>
-  );
-}
-
-function Toggle({
-  checked,
-  onChange,
-  label,
-  note,
-}: {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  label: string;
-  note?: string;
-}) {
-  return (
-    <label class="toggle-row">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange((e.target as HTMLInputElement).checked)} />
-      <span class="toggle-text">
-        <span class="toggle-label">{label}</span>
-        {note && <span class="toggle-note">{note}</span>}
-      </span>
-    </label>
-  );
-}
+import { Group, Toggle } from './SettingsControls';
 
 const EMPTY: Settings = { baseUrl: '', apiKey: '', model: '' };
 
@@ -56,6 +24,8 @@ function ownFields(s: Settings): Partial<Settings> {
     verifyAnswers: s.verifyAnswers ?? true,
     summarizeObservations: s.summarizeObservations ?? true,
     maxSteps: s.maxSteps,
+    temperature: s.temperature,
+    maxTokens: s.maxTokens,
     systemPrompt: s.systemPrompt?.trim() || undefined,
     embedder: s.embedder === 'external' ? 'external' : 'local',
     hybridSearch: s.hybridSearch ?? true,
@@ -137,6 +107,34 @@ export function AdvancedSettingsSection() {
       </Group>
 
       <Group title={t('settings.groupGeneration')} desc={t('settings.groupGenerationDesc')}>
+        <div class="field-row">
+          <label class="field">
+            <span>{t('settings.temperature')}</span>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="2"
+              value={settings.temperature ?? ''}
+              onInput={(e) => {
+                const v = (e.target as HTMLInputElement).value;
+                update({ temperature: v === '' ? undefined : Number(v) });
+              }}
+            />
+          </label>
+          <label class="field">
+            <span>{t('settings.maxTokens')}</span>
+            <input
+              type="number"
+              min="1"
+              value={settings.maxTokens ?? ''}
+              onInput={(e) => {
+                const v = (e.target as HTMLInputElement).value;
+                update({ maxTokens: v === '' ? undefined : Number(v) });
+              }}
+            />
+          </label>
+        </div>
         <label class="field">
           <span>{t('settings.customInstructions')}</span>
           <textarea
