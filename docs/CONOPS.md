@@ -36,7 +36,6 @@ Architecture (as implemented):
   action.
 - **Offscreen document** — on-device **vector store / RAG** (OPFS) and **PDF/Office** parsing.
 - **Content script** (`<all_urls>`) — a passive **WebMCP bridge** capturing tools a page chooses to expose.
-- **Map page** — a single persistent **Leaflet** map the agent can drive.
 
 The agent reasons with a configured **Large Language Model**; the extension is the client that brokers the
 user's data to that model and back.
@@ -53,8 +52,8 @@ user's data to that model and back.
   SharePoint/O365, Jira) — it inherits, and cannot exceed, what the signed-in user can already access.
 - **Storage:** all working data is **on-device** (`chrome.storage.local` and OPFS); the API key is
   deliberately kept **local-only and never synced** across devices.
-- **Connectivity:** outbound HTTPS to the model endpoint; optional MCP servers; map tiles
-  (OpenStreetMap/CARTO). `[A3]` Required destinations are permitted by the network/proxy policy.
+- **Connectivity:** outbound HTTPS to the model endpoint; optional MCP servers.
+  `[A3]` Required destinations are permitted by the network/proxy policy.
 - **Data classification:** up to **Protected B**; the tool is **not** authorized for Protected C or
   higher without re-assessment.
 
@@ -81,7 +80,6 @@ user's data to that model and back.
   (approval-gated) for app APIs.
 - **External tools** — call **MCP** servers and page-exposed **WebMCP** tools.
 - **SharePoint / O365 search** — retrieve internal documents using the signed-in session.
-- **Map workspace** — visualize locations/routes on one persistent map.
 - **Productivity** — export tabular results (CSV/JSON) and Word documents; **history**, **undo last
   exchange**, and **backup/restore**.
 
@@ -114,8 +112,6 @@ outward actions require explicit approval**.
    full contents is an explicit follow-up.
 5. **Operate a web app.** User: "Update the status field to Done." → agent inspects the controls, then
    **requests approval** ("Set status to Done so the ticket reflects completion") before clicking/saving.
-6. **Visualize locations.** User: "Plot these offices and fit them in view." → agent drives the single
-   map workspace (open once, reused) to drop markers and frame them.
 
 ## 8. Key interfaces & external dependencies
 
@@ -124,7 +120,6 @@ outward actions require explicit approval**.
 | **LLM / embeddings / transcription endpoint** | Outbound HTTPS | Prompts, selected page/repo/SharePoint content, the query embedding | The core dependency; must be Protected-B-approved `[A2]`. |
 | **MCP servers** (optional) | Outbound HTTPS | Tool arguments/results | User-registered; each is an external trust decision. |
 | **SharePoint / O365** | Outbound, **user session** | Search queries; retrieved documents | Inherits the user's access; no separate credential. |
-| **Map tiles** (OSM/CARTO) | Outbound HTTPS | Map view coordinates | No user content; subject to provider usage policy. |
 | **Local storage** (`chrome.storage.local`, OPFS) | On-device | Settings/API key, memory, repositories, history, backups | Local-only; see §10. |
 
 ## 9. Constraints & assumptions

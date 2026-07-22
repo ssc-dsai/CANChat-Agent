@@ -55,12 +55,6 @@ body {
   line-height: 1.1;
 }
 
-.brand-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
 
 .title {
   font-weight: 700;
@@ -71,16 +65,6 @@ body {
   text-overflow: ellipsis;
 }
 
-.app-version {
-  align-self: flex-start;
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  background: var(--bg-input);
-  border-radius: 5px;
-  padding: 1px 6px;
-}
 
 /* At rest (idle) the status is just a quiet dot + dim label under the title —
    no filled pill, so it never competes with the brand. The pill fill is applied
@@ -241,6 +225,69 @@ body {
 .icon-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+/* Header overflow ("More") menu — Mac-toolbar-style popover. The wrapper is the
+   positioning context; the popover card uses the shared card tokens. */
+.overflow-menu {
+  position: relative;
+  display: inline-flex;
+}
+.overflow-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-2);
+}
+.overflow-embedded {
+  display: flex;
+  justify-content: center;
+  padding: 2px;
+}
+.overflow-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+.overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.overflow-item:hover:not(:disabled) {
+  background: var(--bg-input);
+}
+.overflow-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.overflow-item.is-active {
+  color: var(--accent);
+}
+.overflow-item-icon {
+  display: inline-flex;
+  line-height: 0;
+  color: var(--text-dim);
+}
+.overflow-item.is-active .overflow-item-icon {
+  color: var(--accent);
 }
 
 .new-chat-btn {
@@ -1067,9 +1114,6 @@ body {
   accent-color: var(--accent);
 }
 
-.memory-disabled {
-  opacity: 0.5;
-}
 
 .memory-confidence {
   display: flex;
@@ -1091,10 +1135,6 @@ body {
   width: 100%;
 }
 
-.memory-text {
-  white-space: normal;
-  color: var(--text);
-}
 
 /* Buttons */
 .btn {
@@ -1310,41 +1350,9 @@ body {
   border-radius: 14px 14px 0 0;
 }
 
-/* Settings tab bar — splits the long modal into Model / Advanced / Skills / Data.
-   Wraps to a second row rather than clipping or scrolling sideways: at the
-   panel's ~360px width, five labels don't fit one line, and a hidden-overflow
-   tab (WCAG 1.4.10 reflow) is worse than an uneven two-row bar. */
-.settings-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 4px;
-  border-bottom: 1px solid var(--border);
-  margin: 0 0 4px;
-}
 
-.settings-tab {
-  flex: 0 0 auto;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-dim);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  border-radius: 6px 6px 0 0;
-}
 
-.settings-tab:hover {
-  color: var(--text);
-  background: var(--bg-input);
-}
 
-.settings-tab.is-active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-}
 
 .onboarding-card {
   max-height: none;
@@ -1608,27 +1616,6 @@ body {
 .repo-upload-card {
   margin-bottom: 8px;
 }
-.dest-chooser {
-  margin-bottom: 8px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-panel);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.dest-chooser-files {
-  font-size: 12px;
-  color: var(--text-dim);
-  word-break: break-all;
-}
-.dest-chooser-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
 .upload-banner {
   border-radius: 8px;
   margin-bottom: 8px;
@@ -1644,11 +1631,6 @@ body {
   margin-top: 4px;
 }
 
-.settings-divider {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 6px 0;
-}
 
 /* Collapsible Data & privacy sections — native <details> for keyboard a11y.
    Collapsed by default, so the tab reads as a scannable four-item menu rather

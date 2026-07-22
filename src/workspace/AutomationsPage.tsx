@@ -212,19 +212,25 @@ export function AutomationsPage() {
         </summary>
         <p class="settings-note">{t('automations.scheduledTasksNote')}</p>
         {tasks.length === 0 ? (
-          <p class="settings-note">{t('automations.noneYet')}</p>
+          <div class="ws-empty">{t('automations.noneYet')}</div>
         ) : (
-          <ul class="sites-list">
+          <ul class="ws-item-list">
             {tasks.map((task) => (
-              <li key={task.id} class="site-row" title={task.prompt}>
-                <span class={`approval-tag trust-badge ${task.enabled ? 'trust-local' : 'trust-public'}`}>{task.enabled ? t('automations.enabled') : t('automations.paused')}</span>
-                <span class="site-name">{task.title}</span>
-                <span class="site-desc">
-                  {t('automations.next')}: {fmt(task.enabled ? task.nextRunAt : undefined)} · {t('automations.last')}: {fmt(task.lastRunAt)}
-                  {task.lastStatus ? ` (${STATUS_LABEL[task.lastStatus] ?? task.lastStatus})` : ''}
-                </span>
-                <button class="btn btn-small" onClick={() => toggleTask(task.id, !task.enabled)}>{task.enabled ? t('automations.pause') : t('automations.resume')}</button>
-                <button class="icon-btn" title={t('automations.delete')} onClick={() => deleteTask(task.id)}>✕</button>
+              <li key={task.id} class="ws-item" title={task.prompt}>
+                <div class="ws-item-main">
+                  <span class="ws-item-title">
+                    {task.title}
+                    <span class={`ws-chip ${task.enabled ? 'ws-chip-ok' : 'ws-chip-paused'}`}>{task.enabled ? t('automations.enabled') : t('automations.paused')}</span>
+                  </span>
+                  <span class="ws-item-meta">
+                    {t('automations.next')}: {fmt(task.enabled ? task.nextRunAt : undefined)} · {t('automations.last')}: {fmt(task.lastRunAt)}
+                    {task.lastStatus ? ` (${STATUS_LABEL[task.lastStatus] ?? task.lastStatus})` : ''}
+                  </span>
+                </div>
+                <div class="ws-item-actions">
+                  <button class="btn btn-small" onClick={() => toggleTask(task.id, !task.enabled)}>{task.enabled ? t('automations.pause') : t('automations.resume')}</button>
+                  <button class="icon-btn" title={t('automations.delete')} onClick={() => deleteTask(task.id)}>✕</button>
+                </div>
               </li>
             ))}
           </ul>
@@ -232,17 +238,17 @@ export function AutomationsPage() {
         {recentTaskRuns.length > 0 && (
           <>
             <p class="settings-note">{t('automations.recentRuns')}</p>
-            <ul class="sites-list ws-run-list">
+            <ul class="ws-run-list">
               {recentTaskRuns.map((r) => (
-                <li key={r.id} class="ws-run-item">
+                <li key={r.id} class={`ws-run-item ws-run-${r.status}`}>
                   <div class="ws-run-header">
-                    <span class="site-name">{tasks.find((t) => t.id === r.taskId)?.title ?? t('automations.deletedWorkflow')}</span>
-                    <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status}</span>
+                    <span class="ws-run-title">{tasks.find((t) => t.id === r.taskId)?.title ?? t('automations.deletedWorkflow')}</span>
+                    <span class="ws-run-meta">{fmt(r.startedAt)} · {STATUS_LABEL[r.status] ?? r.status}</span>
                   </div>
                   {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
-                    {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
-                     <p class="ws-run-detail ws-dim">📎 {t('automations.savedToProducts')}: {r.fileArtifactNames.join(', ')}</p>
-                   )}
+                  {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
+                    <p class="ws-run-detail ws-dim">📎 {t('automations.savedToProducts')}: {r.fileArtifactNames.join(', ')}</p>
+                  )}
                 </li>
               ))}
             </ul>
@@ -256,13 +262,17 @@ export function AutomationsPage() {
         </summary>
         <p class="settings-note">{t('automations.workflowsNote')}</p>
         {workflows.length > 0 && (
-          <ul class="sites-list">
+          <ul class="ws-item-list">
             {workflows.map((w) => (
-              <li key={w.id} class="site-row" title={w.description}>
-                <span class="site-name">{w.name}</span>
-                <span class="site-desc">{w.skillNames.map((n) => `/${n}`).join(' → ')}</span>
-                <button class="icon-btn" title={t('automations.edit')} onClick={() => editWorkflow(w)}>✎</button>
-                <button class="icon-btn" title={t('automations.delete')} onClick={() => deleteWorkflow(w.id)}>✕</button>
+              <li key={w.id} class="ws-item" title={w.description}>
+                <div class="ws-item-main">
+                  <span class="ws-item-title">{w.name}</span>
+                  <span class="ws-item-meta">{w.skillNames.map((n) => `/${n}`).join(' → ')}</span>
+                </div>
+                <div class="ws-item-actions">
+                  <button class="icon-btn" title={t('automations.edit')} onClick={() => editWorkflow(w)}>✎</button>
+                  <button class="icon-btn" title={t('automations.delete')} onClick={() => deleteWorkflow(w.id)}>✕</button>
+                </div>
               </li>
             ))}
           </ul>
@@ -311,17 +321,24 @@ export function AutomationsPage() {
         </summary>
         <p class="settings-note">{t('automations.eventTriggersNote')}</p>
         {triggers.length > 0 && (
-          <ul class="sites-list">
+          <ul class="ws-item-list">
             {triggers.map((trigger) => (
-              <li key={trigger.id} class="site-row">
-                <span class={`approval-tag trust-badge ${trigger.enabled ? 'trust-local' : 'trust-public'}`}>{trigger.enabled ? t('automations.enabled') : t('automations.paused')}</span>
-                <span class="site-name">{trigger.name}</span>
-                <span class="site-desc">
-                  {trigger.hostPattern} → {targetLabel(trigger)} · {trigger.matchSubPages ? t('automations.allPages') : t('automations.cooldown')} · {t('automations.cooldown')}: {trigger.cooldownMinutes ?? 60}min · {t('automations.last')} fired {fmt(trigger.lastFiredAt)}
-                </span>
-                <button class="icon-btn" title={t('automations.edit')} onClick={() => editTrigger(trigger)}>✎</button>
-                <button class="btn btn-small" onClick={() => toggleTrigger(trigger.id, !trigger.enabled)}>{trigger.enabled ? t('automations.pause') : t('automations.resume')}</button>
-                <button class="icon-btn" title={t('automations.delete')} onClick={() => deleteTrigger(trigger.id)}>✕</button>
+              <li key={trigger.id} class="ws-item">
+                <div class="ws-item-main">
+                  <span class="ws-item-title">
+                    {trigger.name}
+                    <span class={`ws-chip ${trigger.enabled ? 'ws-chip-ok' : 'ws-chip-paused'}`}>{trigger.enabled ? t('automations.enabled') : t('automations.paused')}</span>
+                  </span>
+                  <span class="ws-item-meta">
+                    {trigger.hostPattern} → {targetLabel(trigger)}
+                    {trigger.matchSubPages ? ` · ${t('automations.allPages')}` : ''} · {t('automations.cooldown')}: {trigger.cooldownMinutes ?? 60}min · {t('automations.last')}: {fmt(trigger.lastFiredAt)}
+                  </span>
+                </div>
+                <div class="ws-item-actions">
+                  <button class="icon-btn" title={t('automations.edit')} onClick={() => editTrigger(trigger)}>✎</button>
+                  <button class="btn btn-small" onClick={() => toggleTrigger(trigger.id, !trigger.enabled)}>{trigger.enabled ? t('automations.pause') : t('automations.resume')}</button>
+                  <button class="icon-btn" title={t('automations.delete')} onClick={() => deleteTrigger(trigger.id)}>✕</button>
+                </div>
               </li>
             ))}
           </ul>
@@ -404,16 +421,16 @@ export function AutomationsPage() {
         {recentTriggerRuns.length > 0 && (
           <>
             <p class="settings-note">{t('automations.recentRuns')}</p>
-            <ul class="sites-list ws-run-list">
+            <ul class="ws-run-list">
               {recentTriggerRuns.map((r) => (
-                <li key={r.id} class="ws-run-item">
+                <li key={r.id} class={`ws-run-item ws-run-${r.status}`}>
                   <div class="ws-run-header">
-                    <span class="site-name">{triggers.find((t) => t.id === r.triggerId)?.name ?? t('automations.deletedTrigger')}</span>
-                    <span class="site-desc">{fmt(r.startedAt)} — {STATUS_LABEL[r.status] ?? r.status} ({r.url})</span>
+                    <span class="ws-run-title">{triggers.find((t) => t.id === r.triggerId)?.name ?? t('automations.deletedTrigger')}</span>
+                    <span class="ws-run-meta">{fmt(r.startedAt)} · {STATUS_LABEL[r.status] ?? r.status} · {r.url}</span>
                   </div>
                   {(r.summary || r.error) && <p class="ws-run-detail">{r.error ?? r.summary}</p>}
                   {r.fileArtifactNames && r.fileArtifactNames.length > 0 && (
-                      <p class="ws-run-detail ws-dim">📎 {t('automations.savedToProducts')}: {r.fileArtifactNames.join(', ')}</p>
+                    <p class="ws-run-detail ws-dim">📎 {t('automations.savedToProducts')}: {r.fileArtifactNames.join(', ')}</p>
                   )}
                 </li>
               ))}

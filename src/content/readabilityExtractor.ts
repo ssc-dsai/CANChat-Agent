@@ -39,14 +39,21 @@ function isNoise(el: Element): boolean {
   return el.getAttribute('aria-hidden') === 'true';
 }
 
-/** All elements matching `selector` in `root` and every open shadow root beneath it. */
-function deepQueryAll(root: ParentNode, selector: string, out: Element[]): void {
-  out.push(...Array.from(root.querySelectorAll(selector)));
-  // Descend into shadow roots — querySelectorAll never crosses that boundary.
-  for (const el of Array.from(root.querySelectorAll('*'))) {
-    const shadow = (el as HTMLElement).shadowRoot;
-    if (shadow) deepQueryAll(shadow, selector, out);
+/**
+ * `root` plus every open shadow root beneath it, found with ONE full-tree walk.
+ * pickMainContent then runs each candidate selector against this cached list —
+ * previously every selector re-scanned the whole DOM (`querySelectorAll('*')`)
+ * just to rediscover the same shadow roots, an 8× repeat on large pages.
+ */
+function collectRoots(root: ParentNode): ParentNode[] {
+  const roots: ParentNode[] = [root];
+  for (let i = 0; i < roots.length; i++) {
+    for (const el of Array.from(roots[i].querySelectorAll('*'))) {
+      const shadow = (el as HTMLElement).shadowRoot;
+      if (shadow) roots.push(shadow);
+    }
   }
+  return roots;
 }
 
 function visibleTextLength(el: Element): number {
@@ -58,16 +65,17 @@ function visibleTextLength(el: Element): number {
 }
 
 export function pickMainContent(doc: Document): Element {
+  const roots = collectRoots(doc);
   let best: Element | null = null;
   let bestLen = 0;
   for (const sel of CANDIDATE_SELECTORS) {
-    const matches: Element[] = [];
-    deepQueryAll(doc, sel, matches);
-    for (const el of matches) {
-      const len = visibleTextLength(el);
-      if (len > bestLen) {
-        best = el;
-        bestLen = len;
+    for (const root of roots) {
+      for (const el of Array.from(root.querySelectorAll(sel))) {
+        const len = visibleTextLength(el);
+        if (len > bestLen) {
+          best = el;
+          bestLen = len;
+        }
       }
     }
   }

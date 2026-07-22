@@ -115,7 +115,7 @@ SC-8 and endpoint trust under IA-9.
 
 ### AC-20 — Use of External Systems — 📋 Process
 Use of third-party LLM/MCP/tile providers is a **governance** decision; the code makes the endpoint
-user-configurable (`src/sidebar/SettingsScreen.tsx`) but the authorization/agreement evidence is
+user-configurable (`src/workspace/ModelSection.tsx`) but the authorization/agreement evidence is
 organizational. **Action:** record the approved provider(s) and DPA.
 
 ### AC-21 — Information Sharing — ⚠️ Partial
@@ -306,7 +306,7 @@ const tools = memoryEnabled ? [...TOOL_DEFINITIONS, ...MEMORY_TOOL_DEFINITIONS] 
 ```
 
 ### CM-8 — Component Inventory — ✅ Implemented
-Bundled components are pinned in `package.json` / `package-lock.json` (e.g., `leaflet`, `marked`,
+Bundled components are pinned in `package.json` / `package-lock.json` (e.g., `marked`,
 `dompurify`, `pdfjs-dist`, `docx`, `fflate`, `preact`).
 
 ### CM-5 — Access Restrictions for Change — ⚠️ Partial (Git/PR history; no enforced gate evidenced).
@@ -317,7 +317,7 @@ Bundled components are pinned in `package.json` / `package-lock.json` (e.g., `le
 
 ### SA-11 — Developer Testing — ✅ Implemented
 Unit + E2E + typecheck gates exist and pass (≈111 unit, 32 Playwright E2E at time of writing), including
-security-relevant behaviour (approval gating, prefix stability, undo, map singleton).
+security-relevant behaviour (approval gating, prefix stability, undo).
 ```json
 // package.json
 "typecheck": "tsc --noEmit", "test": "vitest run", "test:e2e": "npm run build && playwright test"

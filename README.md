@@ -85,7 +85,7 @@ Then load it in Chrome (or any Chromium browser):
 
 <p align="center">
   <img src="docs/usability/screenshots/01-first-run-onboarding.png" alt="First-run welcome asking for endpoint, API key, and model" width="400"><br>
-  <sub><em>First launch: a short welcome asks only for an endpoint, key, and model — with a Test connection button — instead of the full settings screen.</em></sub>
+  <sub><em>First launch: a short welcome asks only for an endpoint, key, and model — with a Test connection button — instead of the full settings.</em></sub>
 </p>
 
 After any rebuild, click the reload icon on the extension card in `chrome://extensions`.
@@ -117,13 +117,13 @@ Notes:
 - Every model request times out after **120 seconds**, so a hung endpoint can never freeze a task permanently.
 
 <p align="center">
-  <img src="docs/usability/screenshots/08-settings-model-tab.png" alt="Settings Model tab with endpoint, API key, and model fields" width="400"><br>
-  <sub><em>Settings → Model: the three essentials (endpoint, key, model) plus a language picker and Test connection.</em></sub>
+  <img src="docs/usability/screenshots/08-settings-model-tab.png" alt="Workspace Models page with connection fields and the advanced groups" width="400"><br>
+  <sub><em>Workspace → Models: the connection essentials (endpoint, key, model) with Test connection, followed by the advanced groups.</em></sub>
 </p>
 
 <p align="center">
-  <img src="docs/user-guide/screenshots/01-settings-advanced.png" alt="Settings Advanced tab showing Azure version, auto-retry, embeddings and transcription options" width="400"><br>
-  <sub><em>Settings → Advanced: Azure API version, auto-retry on rate limits (429), and separate embedding/transcription endpoints — all optional.</em></sub>
+  <img src="docs/user-guide/screenshots/01-settings-advanced.png" alt="Workspace Models page Advanced section showing behaviour, embeddings and transcription options" width="400"><br>
+  <sub><em>Workspace → Models → Advanced: agent behaviour, auto-retry on rate limits (429), and separate embedding/transcription endpoints — all optional.</em></sub>
 </p>
 
 ## 4. A tour of the sidebar
@@ -134,12 +134,14 @@ Notes:
 
 The status pill is color-coded: neutral **Idle**, purple **Thinking…/Using browser…**, amber **Paused / Waiting for approval / Login required**, red **Error**. At rest it shows as a quiet dot + label; the filled pill (with a gentle pulse) appears only while the agent is working or needs you.
 
-- **A− / A+** — adjust the panel's text size (scales the whole sidebar); click the percentage to reset to 100%. The choice persists across sessions.
 - **🕘 History** — open the saved-conversation list (search, sort, labels).
-- **⬇ Save conversation** — download the current conversation as an HTML file.
-- **✎ New chat** — start a fresh conversation. This stops any running task and clears the chat view, but the previous conversation is **kept in History** (it is not deleted), so you can reopen it later. Starting fresh also keeps the agent's context (and your token spend) from growing with every exchange.
-- **Learn mode** — start/stop a recorder that captures interactions on the current site, shows a live intent preview on Alt+hover, and saves a reusable playbook when you stop it.
-- **⚙ Settings** — language and model configuration (Model / Advanced tabs), Skills, and Data & privacy (Known sites, Memory, Knowledge bases, Backup & Restore).
+- **✎ New Chat** — start a fresh conversation. This stops any running task and clears the chat view, but the previous conversation is **kept in History** (it is not deleted), so you can reopen it later. Starting fresh also keeps the agent's context (and your token spend) from growing with every exchange.
+- **⋯ More** — the overflow menu holding the less-frequent actions:
+  - **A− / A+** — adjust the panel's text size (scales the whole sidebar); click the percentage to reset to 100%. The choice persists across sessions.
+  - **Save conversation** — download the current conversation as an HTML file.
+  - **Undo last exchange** — remove the last question/answer pair and put your message back in the composer to edit.
+  - **Learn mode** — start/stop a recorder that captures interactions on the current site, shows a live intent preview on Alt+hover, and saves a reusable playbook when you stop it.
+- **⚙ Settings** — opens the full-tab **Workspace**, where all configuration lives: Models (connection + advanced), Skills, Knowledge bases, Tools, Memory, Automations, Products, Projects, and Settings (language, playbook library, Backup & Restore).
 
 <p align="center">
   <img src="docs/usability/screenshots/06-history.png" alt="Conversation history overlay with search, sort, and colored labels" width="400"><br>
@@ -557,8 +559,7 @@ extension/
       ChatPanel.tsx           Chat, approval/auth/permission cards, skill hints, citations
       TabContextPanel.tsx     Context buttons and tab list
       ToolActivityPanel.tsx   Tool log
-      SettingsScreen.tsx      Model config overlay
-      KnownSitesSection.tsx   Known sites manager
+      OverflowMenu.tsx        Header "More" menu (accessible dropdown)
       i18n.tsx                In-app EN/FR localization (catalogue + provider)
       SkillsSection.tsx       Skills manager
       Markdown.tsx            Sanitized markdown renderer (marked + DOMPurify)

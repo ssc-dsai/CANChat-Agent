@@ -1,5 +1,11 @@
 # Specification: Chromium Browser Agent Extension
 
+> **Status: historical.** This is the original v1 requirements document, kept for
+> provenance. The living specification of the system as built is
+> [`specification.md`](specification.md); where the two differ (for example, the
+> settings screen described in §7 has since been replaced by the full-tab
+> Workspace console), `specification.md` is authoritative.
+
 ## 1. Purpose
 
 Build a Chromium-based browser extension that runs an agent loop inside the extension. The agent uses the browser as its primary tool for gathering, inspecting, and acting on information. The extension provides a sidebar interface where the user can ask questions or issue tasks.

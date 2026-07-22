@@ -9,15 +9,16 @@ import { AutomationsPage } from './AutomationsPage';
 import { ConsoleSettingsPage } from './ConsoleSettingsPage';
 import { ModelProfilesSection } from './ModelProfilesSection';
 import { ModelSection } from './ModelSection';
+import { AdvancedSettingsSection } from './AdvancedSettingsSection';
 import { DataViewer } from './DataViewer';
-import { DatasetBrowser } from './DatasetBrowser';
 import { ImageViewer } from './ImageViewer';
 import { MemoryPage } from './MemoryPage';
+import { MemorySection } from '../sidebar/MemorySection';
 import { ProductsPage } from './ProductsPage';
 import { ProjectsPage } from './ProjectsPage';
 
-type WorkspaceView = 'chat' | 'projects' | 'knowledge' | 'tools' | 'skills' | 'models' | 'memory' | 'automations' | 'products' | 'data' | 'datasets' | 'image' | 'settings';
-const VALID_VIEWS: WorkspaceView[] = ['chat', 'projects', 'knowledge', 'tools', 'skills', 'models', 'memory', 'automations', 'products', 'data', 'datasets', 'image', 'settings'];
+type WorkspaceView = 'chat' | 'projects' | 'knowledge' | 'tools' | 'skills' | 'models' | 'memory' | 'automations' | 'products' | 'data' | 'image' | 'settings';
+const VALID_VIEWS: WorkspaceView[] = ['chat', 'projects', 'knowledge', 'tools', 'skills', 'models', 'memory', 'automations', 'products', 'data', 'image', 'settings'];
 
 function initialView(): WorkspaceView {
   const fromHash = location.hash.slice(1) as WorkspaceView;
@@ -109,19 +110,23 @@ export function Workspace() {
         return (
           <div class="ws-models-page">
             <ModelSection />
+            <AdvancedSettingsSection />
             <ModelProfilesSection />
           </div>
         );
       case 'memory':
-        return <MemoryPage />;
+        return (
+          <div class="ws-memory-view">
+            <MemorySection />
+            <MemoryPage />
+          </div>
+        );
       case 'automations':
         return <AutomationsPage />;
       case 'products':
         return <ProductsPage />;
       case 'settings':
         return <ConsoleSettingsPage />;
-      case 'datasets':
-        return <DatasetBrowser />;
       case 'data':
         return displayExport
           ? <DataViewer data={displayExport} allExports={exports} onSelectExport={setFocusedExport} />
@@ -168,7 +173,6 @@ export function Workspace() {
           <button class={`ws-nav-btn ${view === 'skills' ? 'is-active' : ''}`} onClick={() => setView('skills')}>{t('workspace.nav.skills')}</button>
           <button class={`ws-nav-btn ${view === 'tools' ? 'is-active' : ''}`} onClick={() => setView('tools')}>{t('workspace.nav.tools')}</button>
           <button class={`ws-nav-btn ${view === 'models' ? 'is-active' : ''}`} onClick={() => setView('models')}>{t('workspace.nav.models')}</button>
-          <button class={`ws-nav-btn ${view === 'datasets' ? 'is-active' : ''}`} onClick={() => setView('datasets')}>{t('workspace.nav.datasets')}</button>
           {displayExport && <button class={`ws-nav-btn ${view === 'data' ? 'is-active' : ''}`} onClick={() => setView('data')}>{t('workspace.nav.data')}{exports.length > 1 ? ` (${exports.length})` : ''}</button>}
           {focusedImage && <button class={`ws-nav-btn ${view === 'image' ? 'is-active' : ''}`} onClick={() => setView('image')}>{t('workspace.nav.image')}</button>}
           <button class={`ws-nav-btn ${view === 'settings' ? 'is-active' : ''}`} onClick={() => setView('settings')}>{t('workspace.nav.settings')}</button>

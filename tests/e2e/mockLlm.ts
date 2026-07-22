@@ -195,60 +195,6 @@ function decide(req: ChatRequest): ChatMessage {
   // Drives the persistent map: set the view (Ottawa), then drop a marker
   // (Toronto) on the SAME map, then answer — exercises the map channel + the
   // singleton-tab guarantee.
-  if (userMentions('MAP_DEMO')) {
-    if (!hasToolResult) {
-      return {
-        role: 'assistant',
-        content: null,
-        tool_calls: [toolCall('map_set_view', { lat: 45.4215, lng: -75.6972, zoom: 8 })],
-      };
-    }
-    if (!hasToolCall(req.messages, 'map_add_marker')) {
-      return {
-        role: 'assistant',
-        content: null,
-        tool_calls: [toolCall('map_add_marker', { lat: 43.6532, lng: -79.3832, label: 'Toronto', openPopup: true })],
-      };
-    }
-    return { role: 'assistant', content: FINAL_TEXT };
-  }
-
-  // Opens a data file from a URL into DuckDB, runs a SQL query, then answers.
-  if (userMentions('DATA_URL')) {
-    if (!hasToolCall(req.messages, 'open_data_url')) {
-      const url = (latestUserText(req.messages).match(/https?:\/\/\S+/) ?? [''])[0];
-      return { role: 'assistant', content: null, tool_calls: [toolCall('open_data_url', { url })] };
-    }
-    if (!hasToolCall(req.messages, 'query_data')) {
-      return { role: 'assistant', content: null, tool_calls: [toolCall('query_data', { sql: 'SELECT COUNT(*) AS n FROM ships' })] };
-    }
-    return { role: 'assistant', content: FINAL_TEXT };
-  }
-
-  // Structured-to-document hybrid flow (Structured Data RAG MVP #4): query a
-  // dataset for over-budget projects, then search a document repo (the
-  // active tab's status-report page, captured via add_to_repo) using a name
-  // found in the query result, and answer citing both.
-  if (userMentions('HYBRID_DEMO')) {
-    if (!hasToolCall(req.messages, 'open_data_url')) {
-      const url = (latestUserText(req.messages).match(/https?:\/\/\S+/) ?? [''])[0];
-      return { role: 'assistant', content: null, tool_calls: [toolCall('open_data_url', { url })] };
-    }
-    if (!hasToolCall(req.messages, 'query_data')) {
-      return {
-        role: 'assistant',
-        content: null,
-        tool_calls: [toolCall('query_data', { sql: 'SELECT project FROM budgets WHERE actual_cost > approved_budget' })],
-      };
-    }
-    if (!hasToolCall(req.messages, 'add_to_repo')) {
-      return { role: 'assistant', content: null, tool_calls: [toolCall('add_to_repo', { repo: 'reports' })] };
-    }
-    if (!hasToolCall(req.messages, 'search_repo')) {
-      return { role: 'assistant', content: null, tool_calls: [toolCall('search_repo', { repo: 'reports', query: 'Alpha budget overrun' })] };
-    }
-    return { role: 'assistant', content: FINAL_TEXT };
-  }
 
   // Builds a downloadable .pptx via the create_powerpoint tool, then answers.
   if (userMentions('CREATE_PPTX')) {
@@ -266,15 +212,6 @@ function decide(req: ChatRequest): ChatMessage {
           }),
         ],
       };
-    }
-    return { role: 'assistant', content: FINAL_TEXT };
-  }
-
-  // Attempts query_data (unattended runs must have this blocked — see
-  // UNATTENDED_BLOCKED_TOOLS in agentRuntime.ts).
-  if (userMentions('QUERY_DATA_DEMO')) {
-    if (!hasToolResult) {
-      return { role: 'assistant', content: null, tool_calls: [toolCall('query_data', { sql: 'SELECT 1 AS n' })] };
     }
     return { role: 'assistant', content: FINAL_TEXT };
   }

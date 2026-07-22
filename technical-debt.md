@@ -158,12 +158,12 @@ Ordered roughly by how likely they are to bite as usage grows.
 
 ### 7.1 Repo dropdown refreshes on focus, not live
 - **Where:** `TabContextPanel.tsx` (native `<datalist>`).
-- **Why OK now:** focus-refresh reflects deletions made in Settings; the `#` mention fetches fresh each time.
-- **Trigger:** user expects the datalist to update while the Settings overlay is still open.
+- **Why OK now:** focus-refresh reflects deletions made in the Workspace Knowledge page; the `#` mention fetches fresh each time.
+- **Trigger:** user expects the datalist to update while the Workspace Knowledge page is open in another tab.
 - **Fix:** broadcast a repo-changed event, or replace the native datalist with a custom dropdown.
 
 ### 7.2 Bilingual (EN/FR) UI is partial, and the French is a draft
-- **Where:** `src/sidebar/i18n.tsx` (catalogue + `LanguageProvider`/`useT`); the language toggle is in Settings (`ba_language`).
+- **Where:** `src/sidebar/i18n.tsx` (catalogue + `LanguageProvider`/`useT`); the language toggle is on the Workspace Settings page (`ba_language`).
 - **Why OK now:** the framework, the toggle, the header/status, and the Settings model-config screen are localized and switch live. The remaining components (ChatPanel, the panels, the Hints/Skills/Memory/Repositories/Backup sub-sections, and the microphone page) still render English, so the UI is currently mixed-language.
 - **Trigger:** official-languages compliance — a GC tool needs full coverage and reviewed French.
 - **Fix:** finish converting every `src/sidebar/*` component (+ `microphone.ts`) to `t()`; have a qualified translator review the catalogue (it's one file, grouped by screen). Also note: background/agent-generated text (status notices, approval reasons, errors from `agentRuntime`) stays English — full coverage needs the language plumbed into the service worker. Agent *answers* are intentionally out of scope.

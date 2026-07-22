@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
 import { useT } from '../sidebar/i18n';
+import { Group } from './SettingsControls';
 
 const EMPTY: Settings = { baseUrl: '', apiKey: '', model: '' };
 
@@ -44,16 +45,22 @@ export function ModelSection() {
     }
   };
 
+  // Patch-save: merge only this section's fields over a fresh read, so saving
+  // here can't revert what AdvancedSettingsSection (same page, same storage
+  // object) saved after this component mounted.
   const save = async () => {
-    const trimmed: Settings = {
-      ...settings,
-      baseUrl: settings.baseUrl.trim(),
-      apiKey: settings.apiKey.trim(),
-      model: settings.model.trim(),
-      ideogramApiKey: settings.ideogramApiKey?.trim() || undefined,
-      apiVersion: settings.apiVersion?.trim() || undefined,
-    };
-    await chrome.storage.local.set({ ba_settings: trimmed });
+    const r = await chrome.storage.local.get('ba_settings');
+    const current = (r.ba_settings as Settings | undefined) ?? EMPTY;
+    await chrome.storage.local.set({
+      ba_settings: {
+        ...current,
+        baseUrl: settings.baseUrl.trim(),
+        apiKey: settings.apiKey.trim(),
+        model: settings.model.trim(),
+        ideogramApiKey: settings.ideogramApiKey?.trim() || undefined,
+        apiVersion: settings.apiVersion?.trim() || undefined,
+      },
+    });
     setSaved(true);
   };
 
@@ -61,90 +68,60 @@ export function ModelSection() {
     <div class="ws-model-page">
       <h2>{t('settings.tabModel')}</h2>
 
-      <label class="field">
-        <span>{t('settings.endpointUrl')}</span>
-        <input
-          type="url"
-          placeholder="https://api.example.com/v1"
-          value={settings.baseUrl}
-          onInput={(e) => update({ baseUrl: (e.target as HTMLInputElement).value })}
-        />
-      </label>
-
-      <label class="field">
-        <span>{t('settings.apiKey')}</span>
-        <input
-          type="password"
-          placeholder="sk-…"
-          value={settings.apiKey}
-          onInput={(e) => update({ apiKey: (e.target as HTMLInputElement).value })}
-        />
-      </label>
-
-      <label class="field">
-        <span>{t('settings.model')}</span>
-        <input
-          type="text"
-          placeholder="model-name"
-          value={settings.model}
-          onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
-        />
-      </label>
-
-      <label class="field">
-        <span>{t('settings.ideogramApiKey')}</span>
-        <input
-          type="password"
-          placeholder="ik-…"
-          value={settings.ideogramApiKey ?? ''}
-          onInput={(e) => update({ ideogramApiKey: (e.target as HTMLInputElement).value })}
-        />
-      </label>
-
-      <label class="field">
-        <span>{t('settings.apiVersion')}</span>
-        <input
-          type="text"
-          placeholder="2024-02-01"
-          value={settings.apiVersion ?? ''}
-          onInput={(e) => update({ apiVersion: (e.target as HTMLInputElement).value })}
-        />
-      </label>
-      <p class="settings-note">{t('settings.apiVersionNote')}</p>
-
-      <div class="field-row">
+      <Group title={t('settings.groupConnection')} desc={t('settings.note')}>
         <label class="field">
-          <span>{t('settings.temperature')}</span>
+          <span>{t('settings.endpointUrl')}</span>
           <input
-            type="number"
-            step="0.1"
-            min="0"
-            max="2"
-            value={settings.temperature ?? ''}
-            onInput={(e) => {
-              const v = (e.target as HTMLInputElement).value;
-              update({ temperature: v === '' ? undefined : Number(v) });
-            }}
+            type="url"
+            placeholder="https://api.example.com/v1"
+            value={settings.baseUrl}
+            onInput={(e) => update({ baseUrl: (e.target as HTMLInputElement).value })}
           />
         </label>
+
         <label class="field">
-          <span>{t('settings.maxTokens')}</span>
+          <span>{t('settings.apiKey')}</span>
           <input
-            type="number"
-            min="1"
-            value={settings.maxTokens ?? ''}
-            onInput={(e) => {
-              const v = (e.target as HTMLInputElement).value;
-              update({ maxTokens: v === '' ? undefined : Number(v) });
-            }}
+            type="password"
+            placeholder="sk-…"
+            value={settings.apiKey}
+            onInput={(e) => update({ apiKey: (e.target as HTMLInputElement).value })}
           />
         </label>
-      </div>
 
-      <p class="settings-note">
-        Other endpoint options — embeddings, transcription, Azure/SharePoint, and advanced tuning — live
-        in the sidebar Settings panel for now.
-      </p>
+        <label class="field">
+          <span>{t('settings.model')}</span>
+          <input
+            type="text"
+            placeholder="model-name"
+            value={settings.model}
+            onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
+          />
+        </label>
+
+        <label class="field">
+          <span>{t('settings.apiVersion')}</span>
+          <input
+            type="text"
+            placeholder="2024-02-01"
+            value={settings.apiVersion ?? ''}
+            onInput={(e) => update({ apiVersion: (e.target as HTMLInputElement).value })}
+          />
+          <span class="field-note">{t('settings.apiVersionNote')}</span>
+        </label>
+      </Group>
+
+      <Group title={t('settings.groupImage')} desc={t('settings.groupImageDesc')}>
+        <label class="field">
+          <span>{t('settings.ideogramApiKey')}</span>
+          <input
+            type="password"
+            placeholder="ik-…"
+            value={settings.ideogramApiKey ?? ''}
+            onInput={(e) => update({ ideogramApiKey: (e.target as HTMLInputElement).value })}
+          />
+        </label>
+      </Group>
 
       {testResult && (
         <div class={`banner ${testResult.ok ? 'banner-ok' : 'banner-error'}`}>{testResult.detail}</div>

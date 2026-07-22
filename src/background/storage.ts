@@ -35,7 +35,6 @@ const LESSONS_KEY = 'ba_lessons';
 const PROJECTS_KEY = 'ba_projects';
 const ACTIVE_PROJECT_KEY = 'ba_active_project';
 
-export const MEMORY_MAX_ENTRIES = 100;
 export const LESSON_MAX_ENTRIES = 50;
 
 // --- saved conversations (auto-history) ---------------------------------------
@@ -94,16 +93,6 @@ export async function saveSettings(settings: Settings): Promise<void> {
   await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
 }
 
-export async function getSites(): Promise<SiteEntry[]> {
-  const result = await chrome.storage.local.get(SITES_KEY);
-  const sites = result[SITES_KEY];
-  return Array.isArray(sites) ? (sites as SiteEntry[]) : [];
-}
-
-export async function saveSites(sites: SiteEntry[]): Promise<void> {
-  await chrome.storage.local.set({ [SITES_KEY]: sites });
-}
-
 export async function getCapabilities(): Promise<CapabilityRegistryEntry[]> {
   const result = await chrome.storage.local.get([CAPABILITIES_KEY, SITES_KEY]);
   const caps = result[CAPABILITIES_KEY];
@@ -115,10 +104,6 @@ export async function getCapabilities(): Promise<CapabilityRegistryEntry[]> {
     return migrated;
   }
   return [];
-}
-
-export async function saveCapabilities(entries: CapabilityRegistryEntry[]): Promise<void> {
-  await chrome.storage.local.set({ [CAPABILITIES_KEY]: entries });
 }
 
 export async function migrateLegacySites(): Promise<void> {
@@ -144,18 +129,6 @@ export async function getAuthTokens(): Promise<Record<string, string>> {
   }
 }
 
-export async function setAuthToken(capabilityId: string, token: string): Promise<void> {
-  const tokens = await getAuthTokens();
-  tokens[capabilityId] = token;
-  await chrome.storage.session.set({ [AUTH_TOKENS_KEY]: tokens });
-}
-
-export async function clearAuthToken(capabilityId: string): Promise<void> {
-  const tokens = await getAuthTokens();
-  delete tokens[capabilityId];
-  await chrome.storage.session.set({ [AUTH_TOKENS_KEY]: tokens });
-}
-
 // --- Session-level approval tracking (allow for session) ----------------------
 // Stores tool names that the user has approved for the current session.
 // Cleared on service worker restart.
@@ -174,10 +147,6 @@ export async function addSessionApproval(toolName: string): Promise<void> {
   const approvals = await getSessionApprovals();
   approvals.add(toolName);
   await chrome.storage.session.set({ [SESSION_APPROVALS_KEY]: [...approvals] });
-}
-
-export async function clearSessionApprovals(): Promise<void> {
-  await chrome.storage.session.set({ [SESSION_APPROVALS_KEY]: [] });
 }
 
 export async function getSkills(): Promise<Skill[]> {
@@ -216,10 +185,6 @@ export async function getMemoryEnabled(): Promise<boolean> {
   return result[MEMORY_ENABLED_KEY] === true; // off by default
 }
 
-export async function setMemoryEnabled(enabled: boolean): Promise<void> {
-  await chrome.storage.local.set({ [MEMORY_ENABLED_KEY]: enabled });
-}
-
 /**
  * The minimum confidence (0-1) an automatically-extracted candidate must meet
  * to be saved by reflection. Does not apply to explicit `save_memory` calls
@@ -231,20 +196,6 @@ export async function getMemoryMinConfidence(): Promise<number> {
   const result = await chrome.storage.local.get(MEMORY_MIN_CONFIDENCE_KEY);
   const v = result[MEMORY_MIN_CONFIDENCE_KEY];
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
-}
-
-export async function setMemoryMinConfidence(value: number): Promise<void> {
-  await chrome.storage.local.set({ [MEMORY_MIN_CONFIDENCE_KEY]: Math.min(1, Math.max(0, value)) });
-}
-
-export async function getMemories(): Promise<MemoryEntry[]> {
-  const result = await chrome.storage.local.get(MEMORY_KEY);
-  const entries = result[MEMORY_KEY];
-  return Array.isArray(entries) ? (entries as MemoryEntry[]) : [];
-}
-
-export async function saveMemories(entries: MemoryEntry[]): Promise<void> {
-  await chrome.storage.local.set({ [MEMORY_KEY]: entries });
 }
 
 /**
@@ -437,20 +388,6 @@ export async function seedSkillsIfEmpty(): Promise<void> {
         'Step 3 — Present each match as: **Subject** — sender, date; one-line preview, linked to its url. End with a "Source tabs:" list of the message URLs. Never invent messages. If results are thin, loosen the query once (drop the tightest filter) and retry.',
         '',
         'Fallback — ONLY if the response has a "mailError" or session error: explain that the endpoint could not establish an Outlook/Microsoft 365 session and ask the user to sign in once, then retry. If it still fails, drive the Outlook web UI. Open https://outlook.office.com/mail/ (the task pauses for sign-in if a login wall appears; if an outlook-owa / outlook-live playbook is active, follow it). Focus the search box (press_keys "/", else fill_input it), type a keyword query (e.g. from:"Brian Ray" received>=2024-01-01), press_keys "Enter", then read the list with get_tab_content. These page actions are approval-gated — give a clear reason like "search your mailbox for X".',
-      ].join('\n'),
-    },
-    {
-      id: 'skill-example-map',
-      name: 'map',
-      description: 'Show and manipulate a live map — center/zoom, fly, basemaps, markers, shapes, GeoJSON, animation.',
-      body: [
-        'There is ONE persistent map (opens automatically in its own tab on first use and is reused every time — never start a new one). All map_* tools act on it and need no approval.',
-        '1. Call map_get_state first to see the current center/zoom, basemap, and what is already on the map; build on it rather than resetting.',
-        '2. Move the view with map_set_view (instant) or map_fly_to (animated). Switch the basemap with map_set_basemap (osm | carto-light | carto-dark, or a custom tile url).',
-        '3. Add elements: map_add_marker (returns an id), map_add_shape (circle/polyline/polygon/rectangle), map_add_geojson (set fit:true to frame it).',
-        '4. Animate a marker along a route with map_animate using its id and a path of [lat,lng] points.',
-        '5. Use map_fit_bounds to frame multiple features, and map_clear (all | markers | shapes) to reset overlays.',
-        '6. Tell the user what you placed/changed; the map stays open for follow-up requests.',
       ].join('\n'),
     },
   ];

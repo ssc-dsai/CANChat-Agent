@@ -9,14 +9,23 @@ import { expect, sendChat, test } from './fixtures';
 const SHOTS = 'docs/user-guide/screenshots';
 const PANEL = { width: 400, height: 900 };
 
+
+// Undo lives in the header's More menu now. Open the menu and return the
+// menuitem locator (the popover unmounts when closed, so re-open per use).
+async function openUndo(sidebar: import('@playwright/test').Page) {
+  await sidebar.getByRole('button', { name: 'More actions' }).click();
+  return sidebar.getByRole('menuitem', { name: /Undo last exchange/ });
+}
+
 test.describe('user-manual screenshots', () => {
-  test('settings — Advanced tab (Azure, embeddings, transcription, SharePoint)', async ({ sidebar }) => {
-    await sidebar.setViewportSize(PANEL);
-    await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear
-    await expect(sidebar.locator('.settings-tabs')).toBeVisible();
-    await sidebar.getByRole('tab', { name: 'Advanced' }).click();
-    await expect(sidebar.getByText('SharePoint base URL')).toBeVisible();
-    await sidebar.screenshot({ path: `${SHOTS}/01-settings-advanced.png` });
+  test('workspace Models page — advanced groups (embeddings, transcription, SharePoint)', async ({ context, extensionId }) => {
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`chrome-extension://${extensionId}/workspace.html#models`);
+    await expect(page.getByTestId('advanced-settings')).toBeVisible();
+    await expect(page.getByText('SharePoint base URL')).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/01-settings-advanced.png` });
+    await page.close();
   });
 
   test('History rows show an LLM conversation summary, not the last-message snippet', async ({ sidebar }) => {
@@ -41,27 +50,29 @@ test.describe('user-manual screenshots', () => {
     await expect(row.locator('.conv-preview')).toContainText('A concise summary of the test conversation.');
   });
 
-  test('upload a file into a knowledge base from settings', async ({ sidebar }) => {
-    await sidebar.setViewportSize(PANEL);
-    await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear
-    await sidebar.getByRole('tab', { name: 'Knowledge bases' }).click();
+  test('upload a file into a knowledge base from the workspace Knowledge page', async ({ context, extensionId, sidebar }) => {
+    void sidebar; // fixture configures the model so ingestion can embed
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`chrome-extension://${extensionId}/workspace.html#knowledge`);
 
     // Reveal the uploader, name a new repo, and choose a small text file.
-    await sidebar.locator('.repo-upload-toggle').click();
-    await sidebar.locator('.repo-upload input[type="text"]').fill('uploads');
-    await sidebar.locator('.repo-drop input[type="file"]').setInputFiles({
+    await page.locator('.repo-upload-toggle').click();
+    await page.locator('.repo-upload input[type="text"]').fill('uploads');
+    await page.locator('.repo-drop input[type="file"]').setInputFiles({
       name: 'note.txt',
       mimeType: 'text/plain',
       buffer: Buffer.from('This is a short uploaded note about arctic shipping lanes for the test.'),
     });
     // The file is queued; Add ingests it.
-    await expect(sidebar.locator('.repo-file', { hasText: 'note.txt' })).toBeVisible();
-    await sidebar.getByRole('button', { name: 'Add files', exact: true }).click();
+    await expect(page.locator('.repo-file', { hasText: 'note.txt' })).toBeVisible();
+    await page.getByRole('button', { name: 'Add files', exact: true }).click();
 
     // On success the uploader closes and a banner confirms it; the repo appears.
-    await expect(sidebar.locator('.upload-banner')).toContainText('Added 1 file');
-    await expect(sidebar.locator('.repo-upload')).toHaveCount(0); // box cleared
-    await expect(sidebar.locator('.repo-block', { hasText: 'uploads' })).toBeVisible();
+    await expect(page.locator('.upload-banner')).toContainText('Added 1 file');
+    await expect(page.locator('.repo-upload')).toHaveCount(0); // box cleared
+    await expect(page.locator('.repo-block', { hasText: 'uploads' })).toBeVisible();
+    await page.close();
   });
 
   test('attach files to a knowledge base from the composer', async ({ sidebar }) => {
@@ -80,61 +91,73 @@ test.describe('user-manual screenshots', () => {
     await expect(sidebar.locator('.repo-upload-card')).toHaveCount(0);
   });
 
-  test('settings — repo-search passages (k) persists', async ({ sidebar }) => {
-    await sidebar.setViewportSize(PANEL);
-    await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear
-    await sidebar.getByRole('tab', { name: 'Advanced' }).click();
+  test('workspace Models page — repo-search passages (k) persists', async ({ context, extensionId, sidebar }) => {
+    void sidebar; // fixture seeds ba_settings first
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`chrome-extension://${extensionId}/workspace.html#models`);
 
-    const field = sidebar.locator('label.field', { hasText: 'Passages per repository search' }).locator('input');
+    const advanced = page.getByTestId('advanced-settings');
+    const field = advanced.locator('label.field', { hasText: 'Passages per repository search' }).locator('input');
     await field.fill('10');
-    await sidebar.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(sidebar.locator('.banner-ok')).toBeVisible();
+    await advanced.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(advanced.locator('.banner-ok')).toBeVisible();
 
-    const saved = await sidebar.evaluate(async () => {
+    const saved = await page.evaluate(async () => {
       const r = await chrome.storage.local.get('ba_settings');
       return (r.ba_settings as { repoSearchK?: number }).repoSearchK;
     });
     expect(saved).toBe(10);
+    // Patch-save: the connection fields seeded by the fixture must survive an
+    // advanced-section save (regression guard for section clobbering).
+    const model = await page.evaluate(async () => {
+      const r = await chrome.storage.local.get('ba_settings');
+      return (r.ba_settings as { model?: string }).model;
+    });
+    expect(model).toBe('mock-model');
+    await page.close();
   });
 
-  test('settings — Skills tab with the seeded skills', async ({ sidebar }) => {
-    await sidebar.setViewportSize(PANEL);
-    await sidebar.locator('.header-controls .icon-btn').last().click();
-    await sidebar.getByRole('tab', { name: 'Skills' }).click();
-    await expect(sidebar.getByText('/research')).toBeVisible();
-    await expect(sidebar.getByText('/search-sharepoint')).toBeVisible();
-    await sidebar.screenshot({ path: `${SHOTS}/02-settings-skills.png` });
+  test('workspace Skills page with the seeded skills', async ({ context, extensionId, sidebar }) => {
+    void sidebar; // fixture seeds the example skills
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`chrome-extension://${extensionId}/workspace.html#skills`);
+    await expect(page.getByText('/research')).toBeVisible();
+    await expect(page.getByText('/search-sharepoint')).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/02-settings-skills.png` });
 
     // The skill editor form.
-    await sidebar.getByRole('button', { name: 'Add skill' }).first().click();
-    await expect(sidebar.locator('.site-form')).toBeVisible();
-    await sidebar.screenshot({ path: `${SHOTS}/03-skill-form.png` });
+    await page.getByRole('button', { name: 'Add skill' }).first().click();
+    await expect(page.locator('.site-form')).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/03-skill-form.png` });
+    await page.close();
   });
 
-  test('downloads prompt for a location (Save As)', async ({ sidebar }) => {
-    await sidebar.setViewportSize(PANEL);
-    // Capture chrome.downloads.download calls instead of opening a real dialog.
-    await sidebar.evaluate(() => {
+  test('downloads prompt for a location (Save As)', async ({ context, extensionId }) => {
+    // Backup export is the simplest file save (no model needed) — it lives on
+    // the workspace Settings page now. Capture chrome.downloads.download calls
+    // in that page instead of opening a real dialog.
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/workspace.html#settings`);
+    await page.evaluate(() => {
       (window as unknown as { __dl: unknown[] }).__dl = [];
       chrome.downloads.download = ((opts: chrome.downloads.DownloadOptions, cb?: (id: number) => void) => {
         (window as unknown as { __dl: unknown[] }).__dl.push(opts);
         cb?.(1);
       }) as typeof chrome.downloads.download;
     });
-    // Backup export is the simplest file save (no model needed).
-    await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings
-    await sidebar.getByRole('tab', { name: 'Data & privacy' }).click();
-    await sidebar.getByText('Backup & Restore').click(); // expand the <details>
-    await sidebar.getByRole('button', { name: 'Export backup' }).click();
+    await page.getByRole('button', { name: 'Export backup' }).click();
 
     await expect
-      .poll(() => sidebar.evaluate(() => (window as unknown as { __dl: unknown[] }).__dl.length))
+      .poll(() => page.evaluate(() => (window as unknown as { __dl: unknown[] }).__dl.length))
       .toBeGreaterThan(0);
-    const opts = (await sidebar.evaluate(
+    const opts = (await page.evaluate(
       () => (window as unknown as { __dl: chrome.downloads.DownloadOptions[] }).__dl[0],
     )) as chrome.downloads.DownloadOptions;
     expect(opts.saveAs).toBe(true);
     expect(String(opts.filename)).toContain('canchat-agent-backup-');
+    await page.close();
   });
 
   test('Stop ends a running task and frees the UI', async ({ sidebar }) => {
@@ -210,41 +233,47 @@ test.describe('user-manual screenshots', () => {
 
   test('undo removes the last exchange and refills the composer', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
-    const undo = sidebar.getByRole('button', { name: /Undo last exchange/ });
     const input = sidebar.getByTestId('chat-input');
 
     // Nothing to undo on a fresh thread.
+    let undo = await openUndo(sidebar);
     await expect(undo).toBeDisabled();
+    await sidebar.keyboard.press('Escape');
 
     await sendChat(sidebar, 'first prompt please summarize.');
     await expect(sidebar.locator('.msg-user', { hasText: 'first prompt' })).toBeVisible();
     await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
-    await expect(undo).toBeEnabled();
 
+    undo = await openUndo(sidebar);
+    await expect(undo).toBeEnabled();
     await undo.click();
-    // The exchange is gone and the removed prompt is back in the composer.
+    // Selecting a menu item closes the menu; the exchange is gone and the
+    // removed prompt is back in the composer.
+    await expect(sidebar.getByRole('menu')).toHaveCount(0);
     await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toHaveCount(0);
     await expect(sidebar.locator('.msg-user', { hasText: 'first prompt' })).toHaveCount(0);
     await expect(input).toHaveText('first prompt please summarize.');
+    undo = await openUndo(sidebar);
     await expect(undo).toBeDisabled();
   });
 
   test('undo can be repeated back through multiple exchanges', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
-    const undo = sidebar.getByRole('button', { name: /Undo last exchange/ });
 
     await sendChat(sidebar, 'message one.');
     await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
     await sendChat(sidebar, 'message two.');
     await expect(sidebar.locator('.msg-user', { hasText: 'message two' })).toBeVisible();
 
+    let undo = await openUndo(sidebar);
     await undo.click(); // removes exchange two
     await expect(sidebar.locator('.msg-user', { hasText: 'message two' })).toHaveCount(0);
     await expect(sidebar.locator('.msg-user', { hasText: 'message one' })).toBeVisible();
-    await expect(undo).toBeEnabled();
 
+    undo = await openUndo(sidebar);
     await undo.click(); // removes exchange one → empty thread
     await expect(sidebar.locator('.msg-user', { hasText: 'message one' })).toHaveCount(0);
+    undo = await openUndo(sidebar);
     await expect(undo).toBeDisabled();
   });
 

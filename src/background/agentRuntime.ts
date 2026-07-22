@@ -21,10 +21,9 @@
 // testable in principle and decoupled from the panel.
 // =============================================================================
 
-import type { ApprovalContext, DuckDbTableInfo } from '../shared/messages';
+import type { ApprovalContext } from '../shared/messages';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import { isTrustedForAutoApproval, resolveAuth } from '../shared/capabilities';
-import { MAX_DATA_BYTES } from '../shared/dataFile';
 import type { BackgroundEvent } from '../shared/messages';
 import { MEMORY_TOOL_DEFINITIONS, TOOL_DEFINITIONS } from '../shared/schemas';
 import type {
@@ -73,10 +72,9 @@ import * as browser from './browserToolAdapter';
 import type { M365SearchFilters } from '../shared/microsoftSearch';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
-import { mapCommand } from './mapClient';
 import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, resolveModelForRole, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
 import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
-import { duckDbDropTable, duckDbListTables, duckDbLoadTable, duckDbOpenFile, duckDbPersistTable, duckDbQuery, duckDbImportCsv, duckDbImportJson, duckDbDescribeTable, duckDbResetAll, generateDocument, generatePresentation, productSave, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
+import { generateDocument, generatePresentation, productSave, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
 import type { SearchHit } from '../shared/vectorSearch';
 import { ingestTab } from './repoIngest';
@@ -123,6 +121,9 @@ const SITES_PROMPT_LIMIT = 25;
 // LLM_TIMEOUT_MS now lives in llmProvider (applied per request attempt) and is
 // imported for the "timed out" message below.
 const SINGLE_TAB_CHARS = 12000;
+// Size cap for a downloaded generated image (was shared/dataFile's MAX_DATA_BYTES
+// before the DuckDB data engine was removed).
+const MAX_IMAGE_BYTES = 64 * 1024 * 1024; // 64 MB
 const MULTI_TAB_CHARS = 5000;
 const CONVERSATION_CHAR_BUDGET = 90000; // compact older tool output beyond this
 
@@ -286,13 +287,11 @@ const APPROVAL_REQUIRED = new Set([
 
 /**
  * Tools that stay frictionless in an attended chat (not in APPROVAL_REQUIRED)
- * but must never run unattended: `query_data` executes model-authored SQL
- * (read-only-enforced in duckDb.ts, but still arbitrary within that), which
- * is fine when a user is present to see the result, not fine as a silent
- * scheduled/triggered action. Checked separately from APPROVAL_REQUIRED so it
- * doesn't add an approval prompt to normal interactive use.
+ * but must never run unattended. Empty since the DuckDB data engine (whose
+ * query_data ran model-authored SQL) was removed; kept as the gate for any
+ * future tool with the same "fine attended, not fine silent" shape.
  */
-const UNATTENDED_BLOCKED_TOOLS = new Set(['query_data']);
+const UNATTENDED_BLOCKED_TOOLS = new Set<string>([]);
 
 /** Read-only / local tools that are safe to run concurrently within one turn. */
 const READ_ONLY_TOOLS = new Set([
@@ -324,16 +323,7 @@ const READ_ONLY_TOOLS = new Set([
   'read_office_document',
   'get_video_transcript',
   'read_app_content',
-  'map_get_state',
   'query_pointer_target',
-  'query_data',
-  'open_data_url',
-  'import_data',
-  'list_datasets',
-  'describe_dataset',
-  'persist_dataset',
-  'load_dataset',
-  'drop_dataset',
 ]);
 
 const SCOPED_SUBTASK_ALLOWED = new Set([
@@ -414,23 +404,6 @@ Planning multi-step tasks:
 - When the user wants a generated image, call create_image with a detailed prompt — they get a downloadable image card.
 - When the user wants a Word document, report, or formatted write-up to keep, call create_word_document with a title and markdown body — they get a downloadable .docx.
 - When the user wants a slide deck or presentation, call create_powerpoint with a title and an ordered slides array (each slide: title, bullets, optional speaker notes) — they get a downloadable .pptx.
-- When the task involves analysing, filtering, sorting, aggregating, joining, or comparing structured data, use the data analysis tools: (1) import_data to load CSV/JSON/Parquet into the DuckDB engine when you already have the file contents, (2) query_data to run SQL queries (SELECT, WHERE, GROUP BY, ORDER BY, LIMIT, JOIN, window functions) and get results as JSON, (3) list_datasets to see what tables are loaded, (4) describe_dataset to see the schema. Import data first, then run multiple queries to explore and answer the question. For natural-language questions, translate them into SQL queries against the loaded data.
-- **NL→SQL examples:**
-  - "What's the average salary by department?" → \`SELECT department, AVG(CAST(salary AS DOUBLE)) AS avg_salary FROM data GROUP BY department ORDER BY avg_salary DESC\`
-  - "Find the top 5 most expensive products" → \`SELECT product, price FROM data ORDER BY CAST(price AS DOUBLE) DESC LIMIT 5\`
-  - "How many orders per customer?" → \`SELECT customer, COUNT(*) AS order_count FROM data GROUP BY customer ORDER BY order_count DESC\`
-  - "Show me all items where stock is below 20" → \`SELECT * FROM data WHERE CAST(stock AS BIGINT) < 20 ORDER BY stock\`
-  - "Compare revenue by region and quarter" → \`SELECT region, quarter, SUM(CAST(revenue AS DOUBLE)) AS total FROM data GROUP BY region, quarter ORDER BY region, quarter\`
-  - "What's the month-over-month growth?" → \`SELECT month, SUM(CAST(revenue AS DOUBLE)) AS rev, LAG(SUM(CAST(revenue AS DOUBLE))) OVER (ORDER BY month) AS prev, (SUM(CAST(revenue AS DOUBLE)) - LAG(SUM(CAST(revenue AS DOUBLE))) OVER (ORDER BY month)) / LAG(SUM(CAST(revenue AS DOUBLE))) OVER (ORDER BY month) * 100 AS growth_pct FROM data GROUP BY month ORDER BY month\`
-  - "Find duplicate entries by email" → \`SELECT email, COUNT(*) AS cnt FROM data GROUP BY email HAVING COUNT(*) > 1\`
-  - "What are the most common values in the status column?" → \`SELECT status, COUNT(*) AS cnt FROM data GROUP BY status ORDER BY cnt DESC\`
-  Call describe_dataset first to see column names and types before writing queries. DuckDB columns are VARCHAR; use CAST(col AS DOUBLE) for numeric operations and CAST(col AS BIGINT) for integer operations.
-- Datasets are automatically persisted to on-device storage when imported and auto-restored on restart. Use persist_dataset to explicitly persist tables created or modified with SQL. Use load_dataset to reload a persisted dataset, and drop_dataset to permanently delete a dataset from both memory and storage.
-- **Hybrid structured + document questions** (e.g. "which projects exceeded budget, and what do their status reports say?"): query the dataset first with query_data to get the exact identifiers/names (do the math and filtering in SQL — never eyeball or estimate from a data dump), then use search_repo (or add_to_repo first if the relevant pages aren't captured yet) with those identifiers/names as the query to pull matching document evidence. Cite both: the query result for the numbers, the retrieved passages (with page name/URL) for the narrative. Never substitute one for the other — a number from a document's prose is not as reliable as the same number computed by SQL over the actual data.
-- To analyse a data file the user references by URL or that is open in the current tab (CSV, TSV, JSON, NDJSON, Parquet, or geospatial GeoJSON/KML/GPX/FGB — or a ZIP of those), call open_data_url with that URL — it loads the file into the engine as one table per file — then query it with query_data. Do not try to read large data files with get_tab_content or read_pdf. If the "Datasets loaded" list in the working state already names a table, just query it; never ask the user to paste data, and answer with query results, not whole-table dumps.
-- Reach for open_data_url on a ZIP archive whenever you suspect it holds structured data files (e.g. the user mentions data/records/a database/JSON/maps, or the archive's name or context suggests tabular or geospatial contents) OR the user explicitly asks to open/query the archive's data with DuckDB. open_data_url unzips it and loads every supported member as its own table; query them with query_data. Geospatial members load via the spatial extension with their geometry as a GeoJSON-text "geometry" column.
-- XML and SQLite/database (.xml/.db/.sqlite) files CANNOT be opened by the data engine — if an archive or URL contains only those, say so plainly rather than pretending it loaded; do not silently ignore the request.
-
 Working method:
 - Use search_web for open-web searches; it opens the browser's default search engine. Read the results with get_tab_content, then navigate to the most relevant result.
 - Tabs you open (search_web, open_url) are collected into this conversation's named tab group. When you want to gather several pages for comparison or synthesis, open each in its own tab with open_url rather than reusing one tab with navigate. Read every page in the group at once with read_tab_group. Mention the group's name to the user when you first create it (e.g. "I've collected these in the Wolf group"); the user may later refer to the group by that name.
@@ -461,7 +434,6 @@ Working method:
 - When the user asks to schedule a future or recurring task/workflow, call schedule_task with a concrete future runAt or recurrence. Scheduled tasks run unattended in the background; they may use read-only tools, but approval-gated tools will not run unattended and will be recorded as needing approval. Use list_scheduled_tasks/cancel_scheduled_task for management.
 - For files-only retrieval you can also use sharepoint_search (the simpler SharePoint-only tool): pass sortBy:'modified' + editedByMe:true for "recent files"/"files I edited"; cite the URLs.
 - If a tool reports missing permissions, tell the user which sidebar button to use (e.g. "Use all tabs") and stop.
-- Map workspace: when the user wants to see or work with a map, use the map_* tools. They all act on ONE persistent map that opens automatically in its own tab and is reused across requests — never assume a new map each time; build on the current state (call map_get_state to see what's there). map_set_view/map_fly_to move it, map_set_basemap switches tiles, map_add_marker/map_add_geojson/map_add_shape add elements, map_animate moves a marker along a path, map_fit_bounds frames things, map_clear removes overlays. These act on the extension's own map page, so they don't need approval.
 
 Answer format:
 - Format answers in Markdown (headings, lists, tables, links) — the sidebar renders it.
@@ -605,10 +577,6 @@ export class AgentRuntime {
   private status: AgentStatus = 'idle';
   private running = false;
   private stopRequested = false;
-  // DuckDB tables the user/agent has opened this session — surfaced in the
-  // working-state block so the model knows it can answer via query_data without
-  // re-loading or dumping the file. Best-effort (engine state, not conversation).
-  private loadedDatasets: string[] = [];
   // Monotonic token identifying the active task. stop()/clearConversation bump
   // it to "orphan" a loop that's stuck in a non-cancellable tool call: when that
   // tool finally resolves, the loop sees a stale epoch and bails instead of
@@ -1396,10 +1364,6 @@ export class AgentRuntime {
     // Fresh tab group for the resumed thread; old tabs are left as-is.
     this.groupName = null;
     this.groupId = null;
-    // Datasets are conversation-scoped and not restored per-thread, so clear the
-    // engine when switching threads to avoid leaking a prior conversation's tables.
-    this.loadedDatasets = [];
-    void duckDbResetAll();
     this.activities = [];
     this.pendingSnapshots = [];
     this.pendingToolImages = [];
@@ -1654,10 +1618,6 @@ export class AgentRuntime {
     // New conversation ⇒ fresh tab group (old group/tabs are left open).
     this.groupName = null;
     this.groupId = null;
-    // New conversation ⇒ fresh DuckDB engine: datasets are scoped to a
-    // conversation, so drop every table and clear persisted datasets from OPFS.
-    this.loadedDatasets = [];
-    void duckDbResetAll();
     this.setStatus('idle');
     this.emit({ type: 'plan_update', plan: null });
     this.emit(this.fullState());
@@ -2922,144 +2882,6 @@ export class AgentRuntime {
         return this.updatePlan(Number(args.step), args.status as PlanStepStatus);
       case 'record_finding':
         return this.recordFinding(String(args.text));
-      case 'map_set_view':
-      case 'map_fly_to':
-      case 'map_set_basemap':
-      case 'map_add_marker':
-      case 'map_add_geojson':
-      case 'map_add_shape':
-      case 'map_animate':
-      case 'map_fit_bounds':
-      case 'map_clear':
-      case 'map_get_state':
-        return JSON.stringify(await mapCommand(name.slice(4), args));
-      case 'query_data': {
-        const sql = String(args.sql ?? '');
-        if (!sql.trim()) return 'Error: query_data needs an sql argument.';
-        const qres = await duckDbQuery(sql);
-        if (!qres.ok) return `Error: ${qres.error}`;
-        const qColumns = qres.columns ?? [];
-        const qRows = qres.rows ?? [];
-        if (qColumns.length > 0 && qRows.length > 0) {
-          const qTitle = `Query: ${sql.slice(0, 80).replace(/\s+/g, ' ')}${sql.length > 80 ? '…' : ''}`;
-          const qFilename = `query-${Date.now()}.csv`;
-          this.pushChat({
-            role: 'notice',
-            text: `Query returned ${qRows.length} rows × ${qColumns.length} columns.`,
-            timestamp: new Date().toISOString(),
-            dataExport: { title: qTitle, filename: qFilename, columns: qColumns, rows: qRows },
-          });
-        }
-        return JSON.stringify({
-          columns: qColumns,
-          rows: qRows,
-          rowCount: qres.rowCount ?? qRows.length,
-          ...(qres.truncated ? { truncated: true, note: `Only the first ${qRows.length} rows are shown; the true result has ${qres.rowCount} rows. Narrow the query (WHERE/LIMIT/aggregation) rather than treating this as the complete result set.` } : {}),
-        });
-      }
-      case 'import_data': {
-        const tableName = String(args.tableName ?? '').trim();
-        const format = String(args.format ?? 'csv');
-        const raw = args.data;
-        if (!tableName || raw == null) return 'Error: import_data needs tableName and data.';
-        if (format === 'parquet') {
-          const bytesB64 = typeof raw === 'string' ? raw : '';
-          if (!bytesB64) return 'Error: import_data needs base64-encoded parquet bytes in data.';
-          const fileName = `${tableName}.parquet`;
-          const ores = await duckDbOpenFile(fileName, bytesB64, this.activeProjectId ?? undefined);
-          if (!ores.ok) return `Error: ${ores.error}`;
-          const opened = (ores.tables ?? []).filter((t) => visibleToProject(t.projectId, this.activeProjectId));
-          this.trackDatasets(opened.map((t) => t.name));
-          const summary = opened.map((t) => `${t.name} (${t.rowCount} rows, ${t.columns.length} cols)`).join('; ');
-          return `Imported ${opened.length} table(s) from parquet data into "${tableName}": ${summary}. You can now query it with query_data.`;
-        }
-        // Models often emit `data` as a real JSON array/object rather than a string,
-        // even though the schema says string. String() would turn that into
-        // "[object Object],…" which read_json_auto rejects — so stringify non-strings.
-        const data = typeof raw === 'string' ? raw : JSON.stringify(raw);
-        if (!data) return 'Error: import_data needs tableName and data.';
-        const ires =
-          format === 'json'
-            ? await duckDbImportJson(tableName, data, this.activeProjectId ?? undefined)
-            : await duckDbImportCsv(tableName, data, this.activeProjectId ?? undefined);
-        if (!ires.ok) return `Error: ${ires.error}`;
-        this.trackDatasets([tableName]);
-        const n = ires.rowCount ?? 0;
-        return `Imported ${n} row(s) into table "${tableName}". You can now query it with query_data.`;
-      }
-      case 'open_data_url': {
-        const url = String(args.url ?? '').trim();
-        if (!url) return 'Error: open_data_url needs a url.';
-        let bytesB64: string;
-        let fileName: string;
-        try {
-          const resp = await fetch(url);
-          if (!resp.ok) return `Error: fetching ${url} returned HTTP ${resp.status}.`;
-          const buf = new Uint8Array(await resp.arrayBuffer());
-          if (buf.byteLength > MAX_DATA_BYTES) return `Error: file is too large (> ${Math.round(MAX_DATA_BYTES / 1024 / 1024)} MB).`;
-          bytesB64 = bytesToBase64(buf);
-          const override = String(args.tableName ?? '').trim();
-          fileName = override ? `${override}.${(url.split('?')[0].split('.').pop() ?? 'csv')}` : (url.split('?')[0].split('/').pop() || 'data.csv');
-        } catch (e) {
-          return `Error: could not fetch ${url}: ${String(e)}`;
-        }
-        const ores = await duckDbOpenFile(fileName, bytesB64, this.activeProjectId ?? undefined);
-        if (!ores.ok) return `Error: ${ores.error}`;
-        const opened = ores.tables ?? [];
-        this.trackDatasets(opened.map((t) => t.name));
-        const summary = opened.map((t) => `${t.name} (${t.rowCount} rows, ${t.columns.length} cols)`).join('; ');
-        return `Opened ${opened.length} table(s) from ${url}: ${summary}. Query them with query_data.`;
-      }
-      case 'list_datasets': {
-        const lres = await duckDbListTables();
-        if (!lres.ok) return `Error: ${lres.error}`;
-        // Filter, not partition (see visibleToProject) — a dataset persisted
-        // under a different active project simply doesn't appear here, so the
-        // model never learns its name to reference in a later query.
-        const names = (lres.tables ?? [])
-          .filter((t) => visibleToProject(t.projectId, this.activeProjectId))
-          .map((t) => t.name);
-        return names.length === 0 ? 'No tables loaded. Use import_data to load data first.' : JSON.stringify(names);
-      }
-      case 'describe_dataset': {
-        const tableName = String(args.tableName ?? '').trim();
-        if (!tableName) return 'Error: describe_dataset needs a tableName.';
-        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
-        const dres = await duckDbDescribeTable(tableName);
-        if (!dres.ok) return `Error: ${dres.error}`;
-        return JSON.stringify({
-          name: tableName,
-          columns: dres.columns,
-          columnTypes: dres.columnTypes,
-          rowCount: dres.rowCount,
-          columnProfiles: dres.tables?.[0]?.columnProfiles,
-        });
-      }
-      case 'persist_dataset': {
-        const tableName = String(args.tableName ?? '').trim();
-        if (!tableName) return 'Error: persist_dataset needs a tableName.';
-        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
-        const pres = await duckDbPersistTable(tableName, this.activeProjectId ?? undefined);
-        if (!pres.ok) return `Error: ${pres.error}`;
-        return `Persisted dataset "${tableName}" (${pres.rowCount ?? 0} rows) to on-device storage. It will auto-restart on next load.`;
-      }
-      case 'load_dataset': {
-        const tableName = String(args.tableName ?? '').trim();
-        if (!tableName) return 'Error: load_dataset needs a tableName.';
-        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
-        const lres = await duckDbLoadTable(tableName);
-        if (!lres.ok) return `Error: ${lres.error}`;
-        return `Loaded dataset "${tableName}" (${lres.rowCount ?? 0} rows) from on-device storage. You can now query it with query_data.`;
-      }
-      case 'drop_dataset': {
-        const tableName = String(args.tableName ?? '').trim();
-        if (!tableName) return 'Error: drop_dataset needs a tableName.';
-        if (!(await this.isDatasetVisible(tableName))) return `Error: no dataset named "${tableName}" is visible in the current project.`;
-        const drres = await duckDbDropTable(tableName);
-        if (!drres.ok) return `Error: ${drres.error}`;
-        this.loadedDatasets = this.loadedDatasets.filter((n) => n !== tableName);
-        return `Dropped dataset "${tableName}" from memory and on-device storage.`;
-      }
       case 'save_memory': {
         if (this.memoryGraph.nodes.length >= MEMORY_NODE_CAP) {
           return `Error: memory is full (${MEMORY_NODE_CAP} entries). Consolidate or delete entries before saving more.`;
@@ -3355,11 +3177,6 @@ export class AgentRuntime {
         `Tab group for this conversation: "${this.groupName}" — tabs you open are collected here; the user may refer to it by name (e.g. "the ${this.groupName} group").`,
       );
     }
-    if (this.loadedDatasets.length > 0) {
-      lines.push(
-        `Datasets loaded in the DuckDB engine: ${this.loadedDatasets.join(', ')}. Answer questions about them with query_data (SQL) / describe_dataset — do not ask the user to paste the data, and return query results rather than dumping whole tables.`,
-      );
-    }
     if (this.plan) {
       const icon: Record<PlanStepStatus, string> = {
         pending: '[ ]',
@@ -3565,8 +3382,8 @@ export class AgentRuntime {
         return `Error: downloading the generated image returned HTTP ${imageResponse.status}.`;
       }
       const bytes = new Uint8Array(await imageResponse.arrayBuffer());
-      if (bytes.byteLength > MAX_DATA_BYTES) {
-        return `Error: generated image is too large (> ${Math.round(MAX_DATA_BYTES / 1024 / 1024)} MB).`;
+      if (bytes.byteLength > MAX_IMAGE_BYTES) {
+        return `Error: generated image is too large (> ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)} MB).`;
       }
       dataBase64 = bytesToBase64(bytes);
       const contentType = imageResponse.headers.get('content-type');
@@ -3850,40 +3667,6 @@ export class AgentRuntime {
 
   private notice(text: string): void {
     this.pushChat({ role: 'notice', text, timestamp: new Date().toISOString() });
-  }
-
-  /**
-   * Filter, not partition (see visibleToProject): a dataset persisted under a
-   * different active project is invisible to describe/persist/load/drop, even
-   * if the model somehow already knows its exact name (it can't discover it
-   * via list_datasets, which applies the same filter). Fails open on an
-   * engine error or an in-memory-only table absent from listTables — those
-   * aren't scoping decisions, and the underlying call surfaces its own error.
-   */
-  private async isDatasetVisible(tableName: string): Promise<boolean> {
-    const lres = await duckDbListTables();
-    if (!lres.ok) return true;
-    const t = (lres.tables ?? []).find((x) => x.name === tableName);
-    if (!t) return true;
-    return visibleToProject(t.projectId, this.activeProjectId);
-  }
-
-  /** Remember table names so the working-state block can advertise them (deduped). */
-  private trackDatasets(names: string[]): void {
-    for (const n of names) {
-      if (n && !this.loadedDatasets.includes(n)) this.loadedDatasets.push(n);
-    }
-  }
-
-  /**
-   * Called after a user opens data files in the UI: tracks the new tables and
-   * posts a user-facing notice (names + row counts), without dumping contents.
-   */
-  notifyDatasetsLoaded(tables: DuckDbTableInfo[], source: string): void {
-    if (tables.length === 0) return;
-    this.trackDatasets(tables.map((t) => t.name));
-    const summary = tables.map((t) => `${t.name} (${t.rowCount.toLocaleString()} rows)`).join(', ');
-    this.notice(`Loaded ${tables.length} table${tables.length === 1 ? '' : 's'} from ${source}: ${summary}. Ask a question to query them.`);
   }
 
   private setStatus(status: AgentStatus, detail?: string): void {

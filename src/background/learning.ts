@@ -76,6 +76,3 @@ export async function recordLearnEvent(event: LearnEvent): Promise<void> {
   await saveLearnRecording({ ...recording, events });
 }
 
-export async function isLearnRecordingActive(): Promise<boolean> {
-  return (await getLearnRecording()).active;
-}

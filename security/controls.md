@@ -17,10 +17,10 @@ drive control selection:
 
 - **Components:** side-panel UI (Preact), background **service worker** (the agent loop), an **offscreen
   document** (OPFS vector/RAG store, PDF/Office parsing), **content scripts** injected at `<all_urls>`
-  (WebMCP bridge), and a bundled **map page** (Leaflet).
+  (WebMCP bridge).
 - **External connections:** calls a user-configured **OpenAI-compatible LLM endpoint** (Azure OpenAI,
   OpenAI, Anthropic, or local models) for completions/embeddings/transcription; optional **MCP servers**;
-  **SharePoint/Office 365** search using the signed-in session; external **map tiles** (OpenStreetMap/CARTO).
+  **SharePoint/Office 365** search using the signed-in session.
 - **Powerful capabilities:** `run_javascript` (arbitrary script execution in the active page, approval-
   gated), DOM read/click/fill/submit, tab/group control, `call_mcp_tool` / `call_webmcp_tool`.
 - **Sensitive data handled:** the **API key** and **MCP tokens**; page content, open-tab content, and
@@ -157,7 +157,7 @@ receive all transmitted Protected-B data.
 
 ### SC-7 — Boundary Protection (+ SC-7(5) deny-by-default)
 Assess the extension's effective boundary: `<all_urls>` reach, which origins it connects to (LLM, MCP,
-tiles), and the isolation between its contexts (service worker, offscreen, content-script MAIN world, map
+tiles), and the isolation between its contexts (service worker, offscreen, content-script MAIN world
 page). **SC-7(5) deny-by-default / allow-by-exception** maps to constraining outbound destinations to an
 authorized endpoint allow-list rather than any user-supplied URL.
 
@@ -246,7 +246,7 @@ The agent exposes a large tool catalogue and broad host access. Assess whether u
 capabilities/permissions can be disabled or scoped (overlaps AC-6).
 
 ### CM-8 — System Component Inventory
-Assess the inventory of bundled third-party components (e.g., `leaflet`, `marked`, `dompurify`,
+Assess the inventory of bundled third-party components (e.g., `marked`, `dompurify`,
 `pdfjs-dist`, `docx`, `fflate`, `preact`) and their provenance.
 
 ### CM-10 / CM-11 — Software Usage & User-Installed Software

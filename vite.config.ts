@@ -26,18 +26,14 @@ function copyOrtWasm(): Plugin {
   };
 }
 
-// Build-stamp version shown in the header: YY (year) + DDD (day-of-year,
-// zero-padded) + HH (hour, 24h, zero-padded). All UTC, so builds from any
-// timezone are comparable. Computed once per build, so it identifies the build
-// rather than ticking while the panel is open.
+// Build-stamp version shown in the header: YYMMDDHHmm — two-digit year, month,
+// day, hour (24h), and minute, all zero-padded, in LOCAL time so the stamp
+// matches the wall clock of whoever built it. Computed once per build, so it
+// identifies the build rather than ticking while the panel is open.
 function buildVersion(): string {
   const now = new Date();
-  const yy = String(now.getUTCFullYear() % 100).padStart(2, '0');
-  const startOfYear = Date.UTC(now.getUTCFullYear(), 0, 0); // Dec 31 of prior year, 00:00 UTC
-  const dayOfYear = Math.floor((now.getTime() - startOfYear) / 86_400_000); // 1..366
-  const ddd = String(dayOfYear).padStart(3, '0');
-  const hh = String(now.getUTCHours()).padStart(2, '0');
-  return `${yy}${ddd}${hh}`;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(now.getFullYear() % 100)}${p(now.getMonth() + 1)}${p(now.getDate())}${p(now.getHours())}${p(now.getMinutes())}`;
 }
 
 // Builds the sidebar page and the background service worker.
@@ -54,7 +50,6 @@ export default defineConfig({
         sidebar: 'sidebar.html',
         offscreen: 'offscreen.html',
         microphone: 'microphone.html',
-        map: 'map.html',
         workspace: 'workspace.html',
         serviceWorker: 'src/background/serviceWorker.ts',
       },

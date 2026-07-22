@@ -25,8 +25,8 @@ import { OnboardingScreen } from './OnboardingScreen';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { exportConversationHtml } from './conversationExport';
 import { useT } from './i18n';
+import { OverflowMenu } from './OverflowMenu';
 import { PlanPanel } from './PlanPanel';
-import { SettingsScreen } from './SettingsScreen';
 import { TabContextPanel } from './TabContextPanel';
 import { ToolActivityPanel } from './ToolActivityPanel';
 
@@ -62,14 +62,6 @@ const IconSave = () => (
     <path d="M12 3v12" />
     <path d="m7 10 5 5 5-5" />
     <path d="M5 21h14" />
-  </svg>
-);
-// "Open workspace" — an external-monitor icon for opening the workspace tab.
-const IconWorkspace = () => (
-  <svg {...svgProps}>
-    <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-    <path d="M8 21h8" />
-    <path d="M12 17v4" />
   </svg>
 );
 
@@ -138,7 +130,6 @@ export function Sidebar() {
   // Pending prompt text to drop back into the composer after an undo.
   const [restoreDraft, setRestoreDraft] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -257,8 +248,19 @@ export function Sidebar() {
     };
 
     const onStorageChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area !== 'local' || !changes.ba_learn_recording) return;
-      setLearnRecording(Boolean((changes.ba_learn_recording.newValue as { active?: boolean } | undefined)?.active));
+      if (area !== 'local') return;
+      if (changes.ba_learn_recording) {
+        setLearnRecording(Boolean((changes.ba_learn_recording.newValue as { active?: boolean } | undefined)?.active));
+      }
+      // Settings are edited in the workspace tab now — watch storage so the
+      // "no model" banner clears (and onboarding dismisses) the moment a
+      // connection is saved there; there is no settings overlay to close.
+      if (changes.ba_settings) {
+        const s = changes.ba_settings.newValue as Settings | undefined;
+        const ok = Boolean(s?.baseUrl && s?.apiKey && s?.model);
+        setConfigured(ok);
+        if (ok) setShowOnboarding(false);
+      }
     };
     chrome.storage.onChanged.addListener(onStorageChanged);
 
@@ -292,48 +294,9 @@ export function Sidebar() {
           </span>
         </div>
         <div class="header-controls">
-          <span class="scale-ctl">
-            <button class="scale-btn" aria-label={t('header.smallerText')} title={t('header.smallerText')} onClick={() => applyScale(uiScale - 0.1)}>
-              A−
-            </button>
-            <button class="scale-val" aria-label={t('header.resetText')} title={t('header.resetText')} onClick={() => applyScale(1)}>
-              {Math.round(uiScale * 100)}%
-            </button>
-            <button class="scale-btn" aria-label={t('header.largerText')} title={t('header.largerText')} onClick={() => applyScale(uiScale + 0.1)}>
-              A+
-            </button>
-          </span>
-          <span class="header-divider" />
           <ProjectSwitcher />
           <button class="icon-btn" aria-label={t('header.history')} title={t('header.history')} onClick={() => setShowHistory(true)}>
             <IconHistory />
-          </button>
-          <button
-            class="icon-btn"
-            aria-label={t('header.saveConversation')}
-            title={t('header.saveConversation')}
-            onClick={() => exportConversationHtml(messages)}
-            disabled={messages.length === 0}
-          >
-            <IconSave />
-          </button>
-          <button
-            class="icon-btn"
-            aria-label={t('header.undo')}
-            title={t('header.undo')}
-            onClick={() => send({ type: 'undo_exchange' })}
-            disabled={!canUndo || status !== 'idle'}
-          >
-            <IconUndo />
-          </button>
-          <button
-            class={`icon-btn${learnRecording ? ' icon-btn-active' : ''}`}
-            aria-label={learnRecording ? t('header.learnStop') : t('header.learnStart')}
-            title={learnRecording ? t('header.learnStop') : t('header.learnStart')}
-            onClick={toggleLearnMode}
-            disabled={status !== 'idle' && !learnRecording}
-          >
-            <IconRecord />
           </button>
           <button
             class="new-chat-btn"
@@ -345,10 +308,52 @@ export function Sidebar() {
             <IconNew />
             <span>{t('header.newChatShort')}</span>
           </button>
-          <button class="icon-btn" aria-label="Open workspace" title="Open workspace" onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html') })}>
-            <IconWorkspace />
-          </button>
-          <button class="icon-btn" aria-label={t('header.settings')} title={t('header.settings')} onClick={() => setShowSettings(true)}>
+          <OverflowMenu
+            label={t('header.more')}
+            embedded={
+              <span class="scale-ctl">
+                <button class="scale-btn" aria-label={t('header.smallerText')} title={t('header.smallerText')} onClick={() => applyScale(uiScale - 0.1)}>
+                  A−
+                </button>
+                <button class="scale-val" aria-label={t('header.resetText')} title={t('header.resetText')} onClick={() => applyScale(1)}>
+                  {Math.round(uiScale * 100)}%
+                </button>
+                <button class="scale-btn" aria-label={t('header.largerText')} title={t('header.largerText')} onClick={() => applyScale(uiScale + 0.1)}>
+                  A+
+                </button>
+              </span>
+            }
+            items={[
+              {
+                id: 'save-conversation',
+                label: t('header.saveConversation'),
+                icon: <IconSave />,
+                disabled: messages.length === 0,
+                onSelect: () => exportConversationHtml(messages),
+              },
+              {
+                id: 'undo',
+                label: t('header.undoShort'),
+                icon: <IconUndo />,
+                disabled: !canUndo || status !== 'idle',
+                onSelect: () => send({ type: 'undo_exchange' }),
+              },
+              {
+                id: 'learn',
+                label: learnRecording ? t('header.learnStop') : t('header.learnStart'),
+                icon: <IconRecord />,
+                active: learnRecording,
+                disabled: status !== 'idle' && !learnRecording,
+                onSelect: toggleLearnMode,
+              },
+            ]}
+          />
+          <button
+            class="icon-btn"
+            aria-label={t('header.settings')}
+            title={t('header.settings')}
+            onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html#settings') })}
+          >
             <IconSettings />
           </button>
         </div>
@@ -379,10 +384,13 @@ export function Sidebar() {
         </div>
       )}
 
-      {configured === false && !showSettings && !showOnboarding && (
+      {configured === false && !showOnboarding && (
         <div class="banner banner-warn">
           {t('header.noModel')}{' '}
-          <button class="link-btn" onClick={() => setShowSettings(true)}>
+          <button
+            class="link-btn"
+            onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html#models') })}
+          >
             {t('header.openSettings')}
           </button>
         </div>
@@ -420,16 +428,7 @@ export function Sidebar() {
           }}
           onOpenAdvanced={() => {
             setShowOnboarding(false);
-            setShowSettings(true);
-          }}
-        />
-      )}
-
-      {showSettings && (
-        <SettingsScreen
-          onClose={(nowConfigured) => {
-            setShowSettings(false);
-            if (nowConfigured !== undefined) setConfigured(nowConfigured);
+            void chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html#models') });
           }}
         />
       )}

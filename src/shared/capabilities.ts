@@ -47,41 +47,6 @@ export function isTrustedForAutoApproval(capability: CapabilityKind | undefined,
 }
 
 /**
- * Human-readable label for each trust level.
- * Shown in approval prompts and capability lists.
- */
-export function trustLevelLabel(level: TrustLevel | undefined): string {
-  switch (level) {
-    case 'public': return 'Public (untrusted)';
-    case 'verified': return 'Verified';
-    case 'enterprise': return 'Enterprise';
-    case 'local': return 'Local (fully trusted)';
-    default: return 'Unknown';
-  }
-}
-
-/**
- * Human-readable label for each auth method.
- */
-export function authMethodLabel(method: AuthMethod | undefined): string {
-  switch (method) {
-    case 'none': return 'No auth';
-    case 'browser-session': return 'Browser session';
-    case 'oauth': return 'OAuth';
-    case 'token': return 'Token';
-    default: return 'Not configured';
-  }
-}
-
-/** Check whether a capability has auth credentials configured. */
-export function hasAuthConfig(c: CapabilityRegistryEntry): boolean {
-  if (c.authMethod === 'none' || !c.authMethod) return true;
-  if (c.authMethod === 'browser-session') return true;
-  if (c.authMethod === 'token') return !!c.authConfig?.token;
-  return false;
-}
-
-/**
  * Resolve the effective auth for a capability — merges stored config with
  * any runtime-provided token to produce a request-ready auth header.
  */
@@ -122,14 +87,3 @@ export function migrateSitesToCapabilities(sites: SiteEntry[]): CapabilityRegist
   return sites.map(migrateSiteToCapability);
 }
 
-export function toSiteEntry(c: CapabilityRegistryEntry): SiteEntry {
-  return {
-    id: c.id,
-    name: c.name,
-    url: c.url ?? '',
-    description: c.description,
-    searchUrlTemplate: c.searchUrlTemplate,
-    mcpUrl: c.mcpUrl,
-    mcpToken: c.mcpToken,
-  };
-}

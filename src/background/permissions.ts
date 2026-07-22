@@ -6,11 +6,3 @@ export async function hasAllUrlsAccess(): Promise<boolean> {
   return chrome.permissions.contains({ origins: ['<all_urls>'] });
 }
 
-export async function hasOriginAccess(url: string): Promise<boolean> {
-  try {
-    const origin = new URL(url).origin + '/*';
-    return await chrome.permissions.contains({ origins: [origin] });
-  } catch {
-    return false;
-  }
-}
