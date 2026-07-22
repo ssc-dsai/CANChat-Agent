@@ -202,7 +202,9 @@ export const sceneSpecs: SceneSpec[] = [
     id: 'title',
     viewport: VIEW,
     run: async (ctx) => {
-      await showCard(ctx.page, 'CANChat Agent', 'An AI agent in your browser’s side panel — your tabs, your session, your data.');
+      await showCard(ctx.page, 'CANChat Agent', ctx.lang === 'fr'
+        ? 'Un agent IA dans le panneau latéral de votre navigateur — vos onglets, votre session, vos données.'
+        : 'An AI agent in your browser’s side panel — your tabs, your session, your data.');
       await pace(ctx.page, 4000);
     },
   },
@@ -476,7 +478,10 @@ export const sceneSpecs: SceneSpec[] = [
     id: 'outro',
     viewport: VIEW,
     run: async (ctx) => {
-      await showCard(ctx.page, 'CANChat Agent', 'On-device by design. Approval-gated by default.<br><br><span style="font-size:18px;color:#9d8fb3">github.com/ssc-dsai/CANChat-Agent</span>');
+      await showCard(ctx.page, 'CANChat Agent', (ctx.lang === 'fr'
+        ? 'Local par conception. Approbation requise par défaut.'
+        : 'On-device by design. Approval-gated by default.')
+        + '<br><br><span style="font-size:18px;color:#9d8fb3">github.com/ssc-dsai/CANChat-Agent</span>');
       await pace(ctx.page, 4000);
     },
   },

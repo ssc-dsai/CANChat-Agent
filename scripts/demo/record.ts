@@ -155,15 +155,24 @@ async function recordScene(id: string, mockBase: string): Promise<Captured> {
 // Per-beat narration + chunked assembly
 // ---------------------------------------------------------------------------
 
+// TTS-only pronunciation fixes (SCRIPT.md keeps the real spelling). English
+// phonemization butchers Canadian French proper nouns like "Rideau".
+const TTS_SUBS: Record<DemoLang, Array<[RegExp, string]>> = {
+  en: [[/\bRideau\b/g, 'Reedoh']],
+  fr: [],
+};
+
 async function synthBeat(id: string, beatIdx: number, text: string): Promise<string> {
   const dir = join(WORK, 'tts');
   mkdirSync(dir, { recursive: true });
   const prefix = `${id}-${beatIdx}`;
+  for (const [re, sub] of TTS_SUBS[LANG]) text = text.replace(re, sub);
   if (USE_KOKORO) {
     await exec(VENV_PY, [
       '-m', 'mlx_audio.tts.generate',
       '--model', KOKORO_MODEL,
       '--voice', VOICE,
+      '--lang_code', LANG === 'fr' ? 'f' : 'a', // without this, French text is phonemized as English
       '--speed', '1.05',
       '--join_audio',
       '--output_path', dir,
