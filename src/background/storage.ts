@@ -35,7 +35,6 @@ const LESSONS_KEY = 'ba_lessons';
 const PROJECTS_KEY = 'ba_projects';
 const ACTIVE_PROJECT_KEY = 'ba_active_project';
 
-export const MEMORY_MAX_ENTRIES = 100;
 export const LESSON_MAX_ENTRIES = 50;
 
 // --- saved conversations (auto-history) ---------------------------------------
@@ -94,16 +93,6 @@ export async function saveSettings(settings: Settings): Promise<void> {
   await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
 }
 
-export async function getSites(): Promise<SiteEntry[]> {
-  const result = await chrome.storage.local.get(SITES_KEY);
-  const sites = result[SITES_KEY];
-  return Array.isArray(sites) ? (sites as SiteEntry[]) : [];
-}
-
-export async function saveSites(sites: SiteEntry[]): Promise<void> {
-  await chrome.storage.local.set({ [SITES_KEY]: sites });
-}
-
 export async function getCapabilities(): Promise<CapabilityRegistryEntry[]> {
   const result = await chrome.storage.local.get([CAPABILITIES_KEY, SITES_KEY]);
   const caps = result[CAPABILITIES_KEY];
@@ -115,10 +104,6 @@ export async function getCapabilities(): Promise<CapabilityRegistryEntry[]> {
     return migrated;
   }
   return [];
-}
-
-export async function saveCapabilities(entries: CapabilityRegistryEntry[]): Promise<void> {
-  await chrome.storage.local.set({ [CAPABILITIES_KEY]: entries });
 }
 
 export async function migrateLegacySites(): Promise<void> {
@@ -144,18 +129,6 @@ export async function getAuthTokens(): Promise<Record<string, string>> {
   }
 }
 
-export async function setAuthToken(capabilityId: string, token: string): Promise<void> {
-  const tokens = await getAuthTokens();
-  tokens[capabilityId] = token;
-  await chrome.storage.session.set({ [AUTH_TOKENS_KEY]: tokens });
-}
-
-export async function clearAuthToken(capabilityId: string): Promise<void> {
-  const tokens = await getAuthTokens();
-  delete tokens[capabilityId];
-  await chrome.storage.session.set({ [AUTH_TOKENS_KEY]: tokens });
-}
-
 // --- Session-level approval tracking (allow for session) ----------------------
 // Stores tool names that the user has approved for the current session.
 // Cleared on service worker restart.
@@ -174,10 +147,6 @@ export async function addSessionApproval(toolName: string): Promise<void> {
   const approvals = await getSessionApprovals();
   approvals.add(toolName);
   await chrome.storage.session.set({ [SESSION_APPROVALS_KEY]: [...approvals] });
-}
-
-export async function clearSessionApprovals(): Promise<void> {
-  await chrome.storage.session.set({ [SESSION_APPROVALS_KEY]: [] });
 }
 
 export async function getSkills(): Promise<Skill[]> {
@@ -216,10 +185,6 @@ export async function getMemoryEnabled(): Promise<boolean> {
   return result[MEMORY_ENABLED_KEY] === true; // off by default
 }
 
-export async function setMemoryEnabled(enabled: boolean): Promise<void> {
-  await chrome.storage.local.set({ [MEMORY_ENABLED_KEY]: enabled });
-}
-
 /**
  * The minimum confidence (0-1) an automatically-extracted candidate must meet
  * to be saved by reflection. Does not apply to explicit `save_memory` calls
@@ -231,20 +196,6 @@ export async function getMemoryMinConfidence(): Promise<number> {
   const result = await chrome.storage.local.get(MEMORY_MIN_CONFIDENCE_KEY);
   const v = result[MEMORY_MIN_CONFIDENCE_KEY];
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
-}
-
-export async function setMemoryMinConfidence(value: number): Promise<void> {
-  await chrome.storage.local.set({ [MEMORY_MIN_CONFIDENCE_KEY]: Math.min(1, Math.max(0, value)) });
-}
-
-export async function getMemories(): Promise<MemoryEntry[]> {
-  const result = await chrome.storage.local.get(MEMORY_KEY);
-  const entries = result[MEMORY_KEY];
-  return Array.isArray(entries) ? (entries as MemoryEntry[]) : [];
-}
-
-export async function saveMemories(entries: MemoryEntry[]): Promise<void> {
-  await chrome.storage.local.set({ [MEMORY_KEY]: entries });
 }
 
 /**

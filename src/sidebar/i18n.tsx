@@ -27,11 +27,8 @@ type Dict = Record<string, string>;
 const EN: Dict = {
   // common
   'common.cancel': 'Cancel',
-  'common.close': 'Close',
   'common.save': 'Save',
   'common.delete': 'Delete',
-  'common.edit': 'Edit',
-  'common.add': 'Add',
   'common.dismiss': 'Dismiss',
   // projects
   'projects.switcher': 'Active project',
@@ -39,7 +36,6 @@ const EN: Dict = {
   // header
   'header.history': 'Conversation history',
   'header.saveConversation': 'Save conversation as HTML',
-  'header.clearConversation': 'Clear conversation',
   'header.newChat': 'New chat (this one stays in History)',
   'header.newChatShort': 'New Chat',
   'header.undo': 'Undo last exchange (puts your message back to edit)',
@@ -97,22 +93,17 @@ const EN: Dict = {
   'repos.upload.attach': 'Attach files',
   'repos.upload.done': 'Added {n} file(s) to “{repo}”.',
   'repos.upload.cancel': 'Cancel',
-  'repos.folder.index': '📁 Index a local folder',
-  'repos.folder.pick': 'Choose folder…',
   'repos.folder.working': 'Indexing…',
   'repos.folder.dropTitle': '📁 Drag a folder here to index it',
   'repos.folder.dropHint':
     'Drag a folder from Finder/Explorer onto this box. Its files (and subfolders) are embedded on-device and kept searchable. Drag the same folder again to re-index only what changed.',
   'repos.folder.emptyDrop': 'No supported files found in that folder.',
-  'repos.folder.hint': 'Pick a folder; its files (and subfolders) are embedded on-device and kept searchable.',
   'repos.folder.scanning': 'Scanning folder…',
   'repos.folder.indexing': 'Indexing {file}…',
   'repos.folder.synced': 'Indexed: {added} added, {updated} updated, {skipped} unchanged, {removed} removed, {failed} failed.',
   'repos.folder.unreadableHint':
     '{n} file(s) couldn’t be read — likely OneDrive/SharePoint online-only files. In Explorer/Finder, right-click them and choose “Always keep on this device” (or open them once to download), then drag the folder again.',
   'repos.folder.refresh': 'Refresh from folder',
-  'repos.folder.noHandle': 'No saved folder for this base — re-index it.',
-  'repos.folder.denied': 'Folder access was denied. Click Refresh and allow access.',
   'repos.folder.error': 'Folder indexing failed: {msg}',
   'mail.title': '📧 Index my Office 365 mailbox',
   'mail.hint': 'Indexes your mail on-device over a Microsoft Graph connection. Re-run to add only new messages.',
@@ -377,15 +368,11 @@ const EN: Dict = {
   'conversations.clearAll': 'Clear all',
   'conversations.confirmDelete': 'Delete “{title}”? This cannot be undone.',
   'conversations.confirmClearAll': 'Delete all {n} saved conversations? This cannot be undone.',
-  'conversations.imported': 'Conversation loaded.',
   'conversations.importError': 'That file isn’t a CANChat Agent conversation.',
   'conversations.messageCount': '{n} messages',
   'conversations.labels': 'Labels',
-  'conversations.filterByLabel': 'Filter by label',
-  'conversations.allLabels': 'All conversations',
   'conversations.noMatches': 'No conversations match the selected labels.',
   'conversations.assignLabels': 'Labels',
-  'conversations.newLabel': 'New label',
   'conversations.labelNamePlaceholder': 'Label name',
   'conversations.addLabel': 'Add',
   'conversations.renameLabel': 'Rename',
@@ -406,11 +393,8 @@ const EN: Dict = {
 const FR: Dict = {
   // common
   'common.cancel': 'Annuler',
-  'common.close': 'Fermer',
   'common.save': 'Enregistrer',
   'common.delete': 'Supprimer',
-  'common.edit': 'Modifier',
-  'common.add': 'Ajouter',
   'common.dismiss': 'Ignorer',
   // projects
   'projects.switcher': 'Projet actif',
@@ -418,7 +402,6 @@ const FR: Dict = {
   // header
   'header.history': 'Historique des conversations',
   'header.saveConversation': 'Enregistrer la conversation en HTML',
-  'header.clearConversation': 'Effacer la conversation',
   'header.newChat': 'Nouvelle conversation (celle-ci reste dans l’historique)',
   'header.newChatShort': 'Nouvelle conversation',
   'header.undo': 'Annuler le dernier échange (remet votre message à modifier)',
@@ -476,22 +459,17 @@ const FR: Dict = {
   'repos.upload.add': 'Ajouter des fichiers',
   'repos.upload.attach': 'Joindre des fichiers',
   'repos.upload.done': '{n} fichier(s) ajouté(s) à « {repo} ».',
-  'repos.folder.index': '📁 Indexer un dossier local',
-  'repos.folder.pick': 'Choisir un dossier…',
   'repos.folder.working': 'Indexation…',
   'repos.folder.dropTitle': '📁 Glissez un dossier ici pour l’indexer',
   'repos.folder.dropHint':
     'Glissez un dossier depuis le Finder/Explorateur sur cette zone. Ses fichiers (et sous-dossiers) sont vectorisés sur l’appareil et restent interrogeables. Re-glissez le même dossier pour ne réindexer que ce qui a changé.',
   'repos.folder.emptyDrop': 'Aucun fichier pris en charge dans ce dossier.',
-  'repos.folder.hint': 'Choisissez un dossier ; ses fichiers (et sous-dossiers) sont vectorisés sur l’appareil et restent interrogeables.',
   'repos.folder.scanning': 'Analyse du dossier…',
   'repos.folder.indexing': 'Indexation de {file}…',
   'repos.folder.synced': 'Indexé : {added} ajoutés, {updated} mis à jour, {skipped} inchangés, {removed} supprimés, {failed} échoués.',
   'repos.folder.unreadableHint':
     '{n} fichier(s) illisibles — probablement des fichiers OneDrive/SharePoint « en ligne seulement ». Dans l’Explorateur/Finder, faites un clic droit et choisissez « Toujours conserver sur cet appareil » (ou ouvrez-les une fois pour les télécharger), puis glissez le dossier de nouveau.',
   'repos.folder.refresh': 'Actualiser depuis le dossier',
-  'repos.folder.noHandle': 'Aucun dossier enregistré pour cette base — réindexez-la.',
-  'repos.folder.denied': 'Accès au dossier refusé. Cliquez sur Actualiser et autorisez l’accès.',
   'repos.folder.error': 'Échec de l’indexation du dossier : {msg}',
   'mail.title': '📧 Indexer ma boîte Office 365',
   'mail.hint': 'Indexe vos courriels sur l’appareil via une connexion Microsoft Graph. Relancez pour n’ajouter que les nouveaux messages.',
@@ -760,15 +738,11 @@ const FR: Dict = {
   'conversations.confirmDelete': 'Supprimer « {title} »? Cette action est irréversible.',
   'conversations.confirmClearAll':
     'Supprimer les {n} conversations enregistrées? Cette action est irréversible.',
-  'conversations.imported': 'Conversation chargée.',
   'conversations.importError': 'Ce fichier n’est pas une conversation CANChat Agent.',
   'conversations.messageCount': '{n} messages',
   'conversations.labels': 'Étiquettes',
-  'conversations.filterByLabel': 'Filtrer par étiquette',
-  'conversations.allLabels': 'Toutes les conversations',
   'conversations.noMatches': 'Aucune conversation ne correspond aux étiquettes sélectionnées.',
   'conversations.assignLabels': 'Étiquettes',
-  'conversations.newLabel': 'Nouvelle étiquette',
   'conversations.labelNamePlaceholder': 'Nom de l’étiquette',
   'conversations.addLabel': 'Ajouter',
   'conversations.renameLabel': 'Renommer',
@@ -841,6 +815,3 @@ export function useT(): Translator {
   return useContext(LangContext).t;
 }
 
-export function useLang(): Lang {
-  return useContext(LangContext).lang;
-}

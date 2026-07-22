@@ -58,17 +58,6 @@ export function resolveSharePointBase(settings: Settings): string | undefined {
   return settings.sharepointBaseUrl?.trim().replace(/\/+$/, '') || undefined;
 }
 
-export function sharePointRepoName(libraryUrl: string): string {
-  try {
-    const u = new URL(libraryUrl);
-    const last = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || u.hostname);
-    const clean = last.replace(/[^a-zA-Z0-9 _-]/g, '').trim();
-    return `☁ SharePoint - ${clean || u.hostname}`;
-  } catch {
-    return '☁ SharePoint';
-  }
-}
-
 export async function probeSharePointSession(base: string): Promise<{ connected: boolean; base: string; error?: string }> {
   const clean = base.replace(/\/+$/, '');
   try {

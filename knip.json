@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/background/serviceWorker.ts",
+    "src/sidebar/main.tsx",
+    "src/workspace/main.tsx",
+    "src/offscreen/offscreen.ts",
+    "src/microphone/microphone.ts",
+    "src/content/contentScript.ts",
+    "src/content/webmcpBridge.ts",
+    "src/content/pointerTracker.ts",
+    "src/content/interactionRecorder.ts",
+    "word-addin/src/main.tsx",
+    "src/**/*.test.ts",
+    "tests/e2e/**/*.ts"
+  ],
+  "project": ["src/**", "word-addin/src/**", "tests/**"],
+  "ignoreDependencies": ["@vitest/coverage-v8"]
+}

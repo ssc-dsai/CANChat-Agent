@@ -55,12 +55,6 @@ body {
   line-height: 1.1;
 }
 
-.brand-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
 
 .title {
   font-weight: 700;
@@ -71,16 +65,6 @@ body {
   text-overflow: ellipsis;
 }
 
-.app-version {
-  align-self: flex-start;
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  background: var(--bg-input);
-  border-radius: 5px;
-  padding: 1px 6px;
-}
 
 /* At rest (idle) the status is just a quiet dot + dim label under the title —
    no filled pill, so it never competes with the brand. The pill fill is applied
@@ -1067,9 +1051,6 @@ body {
   accent-color: var(--accent);
 }
 
-.memory-disabled {
-  opacity: 0.5;
-}
 
 .memory-confidence {
   display: flex;
@@ -1091,10 +1072,6 @@ body {
   width: 100%;
 }
 
-.memory-text {
-  white-space: normal;
-  color: var(--text);
-}
 
 /* Buttons */
 .btn {
@@ -1623,11 +1600,6 @@ body {
   margin-top: 4px;
 }
 
-.settings-divider {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 6px 0;
-}
 
 /* Collapsible Data & privacy sections — native <details> for keyboard a11y.
    Collapsed by default, so the tab reads as a scannable four-item menu rather

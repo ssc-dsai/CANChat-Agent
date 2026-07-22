@@ -60,9 +60,6 @@ export async function importBackup(parsed: ParsedBackup): Promise<void> {
 
 export const loadSettings = () => get<Settings>(CONFIG, 'settings');
 export const loadSkills = () => get<Skill[]>(CONFIG, 'skills').then((s) => s ?? []);
-export const loadSites = () => get<SiteEntry[]>(CONFIG, 'sites').then((s) => s ?? []);
-export const loadMemory = () => get<MemoryEntry[]>(CONFIG, 'memory').then((m) => m ?? []);
-
 export const getRepo = (name: string) => get<ParsedRepo>(REPOS, name);
 
 /** Repository names with their document/chunk counts, for the picker. */

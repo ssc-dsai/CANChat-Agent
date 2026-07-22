@@ -9,10 +9,6 @@ export function getSnapshot(): TabContextSnapshot | null {
   return current;
 }
 
-export function clearSnapshot(): void {
-  current = null;
-}
-
 export function isStale(snapshot: TabContextSnapshot): boolean {
   return Date.now() - new Date(snapshot.createdAt).getTime() > STALE_AFTER_MS;
 }
