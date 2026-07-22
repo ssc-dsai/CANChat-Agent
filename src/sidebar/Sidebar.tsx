@@ -25,6 +25,7 @@ import { OnboardingScreen } from './OnboardingScreen';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { exportConversationHtml } from './conversationExport';
 import { useT } from './i18n';
+import { OverflowMenu } from './OverflowMenu';
 import { PlanPanel } from './PlanPanel';
 import { TabContextPanel } from './TabContextPanel';
 import { ToolActivityPanel } from './ToolActivityPanel';
@@ -293,48 +294,9 @@ export function Sidebar() {
           </span>
         </div>
         <div class="header-controls">
-          <span class="scale-ctl">
-            <button class="scale-btn" aria-label={t('header.smallerText')} title={t('header.smallerText')} onClick={() => applyScale(uiScale - 0.1)}>
-              A−
-            </button>
-            <button class="scale-val" aria-label={t('header.resetText')} title={t('header.resetText')} onClick={() => applyScale(1)}>
-              {Math.round(uiScale * 100)}%
-            </button>
-            <button class="scale-btn" aria-label={t('header.largerText')} title={t('header.largerText')} onClick={() => applyScale(uiScale + 0.1)}>
-              A+
-            </button>
-          </span>
-          <span class="header-divider" />
           <ProjectSwitcher />
           <button class="icon-btn" aria-label={t('header.history')} title={t('header.history')} onClick={() => setShowHistory(true)}>
             <IconHistory />
-          </button>
-          <button
-            class="icon-btn"
-            aria-label={t('header.saveConversation')}
-            title={t('header.saveConversation')}
-            onClick={() => exportConversationHtml(messages)}
-            disabled={messages.length === 0}
-          >
-            <IconSave />
-          </button>
-          <button
-            class="icon-btn"
-            aria-label={t('header.undo')}
-            title={t('header.undo')}
-            onClick={() => send({ type: 'undo_exchange' })}
-            disabled={!canUndo || status !== 'idle'}
-          >
-            <IconUndo />
-          </button>
-          <button
-            class={`icon-btn${learnRecording ? ' icon-btn-active' : ''}`}
-            aria-label={learnRecording ? t('header.learnStop') : t('header.learnStart')}
-            title={learnRecording ? t('header.learnStop') : t('header.learnStart')}
-            onClick={toggleLearnMode}
-            disabled={status !== 'idle' && !learnRecording}
-          >
-            <IconRecord />
           </button>
           <button
             class="new-chat-btn"
@@ -346,6 +308,46 @@ export function Sidebar() {
             <IconNew />
             <span>{t('header.newChatShort')}</span>
           </button>
+          <OverflowMenu
+            label={t('header.more')}
+            embedded={
+              <span class="scale-ctl">
+                <button class="scale-btn" aria-label={t('header.smallerText')} title={t('header.smallerText')} onClick={() => applyScale(uiScale - 0.1)}>
+                  A−
+                </button>
+                <button class="scale-val" aria-label={t('header.resetText')} title={t('header.resetText')} onClick={() => applyScale(1)}>
+                  {Math.round(uiScale * 100)}%
+                </button>
+                <button class="scale-btn" aria-label={t('header.largerText')} title={t('header.largerText')} onClick={() => applyScale(uiScale + 0.1)}>
+                  A+
+                </button>
+              </span>
+            }
+            items={[
+              {
+                id: 'save-conversation',
+                label: t('header.saveConversation'),
+                icon: <IconSave />,
+                disabled: messages.length === 0,
+                onSelect: () => exportConversationHtml(messages),
+              },
+              {
+                id: 'undo',
+                label: t('header.undoShort'),
+                icon: <IconUndo />,
+                disabled: !canUndo || status !== 'idle',
+                onSelect: () => send({ type: 'undo_exchange' }),
+              },
+              {
+                id: 'learn',
+                label: learnRecording ? t('header.learnStop') : t('header.learnStart'),
+                icon: <IconRecord />,
+                active: learnRecording,
+                disabled: status !== 'idle' && !learnRecording,
+                onSelect: toggleLearnMode,
+              },
+            ]}
+          />
           <button
             class="icon-btn"
             aria-label={t('header.settings')}

@@ -9,6 +9,14 @@ import { expect, sendChat, test } from './fixtures';
 const SHOTS = 'docs/user-guide/screenshots';
 const PANEL = { width: 400, height: 900 };
 
+
+// Undo lives in the header's More menu now. Open the menu and return the
+// menuitem locator (the popover unmounts when closed, so re-open per use).
+async function openUndo(sidebar: import('@playwright/test').Page) {
+  await sidebar.getByRole('button', { name: 'More actions' }).click();
+  return sidebar.getByRole('menuitem', { name: /Undo last exchange/ });
+}
+
 test.describe('user-manual screenshots', () => {
   test('workspace Models page — advanced groups (embeddings, transcription, SharePoint)', async ({ context, extensionId }) => {
     const page = await context.newPage();
@@ -225,41 +233,47 @@ test.describe('user-manual screenshots', () => {
 
   test('undo removes the last exchange and refills the composer', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
-    const undo = sidebar.getByRole('button', { name: /Undo last exchange/ });
     const input = sidebar.getByTestId('chat-input');
 
     // Nothing to undo on a fresh thread.
+    let undo = await openUndo(sidebar);
     await expect(undo).toBeDisabled();
+    await sidebar.keyboard.press('Escape');
 
     await sendChat(sidebar, 'first prompt please summarize.');
     await expect(sidebar.locator('.msg-user', { hasText: 'first prompt' })).toBeVisible();
     await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
-    await expect(undo).toBeEnabled();
 
+    undo = await openUndo(sidebar);
+    await expect(undo).toBeEnabled();
     await undo.click();
-    // The exchange is gone and the removed prompt is back in the composer.
+    // Selecting a menu item closes the menu; the exchange is gone and the
+    // removed prompt is back in the composer.
+    await expect(sidebar.getByRole('menu')).toHaveCount(0);
     await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toHaveCount(0);
     await expect(sidebar.locator('.msg-user', { hasText: 'first prompt' })).toHaveCount(0);
     await expect(input).toHaveText('first prompt please summarize.');
+    undo = await openUndo(sidebar);
     await expect(undo).toBeDisabled();
   });
 
   test('undo can be repeated back through multiple exchanges', async ({ sidebar }) => {
     await sidebar.setViewportSize(PANEL);
-    const undo = sidebar.getByRole('button', { name: /Undo last exchange/ });
 
     await sendChat(sidebar, 'message one.');
     await expect(sidebar.locator('.msg-assistant', { hasText: 'SUMMARY_OK' })).toBeVisible();
     await sendChat(sidebar, 'message two.');
     await expect(sidebar.locator('.msg-user', { hasText: 'message two' })).toBeVisible();
 
+    let undo = await openUndo(sidebar);
     await undo.click(); // removes exchange two
     await expect(sidebar.locator('.msg-user', { hasText: 'message two' })).toHaveCount(0);
     await expect(sidebar.locator('.msg-user', { hasText: 'message one' })).toBeVisible();
-    await expect(undo).toBeEnabled();
 
+    undo = await openUndo(sidebar);
     await undo.click(); // removes exchange one → empty thread
     await expect(sidebar.locator('.msg-user', { hasText: 'message one' })).toHaveCount(0);
+    undo = await openUndo(sidebar);
     await expect(undo).toBeDisabled();
   });
 
