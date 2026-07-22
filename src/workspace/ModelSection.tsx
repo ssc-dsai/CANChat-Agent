@@ -44,16 +44,24 @@ export function ModelSection() {
     }
   };
 
+  // Patch-save: merge only this section's fields over a fresh read, so saving
+  // here can't revert what AdvancedSettingsSection (same page, same storage
+  // object) saved after this component mounted.
   const save = async () => {
-    const trimmed: Settings = {
-      ...settings,
-      baseUrl: settings.baseUrl.trim(),
-      apiKey: settings.apiKey.trim(),
-      model: settings.model.trim(),
-      ideogramApiKey: settings.ideogramApiKey?.trim() || undefined,
-      apiVersion: settings.apiVersion?.trim() || undefined,
-    };
-    await chrome.storage.local.set({ ba_settings: trimmed });
+    const r = await chrome.storage.local.get('ba_settings');
+    const current = (r.ba_settings as Settings | undefined) ?? EMPTY;
+    await chrome.storage.local.set({
+      ba_settings: {
+        ...current,
+        baseUrl: settings.baseUrl.trim(),
+        apiKey: settings.apiKey.trim(),
+        model: settings.model.trim(),
+        ideogramApiKey: settings.ideogramApiKey?.trim() || undefined,
+        apiVersion: settings.apiVersion?.trim() || undefined,
+        temperature: settings.temperature,
+        maxTokens: settings.maxTokens,
+      },
+    });
     setSaved(true);
   };
 
@@ -140,11 +148,6 @@ export function ModelSection() {
           />
         </label>
       </div>
-
-      <p class="settings-note">
-        Other endpoint options — embeddings, transcription, Azure/SharePoint, and advanced tuning — live
-        in the sidebar Settings panel for now.
-      </p>
 
       {testResult && (
         <div class={`banner ${testResult.ok ? 'banner-ok' : 'banner-error'}`}>{testResult.detail}</div>

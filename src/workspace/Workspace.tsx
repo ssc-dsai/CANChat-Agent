@@ -9,9 +9,11 @@ import { AutomationsPage } from './AutomationsPage';
 import { ConsoleSettingsPage } from './ConsoleSettingsPage';
 import { ModelProfilesSection } from './ModelProfilesSection';
 import { ModelSection } from './ModelSection';
+import { AdvancedSettingsSection } from './AdvancedSettingsSection';
 import { DataViewer } from './DataViewer';
 import { ImageViewer } from './ImageViewer';
 import { MemoryPage } from './MemoryPage';
+import { MemorySection } from '../sidebar/MemorySection';
 import { ProductsPage } from './ProductsPage';
 import { ProjectsPage } from './ProjectsPage';
 
@@ -108,11 +110,17 @@ export function Workspace() {
         return (
           <div class="ws-models-page">
             <ModelSection />
+            <AdvancedSettingsSection />
             <ModelProfilesSection />
           </div>
         );
       case 'memory':
-        return <MemoryPage />;
+        return (
+          <div class="ws-memory-view">
+            <MemorySection />
+            <MemoryPage />
+          </div>
+        );
       case 'automations':
         return <AutomationsPage />;
       case 'products':

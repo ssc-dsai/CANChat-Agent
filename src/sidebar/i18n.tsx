@@ -172,9 +172,6 @@ const EN: Dict = {
   'settings.title': 'Settings',
   'settings.tabModel': 'Model',
   'settings.tabAdvanced': 'Advanced',
-  'settings.tabSkills': 'Skills',
-  'settings.tabKnowledge': 'Knowledge bases',
-  'settings.tabData': 'Data & privacy',
   'settings.help': 'Help & docs',
   // settings — group headings (Mac-style grouped cards)
   'settings.groupConnection': 'Model connection',
@@ -539,9 +536,6 @@ const FR: Dict = {
   'settings.title': 'Paramètres',
   'settings.tabModel': 'Modèle',
   'settings.tabAdvanced': 'Avancé',
-  'settings.tabSkills': 'Compétences',
-  'settings.tabKnowledge': 'Bases de connaissances',
-  'settings.tabData': 'Données et confidentialité',
   'settings.help': 'Aide et docs',
   // settings — group headings (Mac-style grouped cards)
   'settings.groupConnection': 'Connexion au modèle',

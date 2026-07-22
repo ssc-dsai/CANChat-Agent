@@ -26,7 +26,6 @@ import { ProjectSwitcher } from './ProjectSwitcher';
 import { exportConversationHtml } from './conversationExport';
 import { useT } from './i18n';
 import { PlanPanel } from './PlanPanel';
-import { SettingsScreen } from './SettingsScreen';
 import { TabContextPanel } from './TabContextPanel';
 import { ToolActivityPanel } from './ToolActivityPanel';
 
@@ -138,7 +137,6 @@ export function Sidebar() {
   // Pending prompt text to drop back into the composer after an undo.
   const [restoreDraft, setRestoreDraft] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -257,8 +255,19 @@ export function Sidebar() {
     };
 
     const onStorageChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-      if (area !== 'local' || !changes.ba_learn_recording) return;
-      setLearnRecording(Boolean((changes.ba_learn_recording.newValue as { active?: boolean } | undefined)?.active));
+      if (area !== 'local') return;
+      if (changes.ba_learn_recording) {
+        setLearnRecording(Boolean((changes.ba_learn_recording.newValue as { active?: boolean } | undefined)?.active));
+      }
+      // Settings are edited in the workspace tab now — watch storage so the
+      // "no model" banner clears (and onboarding dismisses) the moment a
+      // connection is saved there; there is no settings overlay to close.
+      if (changes.ba_settings) {
+        const s = changes.ba_settings.newValue as Settings | undefined;
+        const ok = Boolean(s?.baseUrl && s?.apiKey && s?.model);
+        setConfigured(ok);
+        if (ok) setShowOnboarding(false);
+      }
     };
     chrome.storage.onChanged.addListener(onStorageChanged);
 
@@ -348,7 +357,12 @@ export function Sidebar() {
           <button class="icon-btn" aria-label="Open workspace" title="Open workspace" onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html') })}>
             <IconWorkspace />
           </button>
-          <button class="icon-btn" aria-label={t('header.settings')} title={t('header.settings')} onClick={() => setShowSettings(true)}>
+          <button
+            class="icon-btn"
+            aria-label={t('header.settings')}
+            title={t('header.settings')}
+            onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html#settings') })}
+          >
             <IconSettings />
           </button>
         </div>
@@ -379,10 +393,13 @@ export function Sidebar() {
         </div>
       )}
 
-      {configured === false && !showSettings && !showOnboarding && (
+      {configured === false && !showOnboarding && (
         <div class="banner banner-warn">
           {t('header.noModel')}{' '}
-          <button class="link-btn" onClick={() => setShowSettings(true)}>
+          <button
+            class="link-btn"
+            onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html#models') })}
+          >
             {t('header.openSettings')}
           </button>
         </div>
@@ -420,16 +437,7 @@ export function Sidebar() {
           }}
           onOpenAdvanced={() => {
             setShowOnboarding(false);
-            setShowSettings(true);
-          }}
-        />
-      )}
-
-      {showSettings && (
-        <SettingsScreen
-          onClose={(nowConfigured) => {
-            setShowSettings(false);
-            if (nowConfigured !== undefined) setConfigured(nowConfigured);
+            void chrome.tabs.create({ url: chrome.runtime.getURL('workspace.html#models') });
           }}
         />
       )}

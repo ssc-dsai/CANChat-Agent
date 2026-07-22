@@ -20,11 +20,14 @@ test.describe('walkthrough', () => {
     await expect(page.locator('.onboarding-card .field')).toHaveCount(3);
     await page.screenshot({ path: `${SHOTS}/01-first-run-onboarding.png` });
 
-    // "Advanced setup" hands off to the full (tabbed) Settings; closing it then
-    // shows the gated "no model" banner.
-    await page.getByRole('button', { name: /advanced setup/i }).click();
-    await expect(page.locator('.settings-tabs')).toBeVisible();
-    await page.locator('.settings-card > .settings-header .icon-btn').click();
+    // "Advanced setup" hands off to the workspace Models tab (the settings
+    // overlay is gone); dismissing onboarding shows the gated "no model" banner.
+    const [wsPage] = await Promise.all([
+      context.waitForEvent('page'),
+      page.getByRole('button', { name: /advanced setup/i }).click(),
+    ]);
+    expect(wsPage.url()).toContain('workspace.html#models');
+    await wsPage.close();
     await expect(page.locator('.banner-warn')).toBeVisible();
     await page.screenshot({ path: `${SHOTS}/02-no-model-banner.png` });
   });
@@ -86,17 +89,23 @@ test.describe('walkthrough', () => {
     await sidebar.screenshot({ path: `${SHOTS}/10-error-retry.png` });
   });
 
-  test('07/08 — tabbed settings: Model tab and Data tab (U1)', async ({ sidebar }) => {
+  test('07/08 — settings live in the workspace: Models page and Settings page (U1)', async ({ context, sidebar }) => {
     await sidebar.setViewportSize(PANEL);
-    await sidebar.locator('.header-controls .icon-btn').last().click(); // Settings gear
-    await expect(sidebar.locator('.settings-tabs')).toBeVisible();
-    // Default Model tab: only the three required fields above the fold.
-    await expect(sidebar.locator('.settings-tab.is-active')).toHaveText('Model');
-    await sidebar.screenshot({ path: `${SHOTS}/08-settings-model-tab.png` });
+    // The gear opens the workspace Settings tab (the sidebar overlay is gone).
+    const [ws] = await Promise.all([
+      context.waitForEvent('page'),
+      sidebar.locator('.header-controls .icon-btn').last().click(), // Settings gear
+    ]);
+    expect(ws.url()).toContain('workspace.html#settings');
+    await ws.setViewportSize({ width: 1280, height: 900 });
+    await expect(ws.getByText('Backup & Restore')).toBeVisible();
+    await ws.screenshot({ path: `${SHOTS}/09-settings-data-tab.png` });
 
-    // Data & privacy tab groups the formerly-stacked sub-sections.
-    await sidebar.getByRole('tab', { name: 'Data & privacy' }).click();
-    await expect(sidebar.getByText('Backup & Restore')).toBeVisible();
-    await sidebar.screenshot({ path: `${SHOTS}/09-settings-data-tab.png` });
+    // Models page: connection plus the advanced groups, one scroll.
+    await ws.getByRole('button', { name: 'Models' }).click();
+    await expect(ws.locator('.ws-model-page')).toBeVisible();
+    await expect(ws.getByTestId('advanced-settings')).toBeVisible();
+    await ws.screenshot({ path: `${SHOTS}/08-settings-model-tab.png` });
+    await ws.close();
   });
 });
