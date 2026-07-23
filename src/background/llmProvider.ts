@@ -407,8 +407,9 @@ export async function complete(
  */
 export async function testConnection(settings: Settings): Promise<{ ok: boolean; detail: string }> {
   try {
-    // The probe should fail fast — don't sit through retries while the user waits.
-    const message = await complete({ ...settings, retryOnRateLimit: false }, [
+    // The probe should fail fast: no retries and a tiny deterministic completion,
+    // since some local OpenAI-compatible servers default to very large outputs.
+    const message = await complete({ ...settings, retryOnRateLimit: false, temperature: 0, maxTokens: 8 }, [
       { role: 'user', content: 'Reply with the single word: ok' },
     ]);
     return { ok: true, detail: `Connected. Model replied: ${(message.content ?? '').slice(0, 100)}` };

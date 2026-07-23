@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ModelProfile, Settings } from '../shared/types';
-import { apiVersion, authHeaders, buildUrl, resolveModelForRole } from './llmProvider';
+import { apiVersion, authHeaders, buildUrl, resolveModelForRole, testConnection } from './llmProvider';
 
 const base: Settings = { baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', model: 'gpt' };
 
@@ -21,6 +21,10 @@ const cloudProfile: ModelProfile = {
   model: 'mini',
   privacyTier: 'cloud',
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('apiVersion (Azure mode detection)', () => {
   it('is undefined for a standard OpenAI endpoint', () => {
@@ -63,6 +67,27 @@ describe('authHeaders', () => {
 
   it('uses the api-key header in Azure mode', () => {
     expect(authHeaders('sk-test', '2024-02-01')).toEqual({ 'api-key': 'sk-test' });
+  });
+});
+
+describe('testConnection', () => {
+  it('constrains the probe so local servers do not run to their default token cap', async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body));
+        return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' } }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+
+    const result = await testConnection({ ...base, maxTokens: 2048, temperature: 1 });
+
+    expect(result.ok).toBe(true);
+    expect(requestBody).toMatchObject({ max_tokens: 8, temperature: 0 });
   });
 });
 
