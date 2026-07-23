@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveStepBudget, findSimilarLesson, lessonScore, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
+import { deriveStepBudget, findSimilarLesson, lessonScore, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing, withMergedSystemState } from './loopHelpers';
 import type { LlmMessage } from './llmProvider';
 import type { LessonEntry } from '../shared/types';
 
@@ -126,6 +126,28 @@ describe('repairToolPairing', () => {
     const msgs: LlmMessage[] = [asst('a')];
     repairToolPairing(msgs);
     expect(msgs).toHaveLength(1);
+  });
+});
+
+describe('withMergedSystemState', () => {
+  it('folds working state into the first system message instead of appending another system role', () => {
+    const msgs: LlmMessage[] = [
+      { role: 'system', content: 'base' },
+      { role: 'user', content: 'hi' },
+    ];
+
+    const out = withMergedSystemState(msgs, '\nstate');
+
+    expect(out.map((m) => m.role)).toEqual(['system', 'user']);
+    expect(out[0].content).toBe('base\nstate');
+    expect(msgs[0].content).toBe('base');
+  });
+
+  it('prepends one system message when the conversation has no system prefix', () => {
+    const out = withMergedSystemState([{ role: 'user', content: 'hi' }], 'state');
+
+    expect(out.map((m) => m.role)).toEqual(['system', 'user']);
+    expect(out[0]).toEqual({ role: 'system', content: 'state' });
   });
 });
 

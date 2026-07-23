@@ -169,3 +169,18 @@ export function repairToolPairing(messages: LlmMessage[]): LlmMessage[] {
   }
   return out;
 }
+
+/**
+ * Add volatile working state to an outgoing chat request without appending a
+ * second system message. Some local OpenAI-compatible chat templates reject role
+ * sequences like system/user/system, so fold the state into the initial system
+ * message for transport while leaving persisted conversation history untouched.
+ */
+export function withMergedSystemState(messages: LlmMessage[], stateBlock: string): LlmMessage[] {
+  if (messages.length === 0) return [{ role: 'system', content: stateBlock }];
+  const [first, ...rest] = messages;
+  if (first.role === 'system' && typeof first.content === 'string') {
+    return [{ ...first, content: `${first.content}${stateBlock}` }, ...rest];
+  }
+  return [{ role: 'system', content: stateBlock }, ...messages];
+}

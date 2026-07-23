@@ -74,7 +74,7 @@ import type { M365SearchFilters } from '../shared/microsoftSearch';
 import { captureFullPage } from './fullPageCapture';
 import { mcpCallTool, mcpListTools } from './mcpClient';
 import { complete, embedChunks, embedderId, LLM_TIMEOUT_MS, resolveModelForRole, type ContentPart, type LlmMessage, type LlmToolCall } from './llmProvider';
-import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
+import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing, withMergedSystemState } from './loopHelpers';
 import { generateDocument, generatePresentation, productSave, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { normalizeSlides } from '../shared/slides';
 import type { SearchHit } from '../shared/vectorSearch';
@@ -1831,7 +1831,7 @@ export class AgentRuntime {
       // No active tab (or restricted); playbooks just won't auto-activate.
     }
     // The base system prompt is fixed for the task; the live state block is
-    // appended as a trailing message each turn (see withWorkingState).
+    // merged into it only for outgoing model calls (see withWorkingState).
     const capabilities = this.scopedCapabilities(await getCapabilities());
     this.knownSiteNames = capabilities.map((c) => c.name);
     this.memoryGraph = memoryEnabled ? await getMemoryGraph() : emptyMemoryGraph();
@@ -1845,9 +1845,8 @@ export class AgentRuntime {
       (memoryEnabled ? renderCoreMemoryBlock(this.memoryGraph, this.activeProjectId) + lessonsPromptBlock(lessonEntries) : '') +
       customInstructions;
     // Keep conversation[0] = the byte-stable system base (no volatile state).
-    // The live working-state is appended as a trailing message at call time (see
-    // withWorkingState), so this large system+tools prefix stays identical across
-    // a task's steps and the provider's prompt cache can hit it.
+    // The live working-state is folded into that system message only at call time
+    // (see withWorkingState), so history remains free of volatile state.
     if (this.conversation.length === 0) {
       this.conversation.push({ role: 'system', content: this.systemBase });
     } else {
@@ -3159,12 +3158,12 @@ export class AgentRuntime {
   // ----- working state (plan, findings, budget) -----
 
   // Build the outgoing message array for a model call: the persisted conversation
-  // (whose system prefix is byte-stable) plus the live working-state as a trailing
-  // system status message. Built fresh per call and never stored, so the volatile
-  // state never lands in history/compaction/persistence and never invalidates the
-  // cacheable system+tools prefix.
+  // plus live working state folded into the initial system message. Built fresh
+  // per call and never stored, so volatile state never lands in history,
+  // compaction, or persistence. Folding avoids system/user/system role sequences
+  // that stricter local chat templates reject.
   private withWorkingState(): LlmMessage[] {
-    return [...repairToolPairing(this.conversation), { role: 'system', content: this.buildStateBlock() }];
+    return withMergedSystemState(repairToolPairing(this.conversation), this.buildStateBlock());
   }
 
   private buildStateBlock(): string {
