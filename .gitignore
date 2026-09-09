@@ -1,4 +1,9 @@
 node_modules/
+dist/*.zip
+dist/*.sha256
+canChat-agent-*.zip
+canChat-agent-*.zip.sha256
+*.zip.sha256
 dist/
 *.local
 .DS_Store
