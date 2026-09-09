@@ -12,6 +12,7 @@
 import { classifyUpload } from '../shared/uploadFile';
 import { emailFileName, emailMarkdown, looksLikeEmail, parseDraggedEmail, type ParsedEmail } from '../shared/emailDrop';
 import { parseEml } from '../shared/emlParse';
+import { parseMsg } from '../shared/msgParse';
 
 /** Parsed email fields shown on the "confirm what you caught" preview card. */
 export interface EmailPreview {
@@ -63,6 +64,12 @@ function isEmlFile(f: File): boolean {
   return /\.eml$/i.test(f.name) || f.type === 'message/rfc822';
 }
 
+function isMsgFile(f: File): boolean {
+  return /\.msg$/i.test(f.name) || f.type === 'application/vnd.ms-outlook';
+}
+
+
+
 /**
  * Synchronous capture: supported files, else a dragged/pasted email's text.
  * Used where an async read isn't wanted (the composer paste). Does NOT read
@@ -108,6 +115,14 @@ export async function captureDropFull(dt: DataTransfer | null): Promise<DroppedI
       // Unreadable .eml — skip it rather than failing the whole drop.
     }
   }
+  for (const f of allFiles.filter(isMsgFile)) {
+    try {
+      const parsed = parseMsg(await f.arrayBuffer());
+      if (parsed.body.trim() || parsed.subject) items.push(emailItem(parsed));
+    } catch {
+      // Unreadable .msg — skip it rather than failing the whole drop.
+    }
+  }
   if (items.length) return items;
 
   if (html || plain) {
@@ -132,6 +147,13 @@ export async function itemsFromFiles(files: File[]): Promise<DroppedItem[]> {
         if (parsed.body.trim() || parsed.subject) items.push(emailItem(parsed));
       } catch {
         // Unreadable .eml — skip it.
+      }
+    } else if (isMsgFile(f)) {
+      try {
+        const parsed = parseMsg(await f.arrayBuffer());
+        if (parsed.body.trim() || parsed.subject) items.push(emailItem(parsed));
+      } catch {
+        // Unreadable .msg — skip it.
       }
     } else if (classifyUpload(f.name, f.type)) {
       items.push({ file: f });

@@ -23,7 +23,7 @@ const PDF_EXT = ['pdf'];
 
 /** The `accept` attribute value for the file inputs. */
 export const UPLOAD_ACCEPT =
-  '.pdf,.docx,.doc,.docm,.pptx,.ppt,.pptm,.ppsx,.xlsx,.xlsm,.odt,.ods,.odp,.rtf,.epub,.txt,.md,.markdown,.csv,.tsv,.log,.eml';
+  '.pdf,.docx,.doc,.docm,.pptx,.ppt,.pptm,.ppsx,.xlsx,.xlsm,.odt,.ods,.odp,.rtf,.epub,.txt,.md,.markdown,.csv,.tsv,.log,.eml,.msg';
 
 function extOf(name: string): string {
   const dot = name.lastIndexOf('.');

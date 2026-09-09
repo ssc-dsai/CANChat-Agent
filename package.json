@@ -31,6 +31,7 @@
   "dependencies": {
     "@firecrawl/anydoc-wasm": "^0.1.8",
     "@huggingface/transformers": "^3.8.1",
+    "@kenjiuno/msgreader": "^1.28.0",
     "@litertjs/core": "^2.5.3",
     "docx": "^9.7.1",
     "dompurify": "^3.4.9",
