@@ -34,6 +34,7 @@ import { getVaultState } from './vault';
 import type { BackgroundEvent } from '../shared/messages';
 import { MEMORY_TOOL_DEFINITIONS, READ_ONLY_TOOLS, TOOL_DEFINITIONS } from '../shared/schemas';
 import {
+  normalizeRepoName,
   sourcePolicyForRepos,
   sourcePolicyPrompt,
   sourceRepositoryAllowed,
@@ -330,10 +331,27 @@ function buildMentionDirective(
   const lines = mentions.map((m) => {
     const v = m.value.replace(/"/g, '');
     return m.kind === 'repo'
-      ? `- Local repository "${v}": this is the exclusive source for the request. Use only its repository evidence unless the user explicitly approves a web fallback.`
+      ? `- Local repository "${v}": prioritize searching this repository first. Call search_repo with repo="${v}" before any web or external search, and answer from its passages when possible. Only request a web fallback if the repository lacks sufficient evidence.`
       : `- Web page ${v}: open it with open_url (or navigate) and read it directly to answer — this is the exact page the user means; do not web-search for it.`;
   });
   return `\n\n[The user referenced these with @/# — act on them directly for this request:]\n${lines.join('\n')}`;
+}
+
+function parsePlainTextRepoMentions(text: string, knownNames?: Set<string>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const re = /(?:^|\s)#([^\s#@.,;:!?()"'`]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const raw = m[1].trim().replace(/[.,;:!?]+$/, '');
+    if (!raw) continue;
+    const key = normalizeRepoName(raw);
+    if (seen.has(key)) continue;
+    if (knownNames && ![...knownNames].some((n) => normalizeRepoName(n) === key)) continue;
+    seen.add(key);
+    out.push(raw);
+  }
+  return out;
 }
 
 const SYSTEM_PROMPT = `You are a browser agent running in a Chrome extension side panel. The browser is your primary tool environment.
@@ -780,9 +798,59 @@ export class AgentRuntime {
 
     // Inserted @bookmark / #repo mentions become an explicit directive so the
     // agent acts on them directly (open that page / search that repo).
-    const directive = buildMentionDirective(mentions);
+    // Support both structured mentions (bold chips) and plain-text "#repo" fallbacks
+    // so typing "#MyRepo" without picking from the autocomplete still prioritizes that KB.
+    let effectiveMentions = mentions ? [...mentions] : [];
+    let mentionedRepos = effectiveMentions.filter((mention) => mention.kind === 'repo').map((mention) => mention.value.trim()).filter(Boolean);
+
+    if (mentionedRepos.length === 0) {
+      const plainFallback = parsePlainTextRepoMentions(text);
+      if (plainFallback.length > 0) {
+        // Validate against known repos to avoid false positives from unrelated hashtags
+        try {
+          const listed = await repoList();
+          const knownNames = new Set(
+            ((listed.result as Array<{ name?: string }> | undefined) ?? [])
+              .map((entry) => entry.name)
+              .filter((name): name is string => typeof name === 'string'),
+          );
+          const validated = plainFallback.filter((repo) => {
+            const key = normalizeRepoName(repo);
+            return [...knownNames].some((n) => normalizeRepoName(n) === key);
+          });
+          if (validated.length > 0) {
+            // Map back to canonical casing from storage
+            const canonicalByKey = new Map<string, string>();
+            for (const n of knownNames) canonicalByKey.set(normalizeRepoName(n), n);
+            const canonical = validated.map((r) => canonicalByKey.get(normalizeRepoName(r)) ?? r);
+            effectiveMentions = canonical.map((value) => ({ kind: 'repo' as const, value }));
+            mentionedRepos = canonical;
+          }
+        } catch {
+          // If validation fails, fall back to using the raw hashtags
+          effectiveMentions = plainFallback.map((value) => ({ kind: 'repo' as const, value }));
+          mentionedRepos = [...plainFallback];
+        }
+      }
+    }
+
+    // If still no repo selected, honor the workspace's currently viewed knowledge base
+    // (stored by NotebooksWorkspace when the user clicks a notebook tile).
+    if (mentionedRepos.length === 0) {
+      try {
+        const stored = await chrome.storage.local.get('ba_active_repo');
+        const activeRepo = typeof stored.ba_active_repo === 'string' ? stored.ba_active_repo.trim() : '';
+        if (activeRepo) {
+          effectiveMentions = [{ kind: 'repo', value: activeRepo }];
+          mentionedRepos = [activeRepo];
+        }
+      } catch {
+        // ignore storage errors
+      }
+    }
+
+    const directive = buildMentionDirective(effectiveMentions.length > 0 ? effectiveMentions : mentions);
     if (directive) taskText += directive;
-    const mentionedRepos = (mentions ?? []).filter((mention) => mention.kind === 'repo').map((mention) => mention.value.trim());
     this.sourcePolicy = sourcePolicyForRepos(mentionedRepos);
     if (mentionedRepos.length > 0) {
       const listed = await repoList();
@@ -790,16 +858,20 @@ export class AgentRuntime {
         this.emit({ type: 'error', message: `Could not validate the selected repository: ${listed.error}` });
         return;
       }
-      const names = new Set(
-        ((listed.result as Array<{ name?: string }> | undefined) ?? [])
+      const knownNames = ((listed.result as Array<{ name?: string }> | undefined) ?? [])
           .map((entry) => entry.name)
-          .filter((name): name is string => typeof name === 'string'),
-      );
-      const missing = mentionedRepos.filter((repo) => !names.has(repo));
+          .filter((name): name is string => typeof name === 'string');
+      const knownKeys = new Set(knownNames.map(normalizeRepoName));
+      const missing = mentionedRepos.filter((repo) => !knownKeys.has(normalizeRepoName(repo)));
       if (missing.length > 0) {
         this.emit({ type: 'error', message: `Repository not found: ${missing.join(', ')}` });
         return;
       }
+      // Normalize to canonical casing for downstream policy/prompt
+      const canonicalByKey = new Map<string, string>();
+      for (const n of knownNames) canonicalByKey.set(normalizeRepoName(n), n);
+      const canonicalRepos = mentionedRepos.map((r) => canonicalByKey.get(normalizeRepoName(r)) ?? r);
+      this.sourcePolicy = sourcePolicyForRepos(canonicalRepos);
     }
 
     // Consume any pending snapshots: shown on the user's message and sent

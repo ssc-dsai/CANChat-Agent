@@ -13,7 +13,7 @@ import { saveFile } from './download';
 import { useT } from './i18n';
 
 // chrome.storage.local keys that make up the user's configuration.
-const STORAGE_KEYS = ['ba_settings', 'ba_sites', 'ba_capabilities', 'ba_skills', 'ba_memory', 'ba_memory_graph', 'ba_lessons', 'ba_memory_enabled', 'ba_memory_min_confidence', 'ba_language', 'ba_projects', 'ba_active_project'];
+const STORAGE_KEYS = ['ba_settings', 'ba_sites', 'ba_capabilities', 'ba_skills', 'ba_memory', 'ba_memory_graph', 'ba_lessons', 'ba_memory_enabled', 'ba_memory_min_confidence', 'ba_language', 'ba_projects', 'ba_active_project', 'ba_active_repo'];
 
 interface Backup {
   // Current exports tag 'CANChat Agent'; legacy files tagged 'CANAgent' still restore.

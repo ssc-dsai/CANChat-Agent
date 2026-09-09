@@ -29,8 +29,21 @@ export const EXTERNAL_SOURCE_TOOLS: ReadonlySet<string> = new Set([
   'start_research_job',
 ]);
 
+export function normalizeRepoName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 export function sourcePolicyForRepos(repos: string[]): SourcePolicy {
-  const unique = [...new Set(repos.map((repo) => repo.trim()).filter(Boolean))];
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const raw of repos) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const key = normalizeRepoName(trimmed);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(trimmed);
+  }
   return unique.length > 0 ? { mode: 'repo_only', repos: unique, webApproved: false } : { mode: 'unrestricted' };
 }
 
@@ -40,7 +53,9 @@ export function sourceToolAllowed(policy: SourcePolicy, toolName: string): boole
 }
 
 export function sourceRepositoryAllowed(policy: SourcePolicy, repo: string): boolean {
-  return policy.mode !== 'repo_only' || policy.repos.includes(repo);
+  if (policy.mode !== 'repo_only') return true;
+  const key = normalizeRepoName(repo);
+  return policy.repos.some((r) => normalizeRepoName(r) === key);
 }
 
 export function toolsForSourcePolicy(policy: SourcePolicy, tools: ToolDefinition[]): ToolDefinition[] {
@@ -53,10 +68,10 @@ export function toolsForSourcePolicy(policy: SourcePolicy, tools: ToolDefinition
 export function sourcePolicyPrompt(policy: SourcePolicy): string {
   if (policy.mode !== 'repo_only' || policy.webApproved) return '';
   return (
-    `\n\nRepository-only source policy (enforced by the runtime): answer only from ${policy.repos.map((repo) => `"${repo}"`).join(', ')}. ` +
-    'Do not use browser pages, web search, external services, MCP, or your own factual knowledge as evidence. ' +
-    'Use the repository passages already attached to the user request; refine with search_repo/search_graph/global_search only if needed. ' +
-    'If repository evidence is insufficient, call request_web_fallback with a plain-language reason. The user must approve before external tools become available. ' +
+    `\n\nRepository-prioritized source policy (enforced by the runtime): prioritize searching and answering from ${policy.repos.map((repo) => `"${repo}"`).join(', ')}. ` +
+    'Search the selected repository first with search_repo (and search_graph/global_search when appropriate) and answer from its passages; the repository passages attached to this request were already retrieved for you. ' +
+    'Do not use browser pages, web search, external services, MCP, or your own factual knowledge as evidence before searching the selected repository. ' +
+    'If repository evidence is insufficient after searching, call request_web_fallback with a plain-language reason. The user must approve before external tools become available. ' +
     'If approval is denied, state that the repository does not contain enough evidence.'
   );
 }
