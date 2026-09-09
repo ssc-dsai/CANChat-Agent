@@ -18,6 +18,9 @@
 // =============================================================================
 
 import type { AddFilesResponse, UploadFile } from '../shared/messages';
+import { emailMarkdown } from '../shared/emailDrop';
+import { parseEml } from '../shared/emlParse';
+import { parseMsg } from '../shared/msgParse';
 import { classifyUpload, MAX_UPLOAD_BYTES } from '../shared/uploadFile';
 
 /** A file chosen from the folder picker, with its path relative to the root. */
@@ -37,13 +40,21 @@ export function folderRepoName(rootName: string): string {
  * Extract the supported files from a `<input webkitdirectory>` FileList, keeping
  * each file's folder-relative path and reporting the picked root folder's name.
  */
+function isEmailFileName(name: string): boolean {
+  return /\.eml$/i.test(name) || /\.msg$/i.test(name);
+}
+
+function isSupportedFileName(name: string): boolean {
+  return Boolean(classifyUpload(name)) || isEmailFileName(name);
+}
+
 export function filesFromList(list: FileList | File[]): { rootName: string; files: PickedFile[] } {
   const files: PickedFile[] = [];
   let rootName = '';
   for (const file of Array.from(list)) {
     const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
     if (!rootName && rel.includes('/')) rootName = rel.split('/')[0];
-    if (!classifyUpload(file.name)) continue; // skip unsupported types
+    if (!isSupportedFileName(file.name)) continue; // skip unsupported types
     files.push({ file, path: rel });
   }
   return { rootName: rootName || 'folder', files };
@@ -84,7 +95,7 @@ function readAllEntries(reader: DirReader): Promise<FsEntry[]> {
 async function walkEntry(entry: FsEntry, acc: PickedFile[]): Promise<void> {
   if (entry.isFile && entry.file) {
     const file = await new Promise<File>((res, rej) => entry.file!(res, rej));
-    if (classifyUpload(file.name)) acc.push({ file, path: entry.fullPath.replace(/^\//, '') });
+    if (isSupportedFileName(file.name)) acc.push({ file, path: entry.fullPath.replace(/^\//, '') });
   } else if (entry.isDirectory && entry.createReader) {
     const entries = await readAllEntries(entry.createReader());
     for (const e of entries) await walkEntry(e, acc);
@@ -172,6 +183,31 @@ function readAsDataUrl(file: File): Promise<string> {
 async function toUploadFile(
   w: PickedFile,
 ): Promise<UploadFile | { error: string; name: string; unreadable?: boolean }> {
+  const emailName = w.file.name;
+  const isEml = /\.eml$/i.test(emailName);
+  const isMsg = /\.msg$/i.test(emailName);
+  if (isEml || isMsg) {
+    if (w.file.size > MAX_UPLOAD_BYTES) return { error: 'too large', name: w.path };
+    try {
+      const parsed = isEml
+        ? parseEml(await readWithRetry(() => w.file.text()))
+        : parseMsg(await readWithRetry(() => w.file.arrayBuffer()));
+      if (!parsed.body.trim() && !parsed.subject) return { error: 'no extractable text', name: w.path };
+      // Ingest as Markdown text, preserving the folder-relative path for citations/sync.
+      const markdown = emailMarkdown(parsed);
+      const baseName = w.path.replace(/\.(eml|msg)$/i, '.md');
+      return {
+        name: baseName,
+        path: w.path.replace(/\.(eml|msg)$/i, '.md'),
+        mtime: w.file.lastModified,
+        size: w.file.size,
+        kind: 'text' as const,
+        text: markdown,
+      };
+    } catch (e) {
+      return { error: String((e as { message?: string })?.message ?? e), name: w.path, unreadable: isUnreadable(e) };
+    }
+  }
   const kind = classifyUpload(w.file.name, w.file.type);
   if (!kind) return { error: 'unsupported type', name: w.path };
   if (w.file.size > MAX_UPLOAD_BYTES) return { error: 'too large', name: w.path };

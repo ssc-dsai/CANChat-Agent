@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolDefinition } from './llmTypes';
-import { sourcePolicyForRepos, sourceRepositoryAllowed, sourceToolAllowed, toolsForSourcePolicy } from './sourcePolicy';
+import {
+  normalizeRepoName,
+  sourcePolicyForRepos,
+  sourcePolicyPrompt,
+  sourceRepositoryAllowed,
+  sourceToolAllowed,
+  toolsForSourcePolicy,
+} from './sourcePolicy';
 
 const tool = (name: string): ToolDefinition => ({ type: 'function', function: { name, description: '', parameters: {} } });
 
@@ -30,5 +37,22 @@ describe('repository source policy', () => {
 
   it('leaves ordinary turns unrestricted', () => {
     expect(sourceToolAllowed(sourcePolicyForRepos([]), 'search_web')).toBe(true);
+  });
+
+  it('prioritizes the selected repository in the prompt', () => {
+    const policy = sourcePolicyForRepos(['Research']);
+    const prompt = sourcePolicyPrompt(policy);
+    expect(prompt).toContain('prioritize searching');
+    expect(prompt).toContain('"Research"');
+    expect(prompt).toContain('search_repo');
+  });
+
+  it('is case-insensitive for repository checks and deduplication', () => {
+    const policy = sourcePolicyForRepos(['Research', 'research ', ' RESEARCH']);
+    expect(policy.mode).toBe('repo_only');
+    if (policy.mode === 'repo_only') expect(policy.repos).toEqual(['Research']);
+    expect(sourceRepositoryAllowed(policy, 'RESEARCH')).toBe(true);
+    expect(sourceRepositoryAllowed(policy, 'research')).toBe(true);
+    expect(normalizeRepoName('  Research ')).toBe('research');
   });
 });
