@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:wasm": "wasm-pack build wasm/vector-simd --target web --release --out-dir ../../src/offscreen/vectorSimdPkg --out-name vector_simd",
+    "build:wasm": "node scripts/build-wasm.ts",
     "build": "npm run build:wasm && vite build && vite build --config vite.content.config.ts && vite build --config vite.webmcp.config.ts && vite build --config vite.pointer.config.ts && vite build --config vite.learn.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
