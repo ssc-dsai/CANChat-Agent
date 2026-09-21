@@ -17,6 +17,10 @@ run = "npm run typecheck"
 description = "Run unit tests"
 run = "npm test"
 
+[tasks.package]
+description = "Package dist/ for Chrome Web Store (unlisted, version from manifest)"
+run = "bash scripts/package.sh"
+
 [tasks.ci]
 description = "Run the full CI gate: typecheck, tests, build"
 run = ["npm run typecheck", "npm test", "npm run build"]
