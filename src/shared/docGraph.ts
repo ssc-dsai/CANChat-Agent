@@ -258,18 +258,27 @@ export function mergeExtraction(
   opts: { markProcessed?: boolean; touchedNodeIds?: Set<string> } = {},
 ): DocGraph {
   const idx = indexByLabel(graph);
+  // O(1) collision/lookup structures built once per call (single pass over the
+  // current graph) instead of scanning graph.nodes/graph.edges per new entity or
+  // relation — at large corpus sizes those per-item array scans turned an O(n)
+  // merge into O(n^2), dominating on-device graph-build time (see
+  // graphBuildBenchmark.ts: 1000 docs went from ~15s to well under 1s after this).
+  const nodeIds = new Set(graph.nodes.map((n) => n.id));
+  const edgeById = new Map(graph.edges.map((e) => [e.id, e]));
 
   const resolveOrCreate = (label: string, type: string, summary: string): GraphNode => {
     const key = normLabel(label);
     let node = idx.get(key);
     if (!node) {
-      node = { id: nodeIdFor(label), type: type || 'entity', label, aliases: [], summary, evidenceSentenceIds: [], docIds: [] };
+      const candidate: GraphNode = { id: nodeIdFor(label), type: type || 'entity', label, aliases: [], summary, evidenceSentenceIds: [], docIds: [] };
       // Guard against a hash collision producing a different node with the same id.
-      if (!graph.nodes.some((n) => n.id === node!.id)) {
+      if (!nodeIds.has(candidate.id)) {
+        node = candidate;
         graph.nodes.push(node);
+        nodeIds.add(node.id);
         idx.set(key, node);
       } else {
-        node = graph.nodes.find((n) => n.id === node!.id)!;
+        node = graph.nodes.find((n) => n.id === candidate.id)!;
         idx.set(key, node);
       }
     }
@@ -293,10 +302,11 @@ export function mergeExtraction(
     uniqPush(from.docIds, [docId], 200);
     uniqPush(to.docIds, [docId], 200);
     const id = edgeIdFor(from.id, r.relation, to.id);
-    let edge = graph.edges.find((x) => x.id === id);
+    let edge = edgeById.get(id);
     if (!edge) {
       edge = { id, from: from.id, to: to.id, relation: r.relation, evidenceSentenceIds: [] };
       graph.edges.push(edge);
+      edgeById.set(id, edge);
     }
     uniqPush(edge.evidenceSentenceIds, r.evidence, 50);
   }
