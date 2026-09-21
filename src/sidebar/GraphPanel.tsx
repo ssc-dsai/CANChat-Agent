@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { CommunitySummary, DocGraph, GraphEdge, GraphNode } from '../shared/docGraph';
 import type { Citation } from '../shared/types';
 import { CitationView } from './CitationView';
@@ -45,6 +45,7 @@ interface EvidenceResponse {
 
 const MAP_NODES = 24;
 const SIZE = 320;
+const LAYOUT_PADDING = 36; // keep nodes off the edge so labels above them stay visible
 // One color per theme (cycled), from the app's chip palette.
 const PALETTE = [
   '--chip-blue-fg',
@@ -57,7 +58,35 @@ const PALETTE = [
   '--chip-slate-fg',
 ];
 
-function layout(graph: DocGraph): { nodes: GraphNode[]; edges: GraphEdge[]; pos: Map<string, { x: number; y: number }> } {
+/** Cheap deterministic string hash (FNV-1a), used to seed layout so the same graph always lays out the same way across re-renders. */
+function hash32(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Deterministic PRNG (Park-Miller LCG) so layout is stable given the same seed. */
+function seededRandom(seed: number): () => number {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+/**
+ * Force-directed (Fruchterman-Reingold) layout: every node pair repels, and
+ * edges pull their endpoints together — so hubs end up central, tightly
+ * connected clusters end up close together, and unconnected/loosely-connected
+ * nodes drift apart, instead of every node sitting at a fixed angle on a
+ * circle regardless of the graph's actual shape. Deterministic (seeded from
+ * the shown nodes' ids) so re-rendering the same graph doesn't reshuffle it.
+ */
+export function layout(graph: DocGraph): { nodes: GraphNode[]; edges: GraphEdge[]; pos: Map<string, { x: number; y: number }> } {
   const deg = new Map<string, number>();
   for (const e of graph.edges) {
     deg.set(e.from, (deg.get(e.from) ?? 0) + 1);
@@ -65,15 +94,70 @@ function layout(graph: DocGraph): { nodes: GraphNode[]; edges: GraphEdge[]; pos:
   }
   const nodes = [...graph.nodes].sort((a, b) => (deg.get(b.id) ?? 0) - (deg.get(a.id) ?? 0)).slice(0, MAP_NODES);
   const shown = new Set(nodes.map((n) => n.id));
-  const cx = SIZE / 2;
-  const cy = SIZE / 2;
-  const r = SIZE / 2 - 44;
-  const pos = new Map<string, { x: number; y: number }>();
-  nodes.forEach((n, i) => {
-    const a = (i / Math.max(1, nodes.length)) * 2 * Math.PI - Math.PI / 2;
-    pos.set(n.id, { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
-  });
   const edges = graph.edges.filter((e) => shown.has(e.from) && shown.has(e.to));
+
+  const w = SIZE - LAYOUT_PADDING * 2;
+  const h = SIZE - LAYOUT_PADDING * 2;
+  const pos = new Map<string, { x: number; y: number }>();
+  if (nodes.length === 0) return { nodes, edges, pos };
+
+  const rand = seededRandom(nodes.reduce((seed, n) => seed + hash32(n.id), 1));
+  nodes.forEach((n) => pos.set(n.id, { x: LAYOUT_PADDING + rand() * w, y: LAYOUT_PADDING + rand() * h }));
+  if (nodes.length === 1) return { nodes, edges, pos };
+
+  // Ideal inter-node distance for this canvas/node-count, per the standard FR formula.
+  const k = Math.sqrt((w * h) / nodes.length);
+  const ITERATIONS = 300;
+
+  for (let iter = 0; iter < ITERATIONS; iter++) {
+    const disp = new Map<string, { x: number; y: number }>();
+    nodes.forEach((n) => disp.set(n.id, { x: 0, y: 0 }));
+
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const pa = pos.get(nodes[i].id)!;
+        const pb = pos.get(nodes[j].id)!;
+        const dx = pa.x - pb.x || 0.01;
+        const dy = pa.y - pb.y || 0.01;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const force = (k * k) / dist;
+        const da = disp.get(nodes[i].id)!;
+        const db = disp.get(nodes[j].id)!;
+        da.x += (dx / dist) * force;
+        da.y += (dy / dist) * force;
+        db.x -= (dx / dist) * force;
+        db.y -= (dy / dist) * force;
+      }
+    }
+
+    for (const e of edges) {
+      const pa = pos.get(e.from);
+      const pb = pos.get(e.to);
+      if (!pa || !pb) continue;
+      const dx = pa.x - pb.x || 0.01;
+      const dy = pa.y - pb.y || 0.01;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const force = (dist * dist) / k;
+      const da = disp.get(e.from)!;
+      const db = disp.get(e.to)!;
+      da.x -= (dx / dist) * force;
+      da.y -= (dy / dist) * force;
+      db.x += (dx / dist) * force;
+      db.y += (dy / dist) * force;
+    }
+
+    // Cool down: cap per-iteration displacement, shrinking over time so the layout settles.
+    const temp = (w / 10) * (1 - iter / ITERATIONS);
+    nodes.forEach((n) => {
+      const p = pos.get(n.id)!;
+      const d = disp.get(n.id)!;
+      const dLen = Math.sqrt(d.x * d.x + d.y * d.y) || 0.01;
+      const capped = Math.min(dLen, Math.max(temp, 0.01));
+      p.x = Math.min(LAYOUT_PADDING + w, Math.max(LAYOUT_PADDING, p.x + (d.x / dLen) * capped));
+      p.y = Math.min(LAYOUT_PADDING + h, Math.max(LAYOUT_PADDING, p.y + (d.y / dLen) * capped));
+    });
+  }
+
   return { nodes, edges, pos };
 }
 
@@ -190,7 +274,8 @@ export function GraphPanel({ repo }: { repo: string }) {
   );
   const totalWindows = coverage.reduce((sum, item) => sum + item.totalWindows, 0);
   const pendingWindows = selectedWindows - completedWindows;
-  const view = graph ? layout(graph) : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const view = useMemo(() => (graph ? layout(graph) : null), [graph]);
   const comIdx = graph ? communityIndex(graph) : new Map<string, number>();
   const matchingNodes = graph
     ? graph.nodes.filter((node) => `${node.label} ${node.type} ${node.summary}`.toLowerCase().includes(entityQuery.trim().toLowerCase()))
