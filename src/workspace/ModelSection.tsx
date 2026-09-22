@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { ModelProtocol, Settings } from '../shared/types';
-import type { ProviderId } from '../shared/providerIds';
 import { getSettingsForEdit, saveSettings } from '../background/storage';
 import { useT } from '../sidebar/i18n';
 import { Group } from './SettingsControls';
@@ -13,6 +12,7 @@ const PROTOCOLS: Array<{ value: ModelProtocol; label: string }> = [
   { value: 'responses', label: 'settings.protocolResponses' },
   { value: 'anthropic-messages', label: 'settings.protocolAnthropic' },
   { value: 'gemini-native', label: 'settings.protocolGemini' },
+  { value: 'bedrock-converse', label: 'settings.protocolBedrock' },
 ];
 
 // Self-contained connection settings, independent of the sidebar SettingsScreen
@@ -29,7 +29,10 @@ export function ModelSection() {
 
   useEffect(() => {
     getSettingsForEdit().then(({ settings, locked }) => {
-      setSettings(settings);
+      // The Connection type selector (subscription providers requiring a local
+      // companion) was removed — drop any stale value from older saved settings
+      // rather than leaving the endpoint/API-key fields hidden with no way back.
+      setSettings({ ...settings, subscriptionProvider: undefined });
       setLocked(locked);
     });
   }, []);
@@ -40,8 +43,9 @@ export function ModelSection() {
     setTestResult(null);
   };
 
-  const valid = settings.subscriptionProvider
-    ? Boolean(settings.model.trim())
+  const isBedrock = settings.protocol === 'bedrock-converse';
+  const valid = isBedrock
+    ? Boolean(settings.apiKey.trim() && settings.model.trim() && settings.awsAccessKeyId?.trim() && settings.awsRegion?.trim())
     : Boolean(settings.baseUrl.trim() && settings.apiKey.trim() && settings.model.trim());
 
   const test = async () => {
@@ -72,10 +76,13 @@ export function ModelSection() {
         baseUrl: settings.baseUrl.trim(),
         apiKey: settings.apiKey.trim(),
         model: settings.model.trim(),
-        subscriptionProvider: settings.subscriptionProvider,
+        subscriptionProvider: undefined,
         protocol: settings.protocol,
         ideogramApiKey: settings.ideogramApiKey?.trim() || undefined,
         apiVersion: settings.apiVersion?.trim() || undefined,
+        awsRegion: settings.awsRegion?.trim() || undefined,
+        awsAccessKeyId: settings.awsAccessKeyId?.trim() || undefined,
+        awsSessionToken: settings.awsSessionToken?.trim() || undefined,
       });
       setSaved(true);
     } catch (e) {
@@ -95,53 +102,37 @@ export function ModelSection() {
 
       <Group title={t('settings.groupConnection')} desc={t('settings.note')}>
         <label class="field">
-          <span>Connection type</span>
-          <select
-            value={settings.subscriptionProvider ?? ''}
-            onChange={(e) => update({
-              subscriptionProvider: ((e.target as HTMLSelectElement).value || undefined) as ProviderId | undefined,
-            })}
-          >
-            <option value="">Endpoint / API key</option>
-            <option value="openai-chatgpt">ChatGPT / Codex local companion</option>
-            <option value="github-copilot">GitHub Copilot local companion</option>
-          </select>
-          <span class="field-note">Connect and install subscription providers below before selecting them here.</span>
+          <span>{t('settings.endpointUrl')}</span>
+          <input
+            type="url"
+            placeholder={isBedrock ? 'https://bedrock-runtime.<region>.amazonaws.com (optional override)' : 'https://api.example.com/v1'}
+            value={settings.baseUrl}
+            onInput={(e) => update({ baseUrl: (e.target as HTMLInputElement).value })}
+          />
+          {isBedrock && <span class="field-note">{t('settings.bedrockEndpointNote')}</span>}
         </label>
 
-        {!settings.subscriptionProvider && <>
-          <label class="field">
-            <span>{t('settings.endpointUrl')}</span>
-            <input
-              type="url"
-              placeholder="https://api.example.com/v1"
-              value={settings.baseUrl}
-              onInput={(e) => update({ baseUrl: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-
-          <label class="field">
-            <span>{t('settings.apiKey')}</span>
-            <input
-              type="password"
-              placeholder="sk-…"
-              value={settings.apiKey}
-              onInput={(e) => update({ apiKey: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-        </>}
+        <label class="field">
+          <span>{isBedrock ? t('settings.awsSecretAccessKey') : t('settings.apiKey')}</span>
+          <input
+            type="password"
+            placeholder={isBedrock ? 'AWS secret access key' : 'sk-…'}
+            value={settings.apiKey}
+            onInput={(e) => update({ apiKey: (e.target as HTMLInputElement).value })}
+          />
+        </label>
 
         <label class="field">
           <span>{t('settings.model')}</span>
           <input
             type="text"
-            placeholder="model-name"
+            placeholder={isBedrock ? 'anthropic.claude-3-5-sonnet-20241022-v2:0' : 'model-name'}
             value={settings.model}
             onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
           />
         </label>
 
-        {!settings.subscriptionProvider && <label class="field">
+        <label class="field">
           <span>{t('settings.protocol')}</span>
           <select
             value={settings.protocol ?? 'chat-completions'}
@@ -154,9 +145,42 @@ export function ModelSection() {
             ))}
           </select>
           <span class="field-note">{t('settings.protocolNote')}</span>
-        </label>}
+        </label>
 
-        {!settings.subscriptionProvider && <label class="field">
+        {isBedrock && <>
+          <label class="field">
+            <span>{t('settings.awsRegion')}</span>
+            <input
+              type="text"
+              placeholder="us-east-1"
+              value={settings.awsRegion ?? ''}
+              onInput={(e) => update({ awsRegion: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+
+          <label class="field">
+            <span>{t('settings.awsAccessKeyId')}</span>
+            <input
+              type="text"
+              placeholder="AKIA…"
+              value={settings.awsAccessKeyId ?? ''}
+              onInput={(e) => update({ awsAccessKeyId: (e.target as HTMLInputElement).value })}
+            />
+          </label>
+
+          <label class="field">
+            <span>{t('settings.awsSessionToken')}</span>
+            <input
+              type="password"
+              placeholder={t('settings.awsSessionTokenPlaceholder')}
+              value={settings.awsSessionToken ?? ''}
+              onInput={(e) => update({ awsSessionToken: (e.target as HTMLInputElement).value })}
+            />
+            <span class="field-note">{t('settings.awsSessionTokenNote')}</span>
+          </label>
+        </>}
+
+        {!isBedrock && <label class="field">
           <span>{t('settings.apiVersion')}</span>
           <input
             type="text"

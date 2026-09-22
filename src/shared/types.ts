@@ -246,10 +246,21 @@ export interface Settings {
    * DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM, Azure OpenAI. `'responses'` is
    * OpenAI's /responses API (GPT-5.x, Grok). `'anthropic-messages'` is
    * Anthropic's /v1/messages API (Claude, Qwen deployments that mirror it).
-   * `'gemini-native'` is Gemini's generateContent endpoint. See
-   * src/background/adapters/ for the per-protocol request/response translation.
+   * `'gemini-native'` is Gemini's generateContent endpoint. `'bedrock-converse'`
+   * is AWS Bedrock's Converse API — auth is AWS Signature Version 4 using
+   * `awsAccessKeyId`/`apiKey` (the secret access key)/`awsSessionToken` and
+   * `awsRegion`, not a bearer token; `baseUrl` is an optional endpoint
+   * override (blank = the standard `bedrock-runtime.<region>.amazonaws.com`
+   * endpoint). See src/background/adapters/ for the per-protocol
+   * request/response translation.
    */
   protocol?: ModelProtocol;
+  /** Bedrock Converse only: the target AWS region, e.g. "us-east-1". Also used to derive the default endpoint. */
+  awsRegion?: string;
+  /** Bedrock Converse only: AWS access key id. Not treated as secret (like an OAuth client id) — the secret half is `apiKey`. */
+  awsAccessKeyId?: string;
+  /** Bedrock Converse only: optional session token for STS-issued temporary credentials. */
+  awsSessionToken?: string;
   /** Optional Ideogram API key used by the image-generation tool. */
   ideogramApiKey?: string;
   /**
@@ -420,8 +431,6 @@ export interface Settings {
   // or stored — every flow here is PKCE or device-flow), so storing them
   // alongside apiKey is not a secrecy concern; they are not run through the
   // encryption vault for that reason.
-  /** GitHub OAuth App client ID (Device Flow) used to connect a GitHub Copilot subscription. See docs/providers.md. */
-  githubCopilotClientId?: string;
   /** GitLab instance base URL (e.g. a self-managed GitLab). Absent = https://gitlab.com. */
   gitlabInstanceUrl?: string;
   /** GitLab OAuth Application client ID (Authorization Code + PKCE) for GitLab Duo. See docs/providers.md. */
@@ -441,7 +450,7 @@ export type ModelRole = 'main' | 'utility' | 'knowledgeGraph' | 'reflection' | '
  * speaks. See the `Settings.protocol` doc comment above for what each value
  * covers and src/background/adapters/ for the implementation.
  */
-export type ModelProtocol = 'chat-completions' | 'responses' | 'anthropic-messages' | 'gemini-native';
+export type ModelProtocol = 'chat-completions' | 'responses' | 'anthropic-messages' | 'gemini-native' | 'bedrock-converse';
 
 /**
  * An alternate named endpoint a role can be routed to — e.g. a small local
@@ -461,6 +470,12 @@ export interface ModelProfile {
   /** Wire protocol this profile's baseUrl speaks. Absent = 'chat-completions' (today's behavior). */
   protocol?: ModelProtocol;
   apiVersion?: string;
+  /** See Settings.awsRegion — only meaningful when protocol is 'bedrock-converse'. */
+  awsRegion?: string;
+  /** See Settings.awsAccessKeyId. */
+  awsAccessKeyId?: string;
+  /** See Settings.awsSessionToken. */
+  awsSessionToken?: string;
   temperature?: number;
   maxTokens?: number;
   /** See Settings.graphWindowChars — only meaningful when this profile is assigned to the Knowledge Graph role. */

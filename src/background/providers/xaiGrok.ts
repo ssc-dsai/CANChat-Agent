@@ -9,8 +9,7 @@
 // registration mechanism — it is the consumer login surface those tools have
 // reverse-engineered, not something a new client can register itself against.
 // Imitating that is exactly what this integration is required not to do, so
-// this connection stays `blocked` rather than reverse-engineered, matching
-// openaiChatgpt.ts's ChatGPT/Codex decision for the same underlying reason.
+// this connection stays `blocked` rather than reverse-engineered.
 //
 // What *is* supported: api.x.ai with a user-supplied API key, which is
 // OpenAI-compatible and already fully working today via the existing generic

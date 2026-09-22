@@ -5,8 +5,8 @@ const getConnectionStatus = vi.hoisted(() => vi.fn());
 
 vi.mock('./providers/registry', () => ({
   getProvider: () => ({
-    id: 'github-copilot',
-    capabilities: { tools: false, images: false, reasoning: true, streaming: true, authModes: ['local-companion'] },
+    id: 'xai-grok',
+    capabilities: { tools: false, images: false, reasoning: true, streaming: true, authModes: ['api-key'] },
     getConnectionStatus,
     streamResponse,
   }),
@@ -22,7 +22,7 @@ describe('subscription model routing', () => {
 
   it('routes selected settings through the provider and normalizes tool history', async () => {
     const response = await complete(
-      { baseUrl: '', apiKey: '', model: 'copilot-model', subscriptionProvider: 'github-copilot' },
+      { baseUrl: '', apiKey: '', model: 'grok-model', subscriptionProvider: 'xai-grok' },
       [
         { role: 'system', content: 'system' },
         { role: 'assistant', content: null, tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_page', arguments: '{}' } }] },
@@ -33,7 +33,7 @@ describe('subscription model routing', () => {
     expect(response).toEqual({ role: 'assistant', content: 'subscription answer' });
     expect(streamResponse).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'copilot-model',
+        model: 'grok-model',
         messages: expect.arrayContaining([
           expect.objectContaining({ role: 'user', content: expect.stringContaining('page text') }),
         ]),
@@ -43,17 +43,17 @@ describe('subscription model routing', () => {
   });
 
   it('fails closed when the provider is not connected', async () => {
-    getConnectionStatus.mockResolvedValue({ status: 'disconnected', detail: 'Install the companion.' });
+    getConnectionStatus.mockResolvedValue({ status: 'disconnected', detail: 'Connect the provider first.' });
     await expect(complete(
-      { baseUrl: '', apiKey: '', model: 'model', subscriptionProvider: 'github-copilot' },
+      { baseUrl: '', apiKey: '', model: 'model', subscriptionProvider: 'xai-grok' },
       [{ role: 'user', content: 'hello' }],
-    )).rejects.toThrow(/install the companion/i);
+    )).rejects.toThrow(/connect the provider/i);
     expect(streamResponse).not.toHaveBeenCalled();
   });
 
   it('rejects unsupported image input before contacting the provider', async () => {
     await expect(complete(
-      { baseUrl: '', apiKey: '', model: 'model', subscriptionProvider: 'github-copilot' },
+      { baseUrl: '', apiKey: '', model: 'model', subscriptionProvider: 'xai-grok' },
       [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }],
     )).rejects.toThrow(/does not support image/i);
     expect(streamResponse).not.toHaveBeenCalled();

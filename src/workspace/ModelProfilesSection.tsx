@@ -7,6 +7,7 @@ const PROTOCOLS: Array<{ value: ModelProtocol; label: string }> = [
   { value: 'responses', label: 'settings.protocolResponses' },
   { value: 'anthropic-messages', label: 'settings.protocolAnthropic' },
   { value: 'gemini-native', label: 'settings.protocolGemini' },
+  { value: 'bedrock-converse', label: 'settings.protocolBedrock' },
 ];
 
 const ROLES: Array<{ role: Exclude<ModelRole, 'main'>; label: string; hint: string }> = [
@@ -23,6 +24,9 @@ const EMPTY_FORM: Omit<ModelProfile, 'id'> = {
   apiKey: '',
   model: '',
   apiVersion: '',
+  awsRegion: '',
+  awsAccessKeyId: '',
+  awsSessionToken: '',
   privacyTier: 'cloud',
   description: '',
   capabilities: {
@@ -84,7 +88,10 @@ export function ModelProfilesSection() {
     await chrome.storage.local.set({ ba_settings: merged });
   };
 
-  const formValid = form.name.trim() && form.baseUrl.trim() && form.apiKey.trim() && form.model.trim();
+  const formIsBedrock = form.protocol === 'bedrock-converse';
+  const formValid = formIsBedrock
+    ? form.name.trim() && form.apiKey.trim() && form.model.trim() && form.awsAccessKeyId?.trim() && form.awsRegion?.trim()
+    : form.name.trim() && form.baseUrl.trim() && form.apiKey.trim() && form.model.trim();
 
   const submitForm = async () => {
     if (!formValid) return;
@@ -102,7 +109,11 @@ export function ModelProfilesSection() {
       baseUrl: form.baseUrl.trim(),
       apiKey: form.apiKey.trim(),
       model: form.model.trim(),
+      protocol: form.protocol,
       apiVersion: form.apiVersion?.trim() || undefined,
+      awsRegion: form.awsRegion?.trim() || undefined,
+      awsAccessKeyId: form.awsAccessKeyId?.trim() || undefined,
+      awsSessionToken: form.awsSessionToken?.trim() || undefined,
       temperature: form.temperature,
       maxTokens: form.maxTokens,
       graphWindowChars: form.graphWindowChars,
@@ -127,7 +138,11 @@ export function ModelProfilesSection() {
       baseUrl: p.baseUrl,
       apiKey: p.apiKey,
       model: p.model,
+      protocol: p.protocol,
       apiVersion: p.apiVersion ?? '',
+      awsRegion: p.awsRegion ?? '',
+      awsAccessKeyId: p.awsAccessKeyId ?? '',
+      awsSessionToken: p.awsSessionToken ?? '',
       temperature: p.temperature,
       maxTokens: p.maxTokens,
       graphWindowChars: p.graphWindowChars,
@@ -215,11 +230,21 @@ export function ModelProfilesSection() {
           </label>
           <label class="field">
               <span>{t('modelProfiles.endpointUrl')}</span>
-            <input type="url" placeholder="http://localhost:11434/v1" value={form.baseUrl} onInput={(e) => setForm({ ...form, baseUrl: (e.target as HTMLInputElement).value })} />
+            <input
+              type="url"
+              placeholder={formIsBedrock ? 'https://bedrock-runtime.<region>.amazonaws.com (optional override)' : 'http://localhost:11434/v1'}
+              value={form.baseUrl}
+              onInput={(e) => setForm({ ...form, baseUrl: (e.target as HTMLInputElement).value })}
+            />
           </label>
           <label class="field">
-              <span>{t('modelProfiles.apiKey')}</span>
-            <input type="password" placeholder="sk-… (blank if the endpoint needs none)" value={form.apiKey} onInput={(e) => setForm({ ...form, apiKey: (e.target as HTMLInputElement).value })} />
+              <span>{formIsBedrock ? t('settings.awsSecretAccessKey') : t('modelProfiles.apiKey')}</span>
+            <input
+              type="password"
+              placeholder={formIsBedrock ? 'AWS secret access key' : 'sk-… (blank if the endpoint needs none)'}
+              value={form.apiKey}
+              onInput={(e) => setForm({ ...form, apiKey: (e.target as HTMLInputElement).value })}
+            />
           </label>
           <label class="field">
               <span>{t('modelProfiles.model')}</span>
@@ -238,6 +263,26 @@ export function ModelProfilesSection() {
               ))}
             </select>
           </label>
+          {formIsBedrock && <>
+            <label class="field">
+              <span>{t('settings.awsRegion')}</span>
+              <input type="text" placeholder="us-east-1" value={form.awsRegion ?? ''} onInput={(e) => setForm({ ...form, awsRegion: (e.target as HTMLInputElement).value })} />
+            </label>
+            <label class="field">
+              <span>{t('settings.awsAccessKeyId')}</span>
+              <input type="text" placeholder="AKIA…" value={form.awsAccessKeyId ?? ''} onInput={(e) => setForm({ ...form, awsAccessKeyId: (e.target as HTMLInputElement).value })} />
+            </label>
+            <label class="field">
+              <span>{t('settings.awsSessionToken')}</span>
+              <input
+                type="password"
+                placeholder={t('settings.awsSessionTokenPlaceholder')}
+                value={form.awsSessionToken ?? ''}
+                onInput={(e) => setForm({ ...form, awsSessionToken: (e.target as HTMLInputElement).value })}
+              />
+              <span class="field-note">{t('settings.awsSessionTokenNote')}</span>
+            </label>
+          </>}
           <div class="field-row">
             <label class="field">
               <span>{t('modelProfiles.temperature')}</span>

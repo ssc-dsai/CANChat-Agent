@@ -6,17 +6,17 @@ import { openaiChatAdapter } from './openaiChat';
 const settings: Settings = { baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', model: 'gpt' };
 
 describe('openaiChatAdapter.buildRequest', () => {
-  it('builds the /chat/completions request body verbatim', () => {
+  it('builds the /chat/completions request body verbatim', async () => {
     const messages: LlmMessage[] = [{ role: 'user', content: 'hi' }];
-    const req = openaiChatAdapter.buildRequest(settings, messages);
+    const req = await openaiChatAdapter.buildRequest(settings, messages);
     expect(req.url).toBe('https://api.example.com/v1/chat/completions');
     expect(req.headers.Authorization).toBe('Bearer sk-test');
     expect(req.body).toEqual({ model: 'gpt', messages });
   });
 
-  it('includes tools when provided', () => {
+  it('includes tools when provided', async () => {
     const tools = [{ type: 'function' as const, function: { name: 'f', description: 'd', parameters: {} } }];
-    const req = openaiChatAdapter.buildRequest(settings, [], tools);
+    const req = await openaiChatAdapter.buildRequest(settings, [], tools);
     expect((req.body as { tools: unknown }).tools).toEqual(tools);
   });
 });

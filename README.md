@@ -118,12 +118,12 @@ Click **Test connection** before saving — it sends a one-word prompt and shows
 Notes:
 
 - The key is stored in `chrome.storage.local` **on this device only**; it is never synced to other machines, and never sent anywhere except the endpoint you configured.
-- Multi-protocol support translates canonical tool definitions into provider-native tool schemas across OpenAI, Anthropic, and Gemini endpoints.
+- Multi-protocol support translates canonical tool definitions into provider-native tool schemas across OpenAI, Anthropic, Gemini, and AWS Bedrock endpoints.
 - Every model request times out after **120 seconds**, so a hung endpoint can never freeze a task permanently.
 
 <p align="center">
   <img src="docs/user-guide/screenshots/11-models-multi-protocol.png" alt="Workspace Models page with multi-protocol connection settings" width="700"><br>
-  <sub><em>Workspace → Models: connection fields supporting OpenAI Chat Completions & Responses, Anthropic Messages, and Gemini native APIs.</em></sub>
+  <sub><em>Workspace → Models: connection fields supporting OpenAI Chat Completions & Responses, Anthropic Messages, Gemini native, and AWS Bedrock Converse APIs.</em></sub>
 </p>
 
 <p align="center">
@@ -131,14 +131,12 @@ Notes:
   <sub><em>Workspace → Models → Advanced: agent behaviour, auto-retry on rate limits (429), and separate embedding/transcription endpoints — all optional.</em></sub>
 </p>
 
-### 3.1 Subscription providers (GitHub Copilot, GitLab Duo, ChatGPT, xAI)
+### 3.1 Subscription providers (GitLab Duo, xAI)
 
 Below the connection form, **Workspace → Models → Subscription Providers**
-supports GitHub Copilot through a CANChat-owned OAuth App plus the official
-Copilot SDK companion, and ChatGPT/Codex through the official local Codex App
-Server. GitLab Duo remains blocked pending a sanctioned, live-verified
-third-party inference path. xAI uses a separately billed API key; SuperGrok
-OAuth is not documented for third-party clients. See
+lists GitLab Duo and xAI/SuperGrok. GitLab Duo remains blocked pending a
+sanctioned, live-verified third-party inference path. xAI uses a separately
+billed API key; SuperGrok OAuth is not documented for third-party clients. See
 **[docs/providers.md](docs/providers.md)** for setup and the security model.
 
 ## 4. A tour of the sidebar
@@ -530,7 +528,6 @@ The mechanics:
 - **Offscreen document** (`offscreen` permission): a hidden page created on demand to run pdf.js for `read_pdf` and an OOXML unzip/parse for `read_office_document`. No data leaves the device; it fetches the file with your existing session so cookie-gated PDFs and Office files work. Office support covers OOXML only (`.docx`/`.pptx`/`.xlsx`); legacy binary `.doc`/`.xls`/`.ppt` are not supported, and spreadsheets return raw cell values (not formatted/computed display).
 - **Tab groups** (`tabGroups` permission): used to collect the tabs the agent opens into a named per-conversation group. The extension never reads or closes tabs you opened yourself unless you ask.
 - **Downloads** (`downloads` permission): used only to save files *you* ask for — CSV/JSON tables, generated Word documents, exported conversations, and backups. Every save opens a **Save As dialog**, so you choose the filename and folder each time rather than having files dropped silently into your Downloads folder.
-- **Native messaging** (`nativeMessaging` permission): only used for the optional official Codex and GitHub Copilot SDK companions (see [docs/providers.md](docs/providers.md)). No connection is made unless you install a companion and select that provider.
 
 **What's stored, what isn't:**
 

@@ -47,12 +47,12 @@ describe('settings secret encryption at rest', () => {
     await saveSettings({
       baseUrl: '',
       apiKey: '',
-      model: 'copilot-model',
-      subscriptionProvider: 'github-copilot',
+      model: 'grok-model',
+      subscriptionProvider: 'xai-grok',
     });
     await expect(getSettings()).resolves.toMatchObject({
-      model: 'copilot-model',
-      subscriptionProvider: 'github-copilot',
+      model: 'grok-model',
+      subscriptionProvider: 'xai-grok',
       apiKey: '',
     });
   });

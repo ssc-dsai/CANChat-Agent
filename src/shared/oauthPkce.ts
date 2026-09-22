@@ -1,8 +1,8 @@
 // =============================================================================
-// Generic OAuth 2.0 Authorization Code + PKCE helpers shared by every
-// subscription-provider connection (GitHub Copilot's redirect-based fallback,
-// GitLab Duo). Pure — no chrome.*/network — so it is unit-testable; the
-// interactive launch + token storage lives in background/providers/*.ts.
+// Generic OAuth 2.0 Authorization Code + PKCE helpers for a
+// subscription-provider connection (GitLab Duo's dormant PKCE path — see
+// docs/providers.md). Pure — no chrome.*/network — so it is unit-testable;
+// the interactive launch + token storage lives in background/providers/*.ts.
 //
 // This generalizes shared/graphAuth.ts's PKCE pair (kept as-is for the
 // existing Microsoft Graph mailbox feature) and adds what that module does

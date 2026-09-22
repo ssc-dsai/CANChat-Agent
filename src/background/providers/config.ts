@@ -13,15 +13,11 @@ import type { Settings } from '../../shared/types';
 
 const SETTINGS_KEY = 'ba_settings';
 
-type ProviderConfigFields = Pick<Settings, 'githubCopilotClientId' | 'gitlabInstanceUrl' | 'gitlabDuoClientId'>;
+type ProviderConfigFields = Pick<Settings, 'gitlabInstanceUrl' | 'gitlabDuoClientId'>;
 
 async function rawSettings(): Promise<ProviderConfigFields> {
   const r = await chrome.storage.local.get(SETTINGS_KEY);
   return (r[SETTINGS_KEY] as ProviderConfigFields | undefined) ?? {};
-}
-
-export async function githubCopilotClientId(): Promise<string> {
-  return (await rawSettings()).githubCopilotClientId?.trim() ?? '';
 }
 
 export async function gitlabInstanceUrl(): Promise<string> {

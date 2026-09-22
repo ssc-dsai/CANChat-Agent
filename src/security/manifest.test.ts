@@ -8,9 +8,9 @@ describe('extension manifest security baseline', () => {
     expect(manifest).not.toHaveProperty('externally_connectable');
   });
 
-  it('grants identity and native messaging only to extension code', () => {
+  it('grants identity only to extension code, and never native messaging', () => {
     expect(manifest.permissions).toContain('identity');
-    expect(manifest.permissions).toContain('nativeMessaging');
+    expect(manifest.permissions).not.toContain('nativeMessaging');
     expect(manifest.content_scripts.every((script) => !script.js.some((file) => /provider|oauth|token/i.test(file)))).toBe(true);
   });
 

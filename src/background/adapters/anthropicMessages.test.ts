@@ -6,12 +6,12 @@ import { anthropicMessagesAdapter } from './anthropicMessages';
 const settings: Settings = { baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant-test', model: 'claude-opus-5' };
 
 describe('anthropicMessagesAdapter.buildRequest', () => {
-  it('pulls the system message out to a top-level system field', () => {
+  it('pulls the system message out to a top-level system field', async () => {
     const messages: LlmMessage[] = [
       { role: 'system', content: 'be helpful' },
       { role: 'user', content: 'hi' },
     ];
-    const req = anthropicMessagesAdapter.buildRequest(settings, messages);
+    const req = await anthropicMessagesAdapter.buildRequest(settings, messages);
     expect(req.url).toBe('https://api.anthropic.com/v1/messages');
     expect(req.headers['x-api-key']).toBe('sk-ant-test');
     expect(req.headers['anthropic-version']).toBe('2023-06-01');
@@ -23,33 +23,33 @@ describe('anthropicMessagesAdapter.buildRequest', () => {
     });
   });
 
-  it('preserves a versioned OpenCode Zen base URL', () => {
-    const req = anthropicMessagesAdapter.buildRequest(
+  it('preserves a versioned OpenCode Zen base URL', async () => {
+    const req = await anthropicMessagesAdapter.buildRequest(
       { ...settings, baseUrl: 'https://opencode.ai/zen/v1/', model: 'claude-sonnet-4-6' },
       [{ role: 'user', content: 'hi' }],
     );
     expect(req.url).toBe('https://opencode.ai/zen/v1/messages');
   });
 
-  it('defaults max_tokens when unset', () => {
-    const req = anthropicMessagesAdapter.buildRequest(settings, [{ role: 'user', content: 'hi' }]);
+  it('defaults max_tokens when unset', async () => {
+    const req = await anthropicMessagesAdapter.buildRequest(settings, [{ role: 'user', content: 'hi' }]);
     expect((req.body as { max_tokens: number }).max_tokens).toBe(4096);
   });
 
-  it('uses settings.maxTokens when set', () => {
-    const req = anthropicMessagesAdapter.buildRequest({ ...settings, maxTokens: 500 }, [{ role: 'user', content: 'hi' }]);
+  it('uses settings.maxTokens when set', async () => {
+    const req = await anthropicMessagesAdapter.buildRequest({ ...settings, maxTokens: 500 }, [{ role: 'user', content: 'hi' }]);
     expect((req.body as { max_tokens: number }).max_tokens).toBe(500);
   });
 
-  it('omits temperature for Claude deployments that reject it', () => {
-    const req = anthropicMessagesAdapter.buildRequest(
+  it('omits temperature for Claude deployments that reject it', async () => {
+    const req = await anthropicMessagesAdapter.buildRequest(
       { ...settings, temperature: 0 },
       [{ role: 'user', content: 'hi' }],
     );
     expect(req.body).not.toHaveProperty('temperature');
   });
 
-  it('maps an assistant tool_call to a tool_use block and merges consecutive tool results into one user turn', () => {
+  it('maps an assistant tool_call to a tool_use block and merges consecutive tool results into one user turn', async () => {
     const messages: LlmMessage[] = [
       { role: 'user', content: 'weather in SF and NYC?' },
       {
@@ -63,7 +63,7 @@ describe('anthropicMessagesAdapter.buildRequest', () => {
       { role: 'tool', tool_call_id: 'call_1', content: '72F sunny' },
       { role: 'tool', tool_call_id: 'call_2', content: '60F rainy' },
     ];
-    const req = anthropicMessagesAdapter.buildRequest(settings, messages);
+    const req = await anthropicMessagesAdapter.buildRequest(settings, messages);
     const body = req.body as { messages: Array<{ role: string; content: unknown }> };
     expect(body.messages).toHaveLength(3);
     expect(body.messages[1]).toEqual({
@@ -82,20 +82,20 @@ describe('anthropicMessagesAdapter.buildRequest', () => {
     });
   });
 
-  it('translates a data-url image_url part into an Anthropic base64 image block', () => {
+  it('translates a data-url image_url part into an Anthropic base64 image block', async () => {
     const messages: LlmMessage[] = [
       { role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }] },
     ];
-    const req = anthropicMessagesAdapter.buildRequest(settings, messages);
+    const req = await anthropicMessagesAdapter.buildRequest(settings, messages);
     const body = req.body as { messages: Array<{ content: unknown }> };
     expect(body.messages[0].content).toEqual([
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
     ]);
   });
 
-  it('includes translated tools with input_schema', () => {
+  it('includes translated tools with input_schema', async () => {
     const tools = [{ type: 'function' as const, function: { name: 'f', description: 'd', parameters: { type: 'object' } } }];
-    const req = anthropicMessagesAdapter.buildRequest(settings, [{ role: 'user', content: 'hi' }], tools);
+    const req = await anthropicMessagesAdapter.buildRequest(settings, [{ role: 'user', content: 'hi' }], tools);
     expect((req.body as { tools: unknown }).tools).toEqual([{ name: 'f', description: 'd', input_schema: { type: 'object' } }]);
   });
 });

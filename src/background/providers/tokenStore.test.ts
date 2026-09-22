@@ -28,9 +28,9 @@ beforeEach(() => {
 
 describe('tokenStore', () => {
   it('round-trips a token, keyed per provider (no cross-provider leakage)', async () => {
-    await saveToken('github-copilot', { accessToken: 'gh-token' });
+    await saveToken('xai-grok', { accessToken: 'xai-token' });
     await saveToken('gitlab-duo', { accessToken: 'gl-token' });
-    expect((await loadToken('github-copilot'))?.accessToken).toBe('gh-token');
+    expect((await loadToken('xai-grok'))?.accessToken).toBe('xai-token');
     expect((await loadToken('gitlab-duo'))?.accessToken).toBe('gl-token');
   });
 
@@ -39,30 +39,30 @@ describe('tokenStore', () => {
   });
 
   it('clearToken removes only that provider', async () => {
-    await saveToken('github-copilot', { accessToken: 'gh-token' });
+    await saveToken('xai-grok', { accessToken: 'xai-token' });
     await saveToken('gitlab-duo', { accessToken: 'gl-token' });
-    await clearToken('github-copilot');
-    expect(await loadToken('github-copilot')).toBeNull();
+    await clearToken('xai-grok');
+    expect(await loadToken('xai-grok')).toBeNull();
     expect((await loadToken('gitlab-duo'))?.accessToken).toBe('gl-token');
   });
 
   it('never writes to chrome.storage.sync', async () => {
     const syncSet = vi.fn();
     vi.stubGlobal('chrome', { storage: { local: local.api, sync: { set: syncSet } } });
-    await saveToken('github-copilot', { accessToken: 'gh-token' });
+    await saveToken('xai-grok', { accessToken: 'xai-token' });
     expect(syncSet).not.toHaveBeenCalled();
   });
 
   it('lazily migrates an unversioned token record', async () => {
-    local.store['ba_provider_tokens_github-copilot'] = { accessToken: 'old-token' };
-    expect((await loadToken('github-copilot'))?.schemaVersion).toBe(1);
-    expect((local.store['ba_provider_tokens_github-copilot'] as { schemaVersion?: number }).schemaVersion).toBe(1);
+    local.store['ba_provider_tokens_xai-grok'] = { accessToken: 'old-token' };
+    expect((await loadToken('xai-grok'))?.schemaVersion).toBe(1);
+    expect((local.store['ba_provider_tokens_xai-grok'] as { schemaVersion?: number }).schemaVersion).toBe(1);
   });
 
   it('removes malformed records instead of exposing them to providers', async () => {
-    local.store['ba_provider_tokens_github-copilot'] = { accessToken: 42 };
-    expect(await loadToken('github-copilot')).toBeNull();
-    expect(local.store['ba_provider_tokens_github-copilot']).toBeUndefined();
+    local.store['ba_provider_tokens_xai-grok'] = { accessToken: 42 };
+    expect(await loadToken('xai-grok')).toBeNull();
+    expect(local.store['ba_provider_tokens_xai-grok']).toBeUndefined();
   });
 });
 

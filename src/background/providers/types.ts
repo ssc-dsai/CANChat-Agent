@@ -1,18 +1,18 @@
 // =============================================================================
 // Provider-neutral interface for subscription-backed model connections
-// (ChatGPT/Codex, GitHub Copilot, GitLab Duo, xAI/SuperGrok). This sits
-// *alongside* the existing endpoint+API-key ProtocolAdapter layer
-// (background/adapters/), not in place of it: a ProtocolAdapter is a
-// stateless per-request wire-format translator, while a SubscriptionProvider
-// owns an account connection's whole lifecycle — OAuth (or the truthful lack
-// of one), token refresh, and the capabilities the UI should show for it.
+// (GitLab Duo, xAI/SuperGrok). This sits *alongside* the existing
+// endpoint+API-key ProtocolAdapter layer (background/adapters/), not in place
+// of it: a ProtocolAdapter is a stateless per-request wire-format translator,
+// while a SubscriptionProvider owns an account connection's whole lifecycle —
+// OAuth (or the truthful lack of one), token refresh, and the capabilities
+// the UI should show for it.
 //
-// Every concrete provider (providers/githubCopilot.ts, gitlabDuo.ts,
-// openaiChatgpt.ts, xaiGrok.ts) implements `SubscriptionProvider`. The rest of
-// the extension (the Providers UI, serviceWorker message routing) only ever
-// talks to this interface plus the static `ProviderDescriptor` capability
-// flags in registry.ts — it must never branch on a specific provider id when
-// a capability check on `ProviderCapabilities` would do instead.
+// Every concrete provider (providers/gitlabDuo.ts, xaiGrok.ts) implements
+// `SubscriptionProvider`. The rest of the extension (the Providers UI,
+// serviceWorker message routing) only ever talks to this interface plus the
+// static `ProviderDescriptor` capability flags in registry.ts — it must never
+// branch on a specific provider id when a capability check on
+// `ProviderCapabilities` would do instead.
 // =============================================================================
 
 import type { ProviderId } from '../../shared/providerIds';
@@ -21,21 +21,13 @@ export type { ProviderId };
 /**
  * How a provider's connection is (or isn't) established. Matches the task's
  * decision taxonomy:
- *  - `oauth-device`: RFC 8628 device authorization grant (no redirect URI, no
- *    client secret) — used where the extension can't host a redirect page
- *    a public client can safely use, or where the official flow *is* device
- *    flow (GitHub).
  *  - `oauth-pkce`: Authorization Code + PKCE via chrome.identity.launchWebAuthFlow.
  *  - `api-key`: the user supplies a provider API key (billed separately from
  *    any chat subscription); always available as the documented fallback.
- *  - `local-companion`: inference (sometimes also auth) is delegated to a
- *    locally-installed native-messaging host running the provider's own
- *    officially-supported CLI/SDK, because the extension process cannot do it
- *    directly (e.g. no subprocess spawning in a service worker).
  *  - `unsupported`: no sanctioned third-party path exists today; the provider
  *    entry exists so the UI can say so truthfully instead of omitting it.
  */
-export type AuthMode = 'oauth-device' | 'oauth-pkce' | 'api-key' | 'local-companion' | 'unsupported';
+export type AuthMode = 'oauth-pkce' | 'api-key' | 'unsupported';
 
 export type ConnectionStatus =
   | 'disconnected'
@@ -56,11 +48,11 @@ export interface ProviderCapabilities {
 }
 
 /**
- * The task's `direct | local_companion | api_key_only | blocked` decision,
- * plus a one-line human-readable justification shown in the Providers UI so
- * a provider is never silently misrepresented as fully supported.
+ * The task's `direct | api_key_only | blocked` decision, plus a one-line
+ * human-readable justification shown in the Providers UI so a provider is
+ * never silently misrepresented as fully supported.
  */
-export type ProviderDecision = 'direct' | 'local_companion' | 'api_key_only' | 'blocked';
+export type ProviderDecision = 'direct' | 'api_key_only' | 'blocked';
 
 export interface ConnectionStatusInfo {
   status: ConnectionStatus;
@@ -118,13 +110,6 @@ export class ProviderUnsupportedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ProviderUnsupportedError';
-  }
-}
-
-export class ProviderAuthError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ProviderAuthError';
   }
 }
 

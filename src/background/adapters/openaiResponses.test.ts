@@ -6,12 +6,12 @@ import { openaiResponsesAdapter } from './openaiResponses';
 const settings: Settings = { baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test', model: 'gpt-5.1' };
 
 describe('openaiResponsesAdapter.buildRequest', () => {
-  it('maps plain text messages to message input items', () => {
+  it('maps plain text messages to message input items', async () => {
     const messages: LlmMessage[] = [
       { role: 'system', content: 'be helpful' },
       { role: 'user', content: 'hi' },
     ];
-    const req = openaiResponsesAdapter.buildRequest(settings, messages);
+    const req = await openaiResponsesAdapter.buildRequest(settings, messages);
     expect(req.url).toBe('https://api.openai.com/v1/responses');
     expect(req.headers.Authorization).toBe('Bearer sk-test');
     expect(req.body).toMatchObject({
@@ -23,7 +23,7 @@ describe('openaiResponsesAdapter.buildRequest', () => {
     });
   });
 
-  it('maps an assistant tool_call to a function_call item and a tool result to function_call_output', () => {
+  it('maps an assistant tool_call to a function_call item and a tool result to function_call_output', async () => {
     const messages: LlmMessage[] = [
       { role: 'user', content: 'weather in SF?' },
       {
@@ -33,7 +33,7 @@ describe('openaiResponsesAdapter.buildRequest', () => {
       },
       { role: 'tool', tool_call_id: 'call_1', content: '72F sunny' },
     ];
-    const req = openaiResponsesAdapter.buildRequest(settings, messages);
+    const req = await openaiResponsesAdapter.buildRequest(settings, messages);
     const input = (req.body as { input: unknown[] }).input;
     expect(input).toEqual([
       { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'weather in SF?' }] },
@@ -42,17 +42,17 @@ describe('openaiResponsesAdapter.buildRequest', () => {
     ]);
   });
 
-  it('maps image content parts to input_image items', () => {
+  it('maps image content parts to input_image items', async () => {
     const messages: LlmMessage[] = [
       { role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }] },
     ];
-    const req = openaiResponsesAdapter.buildRequest(settings, messages);
+    const req = await openaiResponsesAdapter.buildRequest(settings, messages);
     const input = (req.body as { input: Array<{ content: Array<{ type: string }> }> }).input;
     expect(input[0].content[0].type).toBe('input_image');
   });
 
-  it('omits temperature for reasoning models that reject it', () => {
-    const req = openaiResponsesAdapter.buildRequest(
+  it('omits temperature for reasoning models that reject it', async () => {
+    const req = await openaiResponsesAdapter.buildRequest(
       { ...settings, temperature: 0 },
       [{ role: 'user', content: 'hi' }],
     );

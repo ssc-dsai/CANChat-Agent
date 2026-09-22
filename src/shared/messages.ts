@@ -223,10 +223,10 @@ export type RuntimeRequest =
   | { type: 'product_delete'; id: string }
   | { type: 'products_export' }
   | { type: 'products_import'; products: ExportedProduct[] }
-  // Subscription-provider connections (src/background/providers/) — GitHub
-  // Copilot, GitLab Duo, ChatGPT/Codex, xAI/SuperGrok. One handler per verb,
-  // dispatched by provider id in the service worker so this stays a thin,
-  // provider-agnostic routing layer (see providers/registry.ts).
+  // Subscription-provider connections (src/background/providers/) — GitLab
+  // Duo, xAI/SuperGrok. One handler per verb, dispatched by provider id in
+  // the service worker so this stays a thin, provider-agnostic routing layer
+  // (see providers/registry.ts).
   | { type: 'provider_list' }
   | { type: 'provider_connect'; provider: ProviderId }
   | { type: 'provider_complete_oauth'; provider: ProviderId }

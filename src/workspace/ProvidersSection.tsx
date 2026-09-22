@@ -4,19 +4,18 @@ import type { Settings } from '../shared/types';
 import { getSettingsForEdit, saveSettings } from '../background/storage';
 
 // =============================================================================
-// "Subscription Providers" card list — connect/disconnect GitHub Copilot,
-// GitLab Duo, ChatGPT/Codex, and xAI/SuperGrok. Every card shows the same
-// truthful decision + capability info regardless of provider (see
-// background/providers/registry.ts) — this component never special-cases a
-// provider id beyond which config fields it needs (client id / instance URL)
-// and the device-flow "enter this code" step GitHub's flow requires.
+// "Subscription Providers" card list — connect/disconnect GitLab Duo and
+// xAI/SuperGrok. Every card shows the same truthful decision + capability
+// info regardless of provider (see background/providers/registry.ts) — this
+// component never special-cases a provider id beyond which config fields it
+// needs (client id / instance URL).
 // =============================================================================
 
 interface ProviderDescriptorLike {
   id: ProviderId;
   name: string;
   mark: string;
-  decision: 'direct' | 'local_companion' | 'api_key_only' | 'blocked';
+  decision: 'direct' | 'api_key_only' | 'blocked';
   capabilities: {
     tools: boolean;
     images: boolean;
@@ -56,7 +55,6 @@ interface QuotaLike {
 
 const DECISION_LABEL: Record<ProviderDescriptorLike['decision'], string> = {
   direct: 'Direct sign-in',
-  local_companion: 'Sign-in direct · chat needs local companion',
   api_key_only: 'API key only',
   blocked: 'Subscription sign-in not supported',
 };
@@ -145,9 +143,7 @@ function ProviderCard({
   };
 
   const connected = status?.status === 'connected';
-  const canConnect = descriptor.capabilities.authModes.some(
-    (m) => m === 'oauth-device' || m === 'oauth-pkce' || m === 'local-companion',
-  );
+  const canConnect = descriptor.capabilities.authModes.some((m) => m === 'oauth-pkce');
 
   return (
     <div class="site-row provider-card">
@@ -159,17 +155,6 @@ function ProviderCard({
         </div>
         <span class="site-desc">{descriptor.summary}</span>
 
-        {descriptor.id === 'github-copilot' && (
-          <label class="field">
-            <span>GitHub OAuth App Client ID</span>
-            <input
-              type="text"
-              value={settings.githubCopilotClientId ?? ''}
-              placeholder="Iv1.xxxxxxxxxxxxxxxx"
-              onInput={(e) => onSettingsPatch({ githubCopilotClientId: (e.target as HTMLInputElement).value })}
-            />
-          </label>
-        )}
         {descriptor.capabilities.authModes.includes('oauth-pkce') && (
           <>
             <label class="field">

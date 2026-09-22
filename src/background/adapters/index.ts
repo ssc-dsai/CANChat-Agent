@@ -1,5 +1,6 @@
 import type { ModelProtocol } from '../../shared/types';
 import { anthropicMessagesAdapter } from './anthropicMessages';
+import { bedrockConverseAdapter } from './bedrockConverse';
 import { geminiNativeAdapter } from './geminiNative';
 import { openaiChatAdapter } from './openaiChat';
 import { openaiResponsesAdapter } from './openaiResponses';
@@ -12,6 +13,7 @@ const ADAPTERS: Record<ModelProtocol, ProtocolAdapter> = {
   responses: openaiResponsesAdapter,
   'anthropic-messages': anthropicMessagesAdapter,
   'gemini-native': geminiNativeAdapter,
+  'bedrock-converse': bedrockConverseAdapter,
 };
 
 /** Absent/unrecognized protocol falls back to `'chat-completions'` — today's only behavior. */

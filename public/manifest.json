@@ -19,8 +19,7 @@
     "cookies",
     "alarms",
     "identity",
-    "notifications",
-    "nativeMessaging"
+    "notifications"
   ],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [

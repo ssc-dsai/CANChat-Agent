@@ -83,6 +83,9 @@ export function resolveModelForRole(settings: Settings, role: ModelRole): Settin
     subscriptionProvider: profile.subscriptionProvider,
     protocol: profile.protocol,
     apiVersion: profile.apiVersion,
+    awsRegion: profile.awsRegion,
+    awsAccessKeyId: profile.awsAccessKeyId,
+    awsSessionToken: profile.awsSessionToken,
     temperature: profile.temperature ?? settings.temperature,
     maxTokens: profile.maxTokens ?? settings.maxTokens,
     graphWindowChars: profile.graphWindowChars ?? settings.graphWindowChars,
@@ -276,7 +279,7 @@ export async function complete(
   // fallback below — a genuinely flaky endpoint that ALSO doesn't support
   // responseFormat is a rare enough double-failure not worth a second budget.
   for (let parsedAttempt = 0; parsedAttempt < 2; parsedAttempt++) {
-    const { url, headers, body } = adapter.buildRequest(settings, messages, tools, currentResponseFormat);
+    const { url, headers, body } = await adapter.buildRequest(settings, messages, tools, currentResponseFormat);
     let response: Response;
     try {
       response = await requestWithRetry(

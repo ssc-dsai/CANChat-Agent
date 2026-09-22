@@ -386,15 +386,25 @@ const EN: Dict = {
   'settings.model': 'Model',
   'settings.protocol': 'Protocol',
   'settings.protocolNote':
-    'Which wire format the endpoint speaks. Chat Completions covers DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM, and Azure OpenAI. Use Responses for GPT-5.x/Grok, Anthropic Messages for Claude/Qwen, or Gemini native for Gemini.',
+    'Which wire format the endpoint speaks. Chat Completions covers DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM, and Azure OpenAI. Use Responses for GPT-5.x/Grok, Anthropic Messages for Claude/Qwen, Gemini native for Gemini, or AWS Bedrock Converse for any Bedrock-hosted model.',
   'settings.protocolChatCompletions': 'Chat Completions (OpenAI-compatible)',
   'settings.protocolResponses': 'Responses (OpenAI GPT-5.x, Grok)',
   'settings.protocolAnthropic': 'Anthropic Messages (Claude, Qwen)',
   'settings.protocolGemini': 'Gemini native',
+  'settings.protocolBedrock': 'AWS Bedrock Converse',
   'settings.ideogramApiKey': 'Ideogram API key (optional)',
   'settings.apiVersion': 'Azure API version (optional)',
   'settings.apiVersionNote':
     'Set this only for Azure OpenAI (e.g. 2024-02-01). When filled, requests use Azure’s api-version query parameter and api-key header. Your endpoint URL should point at the deployment, e.g. https://NAME.openai.azure.com/openai/deployments/DEPLOYMENT',
+  'settings.bedrockEndpointNote':
+    'Leave blank to use the standard bedrock-runtime.<region>.amazonaws.com endpoint for the region below. Only set this to point at a custom or VPC endpoint.',
+  'settings.awsSecretAccessKey': 'AWS secret access key',
+  'settings.awsRegion': 'AWS region',
+  'settings.awsAccessKeyId': 'AWS access key ID',
+  'settings.awsSessionToken': 'AWS session token (optional)',
+  'settings.awsSessionTokenPlaceholder': 'For STS-issued temporary credentials only',
+  'settings.awsSessionTokenNote':
+    'Only needed for temporary credentials issued by AWS STS (e.g. an assumed role). Leave blank for a static IAM user access key/secret pair.',
   'settings.retryOnRateLimit': 'Auto-retry when the endpoint is rate-limited',
   'settings.retryOnRateLimitNote':
     'When the model endpoint is busy (HTTP 429 or a temporary server error), wait and retry automatically instead of failing — honoring the server’s Retry-After hint. Recommended for capacity-limited endpoints like Azure OpenAI.',
@@ -846,15 +856,25 @@ const FR: Dict = {
   'settings.model': 'Modèle',
   'settings.protocol': 'Protocole',
   'settings.protocolNote':
-    'Le format de protocole parlé par le point de terminaison. Chat Completions couvre DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM et Azure OpenAI. Utilisez Responses pour GPT-5.x/Grok, Anthropic Messages pour Claude/Qwen, ou Gemini natif pour Gemini.',
+    'Le format de protocole parlé par le point de terminaison. Chat Completions couvre DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM et Azure OpenAI. Utilisez Responses pour GPT-5.x/Grok, Anthropic Messages pour Claude/Qwen, Gemini natif pour Gemini, ou AWS Bedrock Converse pour tout modèle hébergé sur Bedrock.',
   'settings.protocolChatCompletions': 'Chat Completions (compatible OpenAI)',
   'settings.protocolResponses': 'Responses (OpenAI GPT-5.x, Grok)',
   'settings.protocolAnthropic': 'Anthropic Messages (Claude, Qwen)',
   'settings.protocolGemini': 'Gemini natif',
+  'settings.protocolBedrock': 'AWS Bedrock Converse',
   'settings.ideogramApiKey': 'Clé d’API Ideogram (facultatif)',
   'settings.apiVersion': 'Version d’API Azure (facultatif)',
   'settings.apiVersionNote':
     'À remplir uniquement pour Azure OpenAI (p. ex. 2024-02-01). Si renseigné, les requêtes utilisent le paramètre api-version et l’en-tête api-key d’Azure. L’URL du point de terminaison doit viser le déploiement, p. ex. https://NOM.openai.azure.com/openai/deployments/DEPLOIEMENT',
+  'settings.bedrockEndpointNote':
+    'Laissez vide pour utiliser le point de terminaison standard bedrock-runtime.<région>.amazonaws.com de la région ci-dessous. Ne renseignez ce champ que pour viser un point de terminaison personnalisé ou VPC.',
+  'settings.awsSecretAccessKey': 'Clé d’accès secrète AWS',
+  'settings.awsRegion': 'Région AWS',
+  'settings.awsAccessKeyId': 'ID de clé d’accès AWS',
+  'settings.awsSessionToken': 'Jeton de session AWS (facultatif)',
+  'settings.awsSessionTokenPlaceholder': 'Uniquement pour des identifiants temporaires émis par STS',
+  'settings.awsSessionTokenNote':
+    'Nécessaire uniquement pour des identifiants temporaires émis par AWS STS (p. ex. un rôle assumé). Laissez vide pour une paire clé d’accès/secret IAM statique.',
   'settings.retryOnRateLimit': 'Réessayer automatiquement en cas de limitation du débit',
   'settings.retryOnRateLimitNote':
     'Lorsque le point de terminaison est occupé (HTTP 429 ou erreur serveur temporaire), patienter et réessayer automatiquement au lieu d’échouer — en respectant l’indication Retry-After du serveur. Recommandé pour les points de terminaison à capacité limitée comme Azure OpenAI.',
