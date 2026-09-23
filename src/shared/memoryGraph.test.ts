@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyDecay,
+  buildSupersedeQuestion,
   effectiveConfidence,
   emptyMemoryGraph,
   filterByMinConfidence,
@@ -20,6 +21,7 @@ import {
   renderCoreMemoryBlock,
   renderRelevantMemoryBlock,
   shouldAdjudicate,
+  SUPERSEDE_PROBABILITY_THRESHOLD,
   visibleToProject,
   type MemoryEdge,
   type MemoryGraph,
@@ -346,6 +348,25 @@ describe('parseSupersedeVerdict', () => {
 
   it('strips a markdown code fence', () => {
     expect(parseSupersedeVerdict('```json\n{"supersedes": true}\n```')).toBe(true);
+  });
+});
+
+describe('SUPERSEDE_PROBABILITY_THRESHOLD', () => {
+  it('is 0.5', () => {
+    expect(SUPERSEDE_PROBABILITY_THRESHOLD).toBe(0.5);
+  });
+});
+
+describe('buildSupersedeQuestion', () => {
+  it('builds a state string containing both facts and bounded yes/no instructions', () => {
+    const existing = node({ label: 'Scott role', summary: 'Scott is a data scientist' });
+    const candidate = { label: 'Scott job', summary: 'currently a product manager at Acme' };
+    const { state, instructions } = buildSupersedeQuestion(existing, candidate);
+
+    expect(state).toContain('EXISTING: Scott role: Scott is a data scientist');
+    expect(state).toContain('NEW: Scott job: currently a product manager at Acme');
+    expect(instructions).toMatch(/supersede/i);
+    expect(instructions).not.toContain('JSON');
   });
 });
 

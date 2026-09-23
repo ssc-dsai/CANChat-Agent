@@ -405,6 +405,14 @@ const EN: Dict = {
   'settings.awsSessionTokenPlaceholder': 'For STS-issued temporary credentials only',
   'settings.awsSessionTokenNote':
     'Only needed for temporary credentials issued by AWS STS (e.g. an assumed role). Leave blank for a static IAM user access key/secret pair.',
+  'settings.groupDecisionModel': 'Decision model (optional)',
+  'settings.groupDecisionModelDesc':
+    'A self-hosted bounded-judgment model (e.g. Kev — github.com/jaredpalmer/kev) used to speed up internal yes/no checks, such as memory adjudication, instead of a full model call. Leave blank to keep using the main model for those checks.',
+  'settings.decisionModelBaseUrl': 'Endpoint URL',
+  'settings.decisionModelBaseUrlNote':
+    'Point this at your own decision-model server, e.g. http://localhost:8009 from `kev.serve`. No model field is needed — the server has one checkpoint loaded.',
+  'settings.decisionModelApiKey': 'API token (optional)',
+  'settings.decisionModelApiKeyPlaceholder': 'Bearer token, if your server sets KEV_API_KEY',
   'settings.retryOnRateLimit': 'Auto-retry when the endpoint is rate-limited',
   'settings.retryOnRateLimitNote':
     'When the model endpoint is busy (HTTP 429 or a temporary server error), wait and retry automatically instead of failing — honoring the server’s Retry-After hint. Recommended for capacity-limited endpoints like Azure OpenAI.',
@@ -875,6 +883,14 @@ const FR: Dict = {
   'settings.awsSessionTokenPlaceholder': 'Uniquement pour des identifiants temporaires émis par STS',
   'settings.awsSessionTokenNote':
     'Nécessaire uniquement pour des identifiants temporaires émis par AWS STS (p. ex. un rôle assumé). Laissez vide pour une paire clé d’accès/secret IAM statique.',
+  'settings.groupDecisionModel': 'Modèle de décision (facultatif)',
+  'settings.groupDecisionModelDesc':
+    'Un modèle de jugement borné auto-hébergé (p. ex. Kev — github.com/jaredpalmer/kev) utilisé pour accélérer les vérifications internes oui/non, comme l’arbitrage de mémoire, au lieu d’un appel complet au modèle principal. Laissez vide pour continuer à utiliser le modèle principal pour ces vérifications.',
+  'settings.decisionModelBaseUrl': 'URL du point de terminaison',
+  'settings.decisionModelBaseUrlNote':
+    'Visez votre propre serveur de modèle de décision, p. ex. http://localhost:8009 via `kev.serve`. Aucun champ de modèle n’est nécessaire — le serveur a un seul point de contrôle chargé.',
+  'settings.decisionModelApiKey': 'Jeton d’API (facultatif)',
+  'settings.decisionModelApiKeyPlaceholder': 'Jeton porteur, si votre serveur définit KEV_API_KEY',
   'settings.retryOnRateLimit': 'Réessayer automatiquement en cas de limitation du débit',
   'settings.retryOnRateLimitNote':
     'Lorsque le point de terminaison est occupé (HTTP 429 ou erreur serveur temporaire), patienter et réessayer automatiquement au lieu d’échouer — en respectant l’indication Retry-After du serveur. Recommandé pour les points de terminaison à capacité limitée comme Azure OpenAI.',

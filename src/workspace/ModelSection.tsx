@@ -83,6 +83,8 @@ export function ModelSection() {
         awsRegion: settings.awsRegion?.trim() || undefined,
         awsAccessKeyId: settings.awsAccessKeyId?.trim() || undefined,
         awsSessionToken: settings.awsSessionToken?.trim() || undefined,
+        decisionModelBaseUrl: settings.decisionModelBaseUrl?.trim() || undefined,
+        decisionModelApiKey: settings.decisionModelApiKey?.trim() || undefined,
       });
       setSaved(true);
     } catch (e) {
@@ -200,6 +202,29 @@ export function ModelSection() {
             placeholder="ik-…"
             value={settings.ideogramApiKey ?? ''}
             onInput={(e) => update({ ideogramApiKey: (e.target as HTMLInputElement).value })}
+          />
+        </label>
+      </Group>
+
+      <Group title={t('settings.groupDecisionModel')} desc={t('settings.groupDecisionModelDesc')}>
+        <label class="field">
+          <span>{t('settings.decisionModelBaseUrl')}</span>
+          <input
+            type="url"
+            placeholder="http://localhost:8009"
+            value={settings.decisionModelBaseUrl ?? ''}
+            onInput={(e) => update({ decisionModelBaseUrl: (e.target as HTMLInputElement).value })}
+          />
+          <span class="field-note">{t('settings.decisionModelBaseUrlNote')}</span>
+        </label>
+
+        <label class="field">
+          <span>{t('settings.decisionModelApiKey')}</span>
+          <input
+            type="password"
+            placeholder={t('settings.decisionModelApiKeyPlaceholder')}
+            value={settings.decisionModelApiKey ?? ''}
+            onInput={(e) => update({ decisionModelApiKey: (e.target as HTMLInputElement).value })}
           />
         </label>
       </Group>

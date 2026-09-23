@@ -90,7 +90,7 @@ export interface StoredConversation {
 // Optional per-service secret overrides, encrypted at rest alongside `apiKey`.
 // `apiKey` is handled separately because it is required and drives the
 // locked⇒null behavior.
-export const OPTIONAL_SECRET_FIELDS = ['ideogramApiKey', 'embeddingApiKey', 'transcriptionApiKey', 'awsSessionToken'] as const;
+export const OPTIONAL_SECRET_FIELDS = ['ideogramApiKey', 'embeddingApiKey', 'transcriptionApiKey', 'awsSessionToken', 'decisionModelApiKey'] as const;
 
 export async function getSettings(): Promise<Settings | null> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);

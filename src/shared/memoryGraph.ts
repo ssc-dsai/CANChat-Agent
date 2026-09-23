@@ -220,6 +220,27 @@ export function parseSupersedeVerdict(raw: string): boolean {
   }
 }
 
+/** Probability at or above which a decision-model `noul` adjudication answer counts as "supersedes". */
+export const SUPERSEDE_PROBABILITY_THRESHOLD = 0.5;
+
+/**
+ * Build the `state`/`instructions` for a decision-model `noul` adjudication
+ * question — the same judgment `parseSupersedeVerdict` extracts from a
+ * chat-completion reply, phrased as one bounded yes/no question instead of a
+ * prompt asking for `{"supersedes": true|false}` JSON.
+ */
+export function buildSupersedeQuestion(
+  existing: Pick<MemoryNode, 'label' | 'summary'>,
+  candidate: Pick<ParsedMemoryCandidate, 'label' | 'summary'>,
+): { state: string; instructions: string } {
+  return {
+    state: `EXISTING: ${existing.label}: ${existing.summary}\n\nNEW: ${candidate.label}: ${candidate.summary}`,
+    instructions:
+      'Two memory facts about the same subject were matched but their text differs. Does the NEW fact supersede ' +
+      '(replace/update) the EXISTING one, rather than merely restate or add to it?',
+  };
+}
+
 /**
  * Merge a newly-extracted candidate into an existing node: union provenance,
  * take the max confidence, prefer the candidate's summary when it is more

@@ -390,6 +390,18 @@ export interface Settings {
   /** Optional separate API key for transcription; blank = use apiKey. */
   transcriptionApiKey?: string;
   /**
+   * Optional self-hosted decision-model endpoint (e.g. Kev —
+   * github.com/jaredpalmer/kev), used for bounded yes/no and scoring
+   * judgments (see src/background/decisionModel.ts) instead of a full
+   * chat-completion call. Absent = unavailable; every call site falls back to
+   * its existing chat-completion-based judgment path. A side-call like
+   * embeddings/transcription above — never role-routed, no ModelProfile
+   * equivalent, and not a ModelProtocol (its request shape isn't chat-turns).
+   */
+  decisionModelBaseUrl?: string;
+  /** Optional bearer token for the decision-model endpoint (Kev's KEV_API_KEY). Blank = no auth header. */
+  decisionModelApiKey?: string;
+  /**
    * Automatically back off and retry transient model-endpoint failures (HTTP 429
    * rate limits and transient 5xx), honoring a Retry-After header. Absent = on;
    * set false to surface those errors immediately instead.

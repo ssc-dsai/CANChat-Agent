@@ -65,6 +65,7 @@ import type {
 import { bumpSkillVersion } from '../shared/skillImport';
 import { collectGroupUrls, documentKindForUrl, hostMatches, normalizeHost } from '../shared/url';
 import {
+  buildSupersedeQuestion,
   emptyMemoryGraph,
   filterByMinConfidence,
   MEMORY_NODE_CAP,
@@ -76,12 +77,14 @@ import {
   renderCoreMemoryBlock,
   renderRelevantMemoryBlock,
   shouldAdjudicate,
+  SUPERSEDE_PROBABILITY_THRESHOLD,
   visibleToProject,
   type MemoryGraph,
   type MemoryNode,
   type MemoryNodeKind,
   type ParsedMemoryCandidate,
 } from '../shared/memoryGraph';
+import { askYesNo, isDecisionModelConfigured } from './decisionModel';
 import { memoryIndexRemove, memoryIndexSearch, memoryIndexUpsert, rebuildMemoryIndex } from './memoryIndex';
 import { eventMatchesQuery, parseCalendarView, buildCalendarViewUrl } from '../shared/graphCalendar';
 import { buildGraphDraftMessage, createMessageUrl, parseGraphDraftResponse } from '../shared/graphMail';
@@ -1702,8 +1705,26 @@ export class AgentRuntime {
     }
   }
 
-  /** One adjudication call: does `candidate` supersede `existing`, or merely restate it? Fails closed (false) on any error. */
+  /**
+   * One adjudication call: does `candidate` supersede `existing`, or merely
+   * restate it? Fails closed (false) on any error. Tries the optional
+   * self-hosted decision-model service first when configured (see
+   * decisionModel.ts) — the same yes/no judgment, faster and free — falling
+   * back to the chat-completion path below on any failure, so this
+   * function's external behavior is unchanged whether or not one is set.
+   */
   private async adjudicateSupersede(settings: Settings, existing: MemoryNode, candidate: ParsedMemoryCandidate, epoch: number): Promise<boolean> {
+    if (isDecisionModelConfigured(settings)) {
+      try {
+        const { state, instructions } = buildSupersedeQuestion(existing, candidate);
+        const probability = await askYesNo(settings, state, instructions);
+        if (this.taskEpoch !== epoch) return false;
+        return probability >= SUPERSEDE_PROBABILITY_THRESHOLD;
+      } catch {
+        // Fall through to the chat-completion path below.
+      }
+    }
+
     const prompt: LlmMessage[] = [
       {
         role: 'system',
