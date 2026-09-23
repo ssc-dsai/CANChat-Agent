@@ -35,6 +35,7 @@ import type { BackgroundEvent } from '../shared/messages';
 import { MEMORY_TOOL_DEFINITIONS, READ_ONLY_TOOLS, TOOL_DEFINITIONS } from '../shared/schemas';
 import {
   normalizeRepoName,
+  groundingDirective,
   sourcePolicyForRepos,
   sourcePolicyPrompt,
   sourceRepositoryAllowed,
@@ -2249,8 +2250,10 @@ export class AgentRuntime {
     // moved to a new URL, any page text already in this thread is stale and the
     // agent must re-read before answering about "this page".
     let navigationNotice = '';
+    let groundingTab: { url: string; title: string } | null = null;
     try {
       const tab = await browser.getActiveTab();
+      groundingTab = { url: tab.url, title: tab.title };
       this.activeHost = normalizeHost(tab.url);
       this.activeTabLabel = `${tab.url} "${tab.title}"`;
       if (this.lastTaskUrl && this.lastTaskUrl !== tab.url) {
@@ -2291,6 +2294,11 @@ export class AgentRuntime {
     const contextBlock = this.buildContextBlock();
     let textContent = contextBlock ? `${contextBlock}\n\n${userText}` : userText;
     if (navigationNotice) textContent = `${navigationNotice}${textContent}`;
+    // No knowledge base: ground plain prompts in the active tab, else web-search from scratch.
+    // Skipped for expanded turns (skills, @mentions) and when the user shared tab context.
+    if (!contextBlock && userText === this.lastUserText) {
+      textContent += groundingDirective(this.sourcePolicy, groundingTab);
+    }
     if (this.sourcePolicy.mode === 'repo_only') {
       this.notice(`Searching ${this.sourcePolicy.repos.map((repo) => `"${repo}"`).join(', ')} in repository-only mode.`);
       const sections: string[] = [];
