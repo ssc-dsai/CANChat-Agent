@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { signRequest } from './awsSigv4';
+import { canonicalUri, signRequest } from './awsSigv4';
 
 describe('signRequest', () => {
   it('produces a well-formed SigV4 Authorization header', async () => {
@@ -56,5 +56,19 @@ describe('signRequest', () => {
       { accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'secret' },
     );
     expect(headers.Authorization).toContain('/eu-west-1/bedrock/aws4_request');
+  });
+});
+
+describe('canonicalUri', () => {
+  it('double-encodes reserved characters in path segments (%3A -> %253A)', () => {
+    expect(canonicalUri('/model/anthropic.claude-haiku-4-5-20251001-v1%3A0/converse')).toBe(
+      '/model/anthropic.claude-haiku-4-5-20251001-v1%253A0/converse',
+    );
+  });
+
+  it('leaves plain paths and the root untouched', () => {
+    expect(canonicalUri('/model/m/converse')).toBe('/model/m/converse');
+    expect(canonicalUri('')).toBe('/');
+    expect(canonicalUri('/')).toBe('/');
   });
 });

@@ -30,6 +30,22 @@ function amzDate(now: Date): { date: string; dateTime: string } {
   return { date: dateTime.slice(0, 8), dateTime };
 }
 
+/**
+ * SigV4 canonical URI for non-S3 services: the already-encoded request path
+ * with every segment URI-encoded a second time (`%3A` → `%253A`), while the
+ * `/` separators are kept. The URL's own pathname is single-encoded, which is
+ * what goes on the wire; signing that as-is yields a signature mismatch (403)
+ * whenever a segment contains a reserved character, e.g. the `:` in Bedrock
+ * model IDs like `anthropic.claude-haiku-4-5-20251001-v1:0`.
+ */
+export function canonicalUri(pathname: string): string {
+  if (!pathname) return '/';
+  return pathname
+    .split('/')
+    .map((segment) => encodeURIComponent(segment).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`))
+    .join('/');
+}
+
 export interface SigV4Credentials {
   accessKeyId: string;
   secretAccessKey: string;
@@ -65,7 +81,7 @@ export async function signRequest(
 
   const canonicalRequest = [
     method,
-    pathname || '/',
+    canonicalUri(pathname),
     search.slice(1),
     canonicalHeaders,
     signedHeaders,
