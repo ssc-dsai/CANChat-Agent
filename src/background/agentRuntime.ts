@@ -838,20 +838,10 @@ export class AgentRuntime {
       }
     }
 
-    // If still no repo selected, honor the workspace's currently viewed knowledge base
-    // (stored by NotebooksWorkspace when the user clicks a notebook tile).
-    if (mentionedRepos.length === 0) {
-      try {
-        const stored = await chrome.storage.local.get('ba_active_repo');
-        const activeRepo = typeof stored.ba_active_repo === 'string' ? stored.ba_active_repo.trim() : '';
-        if (activeRepo) {
-          effectiveMentions = [{ kind: 'repo', value: activeRepo }];
-          mentionedRepos = [activeRepo];
-        }
-      } catch {
-        // ignore storage errors
-      }
-    }
+    // Only an explicit #repo selection in the composer scopes a turn to a knowledge base.
+    // (The workspace page used to persist its viewed notebook as `ba_active_repo`, which
+    // silently kept scoping every later chat; drop any value left over from that.)
+    void chrome.storage.local.remove('ba_active_repo').catch(() => undefined);
 
     const directive = buildMentionDirective(effectiveMentions.length > 0 ? effectiveMentions : mentions);
     if (directive) taskText += directive;
