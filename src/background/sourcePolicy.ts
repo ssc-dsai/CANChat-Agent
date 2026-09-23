@@ -75,3 +75,39 @@ export function sourcePolicyPrompt(policy: SourcePolicy): string {
     'If approval is denied, state that the repository does not contain enough evidence.'
   );
 }
+
+/** Active-tab summary used to decide how a knowledge-base-less prompt is grounded. */
+export interface GroundingTab {
+  url: string;
+  title: string;
+}
+
+const NON_PAGE_URL = /^(chrome|chrome-extension|edge|about|devtools|view-source|chrome-untrusted|file):/i;
+
+/** True when the tab is a real http(s) page the agent can read (not a new-tab/browser-internal surface). */
+export function isGroundableTab(tab: GroundingTab | null | undefined): tab is GroundingTab {
+  return !!tab && /^https?:/i.test(tab.url) && !NON_PAGE_URL.test(tab.url);
+}
+
+/**
+ * Grounding order for an unrestricted (no knowledge base selected) turn:
+ *  1. the active tab, when the request plausibly concerns it;
+ *  2. otherwise a from-scratch agentic web search through the browser.
+ * The relevance call is the model's; the runtime only decides whether step 1 is
+ * available at all (a readable http(s) tab) and states the fallback either way.
+ */
+export function groundingDirective(policy: SourcePolicy, tab: GroundingTab | null | undefined): string {
+  if (policy.mode !== 'unrestricted') return '';
+  const webSearch =
+    'Start from scratch with agentic web research through the browser: search_web for the topic, open_url the most relevant results, read them, ' +
+    'refine the search when the first results are thin, and answer from what you read, citing the pages.';
+  if (!isGroundableTab(tab)) {
+    return `\n\n[No knowledge base is selected and there is no readable active tab. ${webSearch}]`;
+  }
+  const label = `"${tab.title.replace(/"/g, '')}" ${tab.url}`;
+  return (
+    `\n\n[No knowledge base is selected, so apply this request to the active tab: ${label}. ` +
+    'Call get_tab_content on it first and answer from that page. ' +
+    `If the request does not make sense for this page (it is about something else, or the page has no relevant content), do not force it: ${webSearch}]`
+  );
+}
