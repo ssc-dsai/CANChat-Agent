@@ -7,6 +7,7 @@
 
 import { pruneIndex } from '../shared/conversationMeta';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
+import { migrateSettingsFromConverse } from '../shared/bedrockMantle';
 import { migrateSitesToCapabilities } from '../shared/capabilities';
 import { emptyMemoryGraph, migrateFlatEntries, pruneGraph, type MemoryGraph } from '../shared/memoryGraph';
 import type {
@@ -94,8 +95,9 @@ export const OPTIONAL_SECRET_FIELDS = ['ideogramApiKey', 'embeddingApiKey', 'tra
 
 export async function getSettings(): Promise<Settings | null> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  const settings = result[SETTINGS_KEY] as Settings | undefined;
-  if (!settings || !settings.model) return null;
+  const stored = result[SETTINGS_KEY] as Settings | undefined;
+  if (!stored || !stored.model) return null;
+  const settings = migrateSettingsFromConverse(stored);
   if (settings.subscriptionProvider) {
     const out: Settings = { ...settings, apiKey: '' };
     for (const f of OPTIONAL_SECRET_FIELDS) {
@@ -103,7 +105,8 @@ export async function getSettings(): Promise<Settings | null> {
     }
     return out;
   }
-  if (!settings.baseUrl || !settings.apiKey) return null;
+  // Bedrock Mantle derives its endpoint from the region when baseUrl is blank.
+  if ((!settings.baseUrl && !settings.bedrockMantle) || !settings.apiKey) return null;
   const apiKey = await vaultDecrypt(settings.apiKey);
   if (apiKey === null) return null; // encrypted but vault locked/erased
   const out: Settings = { ...settings, apiKey };
@@ -120,7 +123,8 @@ export async function getSettings(): Promise<Settings | null> {
  */
 export async function getSettingsForEdit(): Promise<{ settings: Settings; locked: boolean }> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  const settings = (result[SETTINGS_KEY] as Settings | undefined) ?? { baseUrl: '', apiKey: '', model: '' };
+  const stored = (result[SETTINGS_KEY] as Settings | undefined) ?? { baseUrl: '', apiKey: '', model: '' };
+  const settings = migrateSettingsFromConverse(stored);
   if (settings.apiKey) {
     const dec = await vaultDecrypt(settings.apiKey);
     if (dec === null) return { settings: { ...settings, apiKey: '' }, locked: true };

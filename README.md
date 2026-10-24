@@ -118,12 +118,12 @@ Click **Test connection** before saving — it sends a one-word prompt and shows
 Notes:
 
 - The key is stored in `chrome.storage.local` **on this device only**; it is never synced to other machines, and never sent anywhere except the endpoint you configured.
-- Multi-protocol support translates canonical tool definitions into provider-native tool schemas across OpenAI, Anthropic, Gemini, and AWS Bedrock endpoints.
+- Multi-protocol support translates canonical tool definitions into provider-native tool schemas across OpenAI, Anthropic, Gemini, and AWS Bedrock (Mantle) endpoints.
 - Every model request times out after **120 seconds**, so a hung endpoint can never freeze a task permanently.
 
 <p align="center">
   <img src="docs/user-guide/screenshots/11-models-multi-protocol.png" alt="Workspace Models page with multi-protocol connection settings" width="700"><br>
-  <sub><em>Workspace → Models: connection fields supporting OpenAI Chat Completions & Responses, Anthropic Messages, Gemini native, and AWS Bedrock Converse APIs.</em></sub>
+  <sub><em>Workspace → Models: connection fields supporting OpenAI Chat Completions & Responses, Anthropic Messages, and Gemini native APIs, on any endpoint or on AWS Bedrock's Mantle endpoint.</em></sub>
 </p>
 
 <p align="center">

@@ -246,20 +246,26 @@ export interface Settings {
    * DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM, Azure OpenAI. `'responses'` is
    * OpenAI's /responses API (GPT-5.x, Grok). `'anthropic-messages'` is
    * Anthropic's /v1/messages API (Claude, Qwen deployments that mirror it).
-   * `'gemini-native'` is Gemini's generateContent endpoint. `'bedrock-converse'`
-   * is AWS Bedrock's Converse API — auth is AWS Signature Version 4 using
-   * `awsAccessKeyId`/`apiKey` (the secret access key)/`awsSessionToken` and
-   * `awsRegion`, not a bearer token; `baseUrl` is an optional endpoint
-   * override (blank = the standard `bedrock-runtime.<region>.amazonaws.com`
-   * endpoint). See src/background/adapters/ for the per-protocol
-   * request/response translation.
+   * `'gemini-native'` is Gemini's generateContent endpoint. See
+   * src/background/adapters/ for the per-protocol request/response
+   * translation.
    */
   protocol?: ModelProtocol;
-  /** Bedrock Converse only: the target AWS region, e.g. "us-east-1". Also used to derive the default endpoint. */
+  /**
+   * Host the connection on AWS Bedrock's Mantle endpoint
+   * (`bedrock-mantle.<region>.api.aws`) using `protocol`'s wire format
+   * (Chat Completions, Responses, or Anthropic Messages — not Gemini).
+   * `baseUrl` is an optional override (blank = the region's default Mantle
+   * base). Auth is a Bedrock API key in `apiKey`, or — when `awsAccessKeyId`
+   * is set — AWS Signature Version 4 with `apiKey` as the secret access key.
+   * See src/background/adapters/bedrockMantle.ts.
+   */
+  bedrockMantle?: boolean;
+  /** Bedrock Mantle only: the target AWS region, e.g. "us-east-1". Also used to derive the default endpoint and to sign requests. */
   awsRegion?: string;
-  /** Bedrock Converse only: AWS access key id. Not treated as secret (like an OAuth client id) — the secret half is `apiKey`. */
+  /** Bedrock Mantle only: AWS access key id, which switches auth to SigV4. Not treated as secret (like an OAuth client id) — the secret half is `apiKey`. */
   awsAccessKeyId?: string;
-  /** Bedrock Converse only: optional session token for STS-issued temporary credentials. */
+  /** Bedrock Mantle only: optional session token for STS-issued temporary credentials. */
   awsSessionToken?: string;
   /** Optional Ideogram API key used by the image-generation tool. */
   ideogramApiKey?: string;
@@ -462,7 +468,7 @@ export type ModelRole = 'main' | 'utility' | 'knowledgeGraph' | 'reflection' | '
  * speaks. See the `Settings.protocol` doc comment above for what each value
  * covers and src/background/adapters/ for the implementation.
  */
-export type ModelProtocol = 'chat-completions' | 'responses' | 'anthropic-messages' | 'gemini-native' | 'bedrock-converse';
+export type ModelProtocol = 'chat-completions' | 'responses' | 'anthropic-messages' | 'gemini-native';
 
 /**
  * An alternate named endpoint a role can be routed to — e.g. a small local
@@ -482,7 +488,9 @@ export interface ModelProfile {
   /** Wire protocol this profile's baseUrl speaks. Absent = 'chat-completions' (today's behavior). */
   protocol?: ModelProtocol;
   apiVersion?: string;
-  /** See Settings.awsRegion — only meaningful when protocol is 'bedrock-converse'. */
+  /** See Settings.bedrockMantle. */
+  bedrockMantle?: boolean;
+  /** See Settings.awsRegion — only meaningful when bedrockMantle is set. */
   awsRegion?: string;
   /** See Settings.awsAccessKeyId. */
   awsAccessKeyId?: string;

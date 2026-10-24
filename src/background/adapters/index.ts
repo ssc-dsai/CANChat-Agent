@@ -1,6 +1,6 @@
-import type { ModelProtocol } from '../../shared/types';
+import type { ModelProtocol, Settings } from '../../shared/types';
 import { anthropicMessagesAdapter } from './anthropicMessages';
-import { bedrockConverseAdapter } from './bedrockConverse';
+import { withBedrockMantle } from './bedrockMantle';
 import { geminiNativeAdapter } from './geminiNative';
 import { openaiChatAdapter } from './openaiChat';
 import { openaiResponsesAdapter } from './openaiResponses';
@@ -13,10 +13,14 @@ const ADAPTERS: Record<ModelProtocol, ProtocolAdapter> = {
   responses: openaiResponsesAdapter,
   'anthropic-messages': anthropicMessagesAdapter,
   'gemini-native': geminiNativeAdapter,
-  'bedrock-converse': bedrockConverseAdapter,
 };
 
-/** Absent/unrecognized protocol falls back to `'chat-completions'` — today's only behavior. */
-export function getAdapter(protocol: ModelProtocol | undefined): ProtocolAdapter {
-  return ADAPTERS[protocol ?? 'chat-completions'] ?? openaiChatAdapter;
+/**
+ * Absent/unrecognized protocol falls back to `'chat-completions'` — today's
+ * only behavior. A Bedrock Mantle connection wraps the protocol's adapter
+ * with Mantle's endpoint and auth (see ./bedrockMantle.ts).
+ */
+export function getAdapter(settings: Pick<Settings, 'protocol' | 'bedrockMantle'>): ProtocolAdapter {
+  const adapter = ADAPTERS[settings.protocol ?? 'chat-completions'] ?? openaiChatAdapter;
+  return settings.bedrockMantle ? withBedrockMantle(adapter, settings.protocol) : adapter;
 }

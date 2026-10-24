@@ -386,21 +386,27 @@ const EN: Dict = {
   'settings.model': 'Model',
   'settings.protocol': 'Protocol',
   'settings.protocolNote':
-    'Which wire format the endpoint speaks. Chat Completions covers DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM, and Azure OpenAI. Use Responses for GPT-5.x/Grok, Anthropic Messages for Claude/Qwen, Gemini native for Gemini, or AWS Bedrock Converse for any Bedrock-hosted model.',
+    'Which wire format the endpoint speaks. Chat Completions covers DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM, and Azure OpenAI. Use Responses for GPT-5.x/Grok, Anthropic Messages for Claude/Qwen, or Gemini native for Gemini. For AWS Bedrock, set Host to AWS Bedrock and pick the format here.',
   'settings.protocolChatCompletions': 'Chat Completions (OpenAI-compatible)',
   'settings.protocolResponses': 'Responses (OpenAI GPT-5.x, Grok)',
   'settings.protocolAnthropic': 'Anthropic Messages (Claude, Qwen)',
   'settings.protocolGemini': 'Gemini native',
-  'settings.protocolBedrock': 'AWS Bedrock Converse',
+  'settings.host': 'Host',
+  'settings.hostCustom': 'Custom endpoint',
+  'settings.hostBedrockMantle': 'AWS Bedrock (Mantle)',
+  'settings.hostBedrockNote':
+    'Requests go to AWS Bedrock’s Mantle endpoint (bedrock-mantle.<region>.api.aws) in the protocol chosen below. Use Mantle model IDs such as openai.gpt-oss-120b or anthropic.claude-sonnet-5; cross-Region inference profile IDs (us.…, global.…) are not available on Mantle.',
   'settings.ideogramApiKey': 'Ideogram API key (optional)',
   'settings.apiVersion': 'Azure API version (optional)',
   'settings.apiVersionNote':
     'Set this only for Azure OpenAI (e.g. 2024-02-01). When filled, requests use Azure’s api-version query parameter and api-key header. Your endpoint URL should point at the deployment, e.g. https://NAME.openai.azure.com/openai/deployments/DEPLOYMENT',
   'settings.bedrockEndpointNote':
-    'Leave blank to use the standard bedrock-runtime.<region>.amazonaws.com endpoint for the region below. Only set this to point at a custom or VPC endpoint.',
-  'settings.awsSecretAccessKey': 'AWS secret access key',
+    'Leave blank to use bedrock-mantle.<region>.api.aws for the region below. Set it for models Mantle serves under /openai/v1 (e.g. https://bedrock-mantle.us-east-1.api.aws/openai/v1) or for a VPC endpoint.',
+  'settings.bedrockKey': 'Bedrock API key or AWS secret access key',
   'settings.awsRegion': 'AWS region',
-  'settings.awsAccessKeyId': 'AWS access key ID',
+  'settings.awsAccessKeyId': 'AWS access key ID (optional)',
+  'settings.awsAccessKeyIdNote':
+    'Leave blank to authenticate with a Bedrock API key. Fill it in to sign requests with AWS credentials (SigV4); the key field above then holds the secret access key.',
   'settings.awsSessionToken': 'AWS session token (optional)',
   'settings.awsSessionTokenPlaceholder': 'For STS-issued temporary credentials only',
   'settings.awsSessionTokenNote':
@@ -864,21 +870,27 @@ const FR: Dict = {
   'settings.model': 'Modèle',
   'settings.protocol': 'Protocole',
   'settings.protocolNote':
-    'Le format de protocole parlé par le point de terminaison. Chat Completions couvre DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM et Azure OpenAI. Utilisez Responses pour GPT-5.x/Grok, Anthropic Messages pour Claude/Qwen, Gemini natif pour Gemini, ou AWS Bedrock Converse pour tout modèle hébergé sur Bedrock.',
+    'Le format de protocole parlé par le point de terminaison. Chat Completions couvre DeepSeek, GLM, MiniMax, Kimi, Ollama, vLLM et Azure OpenAI. Utilisez Responses pour GPT-5.x/Grok, Anthropic Messages pour Claude/Qwen, ou Gemini natif pour Gemini. Pour AWS Bedrock, choisissez AWS Bedrock comme hébergement et sélectionnez le format ici.',
   'settings.protocolChatCompletions': 'Chat Completions (compatible OpenAI)',
   'settings.protocolResponses': 'Responses (OpenAI GPT-5.x, Grok)',
   'settings.protocolAnthropic': 'Anthropic Messages (Claude, Qwen)',
   'settings.protocolGemini': 'Gemini natif',
-  'settings.protocolBedrock': 'AWS Bedrock Converse',
+  'settings.host': 'Hébergement',
+  'settings.hostCustom': 'Point de terminaison personnalisé',
+  'settings.hostBedrockMantle': 'AWS Bedrock (Mantle)',
+  'settings.hostBedrockNote':
+    'Les requêtes sont envoyées au point de terminaison Mantle d’AWS Bedrock (bedrock-mantle.<région>.api.aws) dans le protocole choisi ci-dessous. Utilisez des ID de modèle Mantle comme openai.gpt-oss-120b ou anthropic.claude-sonnet-5; les ID de profils d’inférence interrégionale (us.…, global.…) ne sont pas offerts sur Mantle.',
   'settings.ideogramApiKey': 'Clé d’API Ideogram (facultatif)',
   'settings.apiVersion': 'Version d’API Azure (facultatif)',
   'settings.apiVersionNote':
     'À remplir uniquement pour Azure OpenAI (p. ex. 2024-02-01). Si renseigné, les requêtes utilisent le paramètre api-version et l’en-tête api-key d’Azure. L’URL du point de terminaison doit viser le déploiement, p. ex. https://NOM.openai.azure.com/openai/deployments/DEPLOIEMENT',
   'settings.bedrockEndpointNote':
-    'Laissez vide pour utiliser le point de terminaison standard bedrock-runtime.<région>.amazonaws.com de la région ci-dessous. Ne renseignez ce champ que pour viser un point de terminaison personnalisé ou VPC.',
-  'settings.awsSecretAccessKey': 'Clé d’accès secrète AWS',
+    'Laissez vide pour utiliser bedrock-mantle.<région>.api.aws pour la région ci-dessous. Renseignez-le pour les modèles que Mantle sert sous /openai/v1 (p. ex. https://bedrock-mantle.us-east-1.api.aws/openai/v1) ou pour un point de terminaison VPC.',
+  'settings.bedrockKey': 'Clé d’API Bedrock ou clé d’accès secrète AWS',
   'settings.awsRegion': 'Région AWS',
-  'settings.awsAccessKeyId': 'ID de clé d’accès AWS',
+  'settings.awsAccessKeyId': 'ID de clé d’accès AWS (facultatif)',
+  'settings.awsAccessKeyIdNote':
+    'Laissez vide pour vous authentifier avec une clé d’API Bedrock. Renseignez-le pour signer les requêtes avec des identifiants AWS (SigV4); le champ de clé ci-dessus contient alors la clé d’accès secrète.',
   'settings.awsSessionToken': 'Jeton de session AWS (facultatif)',
   'settings.awsSessionTokenPlaceholder': 'Uniquement pour des identifiants temporaires émis par STS',
   'settings.awsSessionTokenNote':
