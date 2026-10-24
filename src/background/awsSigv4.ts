@@ -34,8 +34,7 @@ function amzDate(now: Date): { date: string; dateTime: string } {
  * with every segment URI-encoded a second time (`%3A` → `%253A`), while the
  * `/` separators are kept. The URL's own pathname is single-encoded, which is
  * what goes on the wire; signing that as-is yields a signature mismatch (403)
- * whenever a segment contains a reserved character, e.g. the `:` in Bedrock
- * model IDs like `anthropic.claude-haiku-4-5-20251001-v1:0`.
+ * whenever a segment contains a reserved character such as `:`.
  */
 export function canonicalUri(pathname: string): string {
   if (!pathname) return '/';

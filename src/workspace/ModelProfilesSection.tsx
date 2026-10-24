@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ModelProfile, ModelProtocol, ModelRole, Settings } from '../shared/types';
-import { migrateSettingsFromConverse } from '../shared/bedrockMantle';
 import { useT } from '../sidebar/i18n';
 
 const PROTOCOLS: Array<{ value: ModelProtocol; label: string }> = [
@@ -65,8 +64,7 @@ const EMPTY_SETTINGS: Settings = { baseUrl: '', apiKey: '', model: '' };
 
 async function loadSettings(): Promise<Settings> {
   const r = await chrome.storage.local.get('ba_settings');
-  const stored = r.ba_settings as Settings | undefined;
-  return stored ? migrateSettingsFromConverse(stored) : EMPTY_SETTINGS;
+  return (r.ba_settings as Settings | undefined) ?? EMPTY_SETTINGS;
 }
 
 // A named alternate endpoint routed by role — the main chat model (Settings

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { migrateBedrockConverse, migrateSettingsFromConverse } from '../../shared/bedrockMantle';
 import type { ModelProtocol, Settings } from '../../shared/types';
 import { getAdapter } from './index';
 
@@ -101,46 +100,5 @@ describe('Bedrock Mantle adapter', () => {
       choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
     });
     expect(msg.content).toBe('ok');
-  });
-});
-
-describe('migrateBedrockConverse', () => {
-  const legacy = {
-    baseUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com',
-    apiKey: 'secret',
-    model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-    protocol: 'bedrock-converse' as unknown as ModelProtocol,
-    awsRegion: 'us-east-1',
-    awsAccessKeyId: 'AKIDEXAMPLE',
-  };
-
-  it('moves Claude models to Anthropic Messages on Mantle and drops the runtime endpoint', () => {
-    expect(migrateBedrockConverse(legacy)).toEqual({
-      ...legacy,
-      protocol: 'anthropic-messages',
-      bedrockMantle: true,
-      baseUrl: '',
-    });
-  });
-
-  it('moves other models to Chat Completions', () => {
-    expect(migrateBedrockConverse({ ...legacy, model: 'meta.llama3-70b-instruct-v1:0' }).protocol).toBe('chat-completions');
-  });
-
-  it('leaves current connections untouched', () => {
-    const s: Settings = { baseUrl: 'x', apiKey: 'k', model: 'm', protocol: 'responses' };
-    expect(migrateBedrockConverse(s)).toBe(s);
-  });
-
-  it('migrates model profiles too', () => {
-    const settings: Settings = {
-      baseUrl: 'https://api.example.com/v1',
-      apiKey: 'k',
-      model: 'm',
-      modelProfiles: [{ id: 'p1', name: 'Bedrock', ...legacy }],
-    };
-    const out = migrateSettingsFromConverse(settings);
-    expect(out.protocol).toBeUndefined();
-    expect(out.modelProfiles?.[0]).toMatchObject({ protocol: 'anthropic-messages', bedrockMantle: true, baseUrl: '' });
   });
 });

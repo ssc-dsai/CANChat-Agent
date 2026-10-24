@@ -7,7 +7,6 @@
 
 import { pruneIndex } from '../shared/conversationMeta';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
-import { migrateSettingsFromConverse } from '../shared/bedrockMantle';
 import { migrateSitesToCapabilities } from '../shared/capabilities';
 import { emptyMemoryGraph, migrateFlatEntries, pruneGraph, type MemoryGraph } from '../shared/memoryGraph';
 import type {
@@ -95,9 +94,8 @@ export const OPTIONAL_SECRET_FIELDS = ['ideogramApiKey', 'embeddingApiKey', 'tra
 
 export async function getSettings(): Promise<Settings | null> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  const stored = result[SETTINGS_KEY] as Settings | undefined;
-  if (!stored || !stored.model) return null;
-  const settings = migrateSettingsFromConverse(stored);
+  const settings = result[SETTINGS_KEY] as Settings | undefined;
+  if (!settings || !settings.model) return null;
   if (settings.subscriptionProvider) {
     const out: Settings = { ...settings, apiKey: '' };
     for (const f of OPTIONAL_SECRET_FIELDS) {
@@ -123,8 +121,7 @@ export async function getSettings(): Promise<Settings | null> {
  */
 export async function getSettingsForEdit(): Promise<{ settings: Settings; locked: boolean }> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  const stored = (result[SETTINGS_KEY] as Settings | undefined) ?? { baseUrl: '', apiKey: '', model: '' };
-  const settings = migrateSettingsFromConverse(stored);
+  const settings = (result[SETTINGS_KEY] as Settings | undefined) ?? { baseUrl: '', apiKey: '', model: '' };
   if (settings.apiKey) {
     const dec = await vaultDecrypt(settings.apiKey);
     if (dec === null) return { settings: { ...settings, apiKey: '' }, locked: true };
