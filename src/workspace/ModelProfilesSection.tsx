@@ -7,8 +7,10 @@ const PROTOCOLS: Array<{ value: ModelProtocol; label: string }> = [
   { value: 'responses', label: 'settings.protocolResponses' },
   { value: 'anthropic-messages', label: 'settings.protocolAnthropic' },
   { value: 'gemini-native', label: 'settings.protocolGemini' },
-  { value: 'bedrock-converse', label: 'settings.protocolBedrock' },
 ];
+
+// Bedrock Mantle serves every protocol above except Gemini native.
+const MANTLE_PROTOCOLS = PROTOCOLS.filter((p) => p.value !== 'gemini-native');
 
 const ROLES: Array<{ role: Exclude<ModelRole, 'main'>; label: string; hint: string }> = [
   { role: 'utility', label: 'modelProfiles.utilityRole', hint: 'modelProfiles.utilityHint' },
@@ -88,9 +90,9 @@ export function ModelProfilesSection() {
     await chrome.storage.local.set({ ba_settings: merged });
   };
 
-  const formIsBedrock = form.protocol === 'bedrock-converse';
+  const formIsBedrock = Boolean(form.bedrockMantle);
   const formValid = formIsBedrock
-    ? form.name.trim() && form.apiKey.trim() && form.model.trim() && form.awsAccessKeyId?.trim() && form.awsRegion?.trim()
+    ? form.name.trim() && form.apiKey.trim() && form.model.trim() && form.awsRegion?.trim()
     : form.name.trim() && form.baseUrl.trim() && form.apiKey.trim() && form.model.trim();
 
   const submitForm = async () => {
@@ -110,6 +112,7 @@ export function ModelProfilesSection() {
       apiKey: form.apiKey.trim(),
       model: form.model.trim(),
       protocol: form.protocol,
+      bedrockMantle: form.bedrockMantle || undefined,
       apiVersion: form.apiVersion?.trim() || undefined,
       awsRegion: form.awsRegion?.trim() || undefined,
       awsAccessKeyId: form.awsAccessKeyId?.trim() || undefined,
@@ -139,6 +142,7 @@ export function ModelProfilesSection() {
       apiKey: p.apiKey,
       model: p.model,
       protocol: p.protocol,
+      bedrockMantle: p.bedrockMantle,
       apiVersion: p.apiVersion ?? '',
       awsRegion: p.awsRegion ?? '',
       awsAccessKeyId: p.awsAccessKeyId ?? '',
@@ -229,19 +233,37 @@ export function ModelProfilesSection() {
             />
           </label>
           <label class="field">
+              <span>{t('settings.host')}</span>
+            <select
+              value={formIsBedrock ? 'bedrock-mantle' : 'custom'}
+              onChange={(e) => {
+                const bedrockMantle = (e.target as HTMLSelectElement).value === 'bedrock-mantle';
+                setForm({
+                  ...form,
+                  bedrockMantle,
+                  ...(bedrockMantle && form.protocol === 'gemini-native' ? { protocol: 'chat-completions' as const } : {}),
+                });
+              }}
+            >
+              <option value="custom">{t('settings.hostCustom')}</option>
+              <option value="bedrock-mantle">{t('settings.hostBedrockMantle')}</option>
+            </select>
+            {formIsBedrock && <span class="field-note">{t('settings.hostBedrockNote')}</span>}
+          </label>
+          <label class="field">
               <span>{t('modelProfiles.endpointUrl')}</span>
             <input
               type="url"
-              placeholder={formIsBedrock ? 'https://bedrock-runtime.<region>.amazonaws.com (optional override)' : 'http://localhost:11434/v1'}
+              placeholder={formIsBedrock ? 'https://bedrock-mantle.<region>.api.aws/v1 (optional override)' : 'http://localhost:11434/v1'}
               value={form.baseUrl}
               onInput={(e) => setForm({ ...form, baseUrl: (e.target as HTMLInputElement).value })}
             />
           </label>
           <label class="field">
-              <span>{formIsBedrock ? t('settings.awsSecretAccessKey') : t('modelProfiles.apiKey')}</span>
+              <span>{formIsBedrock ? t('settings.bedrockKey') : t('modelProfiles.apiKey')}</span>
             <input
               type="password"
-              placeholder={formIsBedrock ? 'AWS secret access key' : 'sk-… (blank if the endpoint needs none)'}
+              placeholder={formIsBedrock ? 'Bedrock API key, or AWS secret access key' : 'sk-… (blank if the endpoint needs none)'}
               value={form.apiKey}
               onInput={(e) => setForm({ ...form, apiKey: (e.target as HTMLInputElement).value })}
             />
@@ -256,7 +278,7 @@ export function ModelProfilesSection() {
               value={form.protocol ?? 'chat-completions'}
               onChange={(e) => setForm({ ...form, protocol: (e.target as HTMLSelectElement).value as ModelProtocol })}
             >
-              {PROTOCOLS.map((p) => (
+              {(formIsBedrock ? MANTLE_PROTOCOLS : PROTOCOLS).map((p) => (
                 <option key={p.value} value={p.value}>
                   {t(p.label)}
                 </option>
@@ -271,6 +293,7 @@ export function ModelProfilesSection() {
             <label class="field">
               <span>{t('settings.awsAccessKeyId')}</span>
               <input type="text" placeholder="AKIA…" value={form.awsAccessKeyId ?? ''} onInput={(e) => setForm({ ...form, awsAccessKeyId: (e.target as HTMLInputElement).value })} />
+              <span class="field-note">{t('settings.awsAccessKeyIdNote')}</span>
             </label>
             <label class="field">
               <span>{t('settings.awsSessionToken')}</span>

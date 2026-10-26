@@ -12,8 +12,10 @@ const PROTOCOLS: Array<{ value: ModelProtocol; label: string }> = [
   { value: 'responses', label: 'settings.protocolResponses' },
   { value: 'anthropic-messages', label: 'settings.protocolAnthropic' },
   { value: 'gemini-native', label: 'settings.protocolGemini' },
-  { value: 'bedrock-converse', label: 'settings.protocolBedrock' },
 ];
+
+// Bedrock Mantle serves every protocol above except Gemini native.
+const MANTLE_PROTOCOLS = PROTOCOLS.filter((p) => p.value !== 'gemini-native');
 
 // Self-contained connection settings, independent of the sidebar SettingsScreen
 // so this page can't regress the onboarding flow or its E2E coverage.
@@ -43,9 +45,9 @@ export function ModelSection() {
     setTestResult(null);
   };
 
-  const isBedrock = settings.protocol === 'bedrock-converse';
+  const isBedrock = Boolean(settings.bedrockMantle);
   const valid = isBedrock
-    ? Boolean(settings.apiKey.trim() && settings.model.trim() && settings.awsAccessKeyId?.trim() && settings.awsRegion?.trim())
+    ? Boolean(settings.apiKey.trim() && settings.model.trim() && settings.awsRegion?.trim())
     : Boolean(settings.baseUrl.trim() && settings.apiKey.trim() && settings.model.trim());
 
   const test = async () => {
@@ -78,6 +80,7 @@ export function ModelSection() {
         model: settings.model.trim(),
         subscriptionProvider: undefined,
         protocol: settings.protocol,
+        bedrockMantle: settings.bedrockMantle || undefined,
         ideogramApiKey: settings.ideogramApiKey?.trim() || undefined,
         apiVersion: settings.apiVersion?.trim() || undefined,
         awsRegion: settings.awsRegion?.trim() || undefined,
@@ -104,10 +107,28 @@ export function ModelSection() {
 
       <Group title={t('settings.groupConnection')} desc={t('settings.note')}>
         <label class="field">
+          <span>{t('settings.host')}</span>
+          <select
+            value={isBedrock ? 'bedrock-mantle' : 'custom'}
+            onChange={(e) => {
+              const bedrockMantle = (e.target as HTMLSelectElement).value === 'bedrock-mantle';
+              update({
+                bedrockMantle,
+                ...(bedrockMantle && settings.protocol === 'gemini-native' ? { protocol: 'chat-completions' as const } : {}),
+              });
+            }}
+          >
+            <option value="custom">{t('settings.hostCustom')}</option>
+            <option value="bedrock-mantle">{t('settings.hostBedrockMantle')}</option>
+          </select>
+          {isBedrock && <span class="field-note">{t('settings.hostBedrockNote')}</span>}
+        </label>
+
+        <label class="field">
           <span>{t('settings.endpointUrl')}</span>
           <input
             type="url"
-            placeholder={isBedrock ? 'https://bedrock-runtime.<region>.amazonaws.com (optional override)' : 'https://api.example.com/v1'}
+            placeholder={isBedrock ? 'https://bedrock-mantle.<region>.api.aws/v1 (optional override)' : 'https://api.example.com/v1'}
             value={settings.baseUrl}
             onInput={(e) => update({ baseUrl: (e.target as HTMLInputElement).value })}
           />
@@ -115,10 +136,10 @@ export function ModelSection() {
         </label>
 
         <label class="field">
-          <span>{isBedrock ? t('settings.awsSecretAccessKey') : t('settings.apiKey')}</span>
+          <span>{isBedrock ? t('settings.bedrockKey') : t('settings.apiKey')}</span>
           <input
             type="password"
-            placeholder={isBedrock ? 'AWS secret access key' : 'sk-…'}
+            placeholder={isBedrock ? 'Bedrock API key, or AWS secret access key' : 'sk-…'}
             value={settings.apiKey}
             onInput={(e) => update({ apiKey: (e.target as HTMLInputElement).value })}
           />
@@ -128,7 +149,7 @@ export function ModelSection() {
           <span>{t('settings.model')}</span>
           <input
             type="text"
-            placeholder={isBedrock ? 'anthropic.claude-3-5-sonnet-20241022-v2:0' : 'model-name'}
+            placeholder={isBedrock ? 'openai.gpt-oss-120b' : 'model-name'}
             value={settings.model}
             onInput={(e) => update({ model: (e.target as HTMLInputElement).value })}
           />
@@ -140,7 +161,7 @@ export function ModelSection() {
             value={settings.protocol ?? 'chat-completions'}
             onChange={(e) => update({ protocol: (e.target as HTMLSelectElement).value as ModelProtocol })}
           >
-            {PROTOCOLS.map((p) => (
+            {(isBedrock ? MANTLE_PROTOCOLS : PROTOCOLS).map((p) => (
               <option key={p.value} value={p.value}>
                 {t(p.label)}
               </option>
@@ -168,6 +189,7 @@ export function ModelSection() {
               value={settings.awsAccessKeyId ?? ''}
               onInput={(e) => update({ awsAccessKeyId: (e.target as HTMLInputElement).value })}
             />
+            <span class="field-note">{t('settings.awsAccessKeyIdNote')}</span>
           </label>
 
           <label class="field">

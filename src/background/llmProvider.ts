@@ -82,6 +82,7 @@ export function resolveModelForRole(settings: Settings, role: ModelRole): Settin
     model: profile.model,
     subscriptionProvider: profile.subscriptionProvider,
     protocol: profile.protocol,
+    bedrockMantle: profile.bedrockMantle,
     apiVersion: profile.apiVersion,
     awsRegion: profile.awsRegion,
     awsAccessKeyId: profile.awsAccessKeyId,
@@ -268,7 +269,7 @@ export async function complete(
       throw new LlmError(error instanceof Error ? error.message : String(error));
     }
   }
-  const adapter = getAdapter(settings.protocol);
+  const adapter = getAdapter(settings);
   let currentResponseFormat = responseFormat;
   let triedWithoutResponseFormat = false;
 
@@ -297,7 +298,7 @@ export async function complete(
         throw err;
       }
       throw new LlmError(
-        `Could not reach the model endpoint (${settings.baseUrl}). ` +
+        `Could not reach the model endpoint (${settings.baseUrl || url}). ` +
           `If the endpoint blocks cross-origin requests, re-save settings to grant the extension access to it. (${String(err)})`,
       );
     }

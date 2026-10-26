@@ -103,7 +103,8 @@ export async function getSettings(): Promise<Settings | null> {
     }
     return out;
   }
-  if (!settings.baseUrl || !settings.apiKey) return null;
+  // Bedrock Mantle derives its endpoint from the region when baseUrl is blank.
+  if ((!settings.baseUrl && !settings.bedrockMantle) || !settings.apiKey) return null;
   const apiKey = await vaultDecrypt(settings.apiKey);
   if (apiKey === null) return null; // encrypted but vault locked/erased
   const out: Settings = { ...settings, apiKey };

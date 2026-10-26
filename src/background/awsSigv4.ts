@@ -2,9 +2,8 @@
 // AWS Signature Version 4 request signing, implemented with the Web Crypto API
 // (no aws-sdk dependency — this service worker has no subprocess/Node runtime
 // to run the SDK's credential provider chain anyway). The only caller is
-// adapters/bedrockConverse.ts: every other protocol authenticates with a
-// simple bearer/API-key header, but Bedrock's runtime API requires a signed
-// request. Only static (or STS-issued, via an optional session token)
+// adapters/bedrockMantle.ts, for Bedrock Mantle connections configured with
+// AWS credentials rather than a Bedrock API key. Only static (or STS-issued, via an optional session token)
 // credentials are supported — there is no IAM Identity Center/SSO flow here.
 // See https://docs.aws.amazon.com/general/latest/gr/sigv4-signing.html.
 // =============================================================================
@@ -35,8 +34,7 @@ function amzDate(now: Date): { date: string; dateTime: string } {
  * with every segment URI-encoded a second time (`%3A` → `%253A`), while the
  * `/` separators are kept. The URL's own pathname is single-encoded, which is
  * what goes on the wire; signing that as-is yields a signature mismatch (403)
- * whenever a segment contains a reserved character, e.g. the `:` in Bedrock
- * model IDs like `anthropic.claude-haiku-4-5-20251001-v1:0`.
+ * whenever a segment contains a reserved character such as `:`.
  */
 export function canonicalUri(pathname: string): string {
   if (!pathname) return '/';
@@ -57,7 +55,7 @@ export interface SigV4Credentials {
  * Sign one request for AWS Signature Version 4. Returns the headers to add to
  * the fetch call (`host`, `x-amz-date`, `Authorization`, and — when a session
  * token is set — `x-amz-security-token`). `url` must already be the exact URL
- * that will be fetched (no query string is needed for Bedrock's Converse API).
+ * that will be fetched (Bedrock Mantle's inference routes take no query string).
  */
 export async function signRequest(
   method: string,
