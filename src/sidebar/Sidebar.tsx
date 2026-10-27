@@ -194,7 +194,7 @@ export function Sidebar() {
   useEffect(() => {
     chrome.storage.local.get('ba_settings').then((r) => {
       const s = r.ba_settings as Settings | undefined;
-      const ok = Boolean(s?.model && (s?.subscriptionProvider || (s?.baseUrl && s?.apiKey)));
+      const ok = Boolean(s?.model && (s?.subscriptionProvider || ((s?.baseUrl || s?.bedrockMantle) && s?.apiKey)));
       setConfigured(ok);
       if (!ok) setShowOnboarding(true);
     });
@@ -332,7 +332,7 @@ export function Sidebar() {
       // connection is saved there; there is no settings overlay to close.
       if (changes.ba_settings) {
         const s = changes.ba_settings.newValue as Settings | undefined;
-        const ok = Boolean(s?.model && (s?.subscriptionProvider || (s?.baseUrl && s?.apiKey)));
+        const ok = Boolean(s?.model && (s?.subscriptionProvider || ((s?.baseUrl || s?.bedrockMantle) && s?.apiKey)));
         setConfigured(ok);
         if (ok) setShowOnboarding(false);
       }
