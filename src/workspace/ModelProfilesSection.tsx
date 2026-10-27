@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
+import { ssoConfigFromSettings } from '../shared/awsSso';
 import type { ModelProfile, ModelProtocol, ModelRole, Settings } from '../shared/types';
 import { useT } from '../sidebar/i18n';
+import { AwsSsoFields } from './AwsSsoFields';
 
 const PROTOCOLS: Array<{ value: ModelProtocol; label: string }> = [
   { value: 'chat-completions', label: 'settings.protocolChatCompletions' },
@@ -91,9 +93,12 @@ export function ModelProfilesSection() {
   };
 
   const formIsBedrock = Boolean(form.bedrockMantle);
-  const formValid = formIsBedrock
-    ? form.name.trim() && form.apiKey.trim() && form.model.trim() && form.awsRegion?.trim()
-    : form.name.trim() && form.baseUrl.trim() && form.apiKey.trim() && form.model.trim();
+  const formIsSso = formIsBedrock && Boolean(form.awsSso);
+  const formValid = formIsSso
+    ? form.name.trim() && form.model.trim() && form.awsRegion?.trim() && ssoConfigFromSettings(form)
+    : formIsBedrock
+      ? form.name.trim() && form.apiKey.trim() && form.model.trim() && form.awsRegion?.trim()
+      : form.name.trim() && form.baseUrl.trim() && form.apiKey.trim() && form.model.trim();
 
   const submitForm = async () => {
     if (!formValid) return;
@@ -117,6 +122,11 @@ export function ModelProfilesSection() {
       awsRegion: form.awsRegion?.trim() || undefined,
       awsAccessKeyId: form.awsAccessKeyId?.trim() || undefined,
       awsSessionToken: form.awsSessionToken?.trim() || undefined,
+      awsSso: (formIsBedrock && form.awsSso) || undefined,
+      awsSsoStartUrl: form.awsSsoStartUrl?.trim() || undefined,
+      awsSsoRegion: form.awsSsoRegion?.trim() || undefined,
+      awsAccountId: form.awsAccountId?.trim() || undefined,
+      awsSsoRoleName: form.awsSsoRoleName?.trim() || undefined,
       temperature: form.temperature,
       maxTokens: form.maxTokens,
       graphWindowChars: form.graphWindowChars,
@@ -147,6 +157,11 @@ export function ModelProfilesSection() {
       awsRegion: p.awsRegion ?? '',
       awsAccessKeyId: p.awsAccessKeyId ?? '',
       awsSessionToken: p.awsSessionToken ?? '',
+      awsSso: p.awsSso,
+      awsSsoStartUrl: p.awsSsoStartUrl ?? '',
+      awsSsoRegion: p.awsSsoRegion ?? '',
+      awsAccountId: p.awsAccountId ?? '',
+      awsSsoRoleName: p.awsSsoRoleName ?? '',
       temperature: p.temperature,
       maxTokens: p.maxTokens,
       graphWindowChars: p.graphWindowChars,
@@ -259,7 +274,7 @@ export function ModelProfilesSection() {
               onInput={(e) => setForm({ ...form, baseUrl: (e.target as HTMLInputElement).value })}
             />
           </label>
-          <label class="field">
+          {!formIsSso && <label class="field">
               <span>{formIsBedrock ? t('settings.bedrockKey') : t('modelProfiles.apiKey')}</span>
             <input
               type="password"
@@ -267,7 +282,7 @@ export function ModelProfilesSection() {
               value={form.apiKey}
               onInput={(e) => setForm({ ...form, apiKey: (e.target as HTMLInputElement).value })}
             />
-          </label>
+          </label>}
           <label class="field">
               <span>{t('modelProfiles.model')}</span>
             <input type="text" placeholder="llama3" value={form.model} onInput={(e) => setForm({ ...form, model: (e.target as HTMLInputElement).value })} />
@@ -290,12 +305,13 @@ export function ModelProfilesSection() {
               <span>{t('settings.awsRegion')}</span>
               <input type="text" placeholder="us-east-1" value={form.awsRegion ?? ''} onInput={(e) => setForm({ ...form, awsRegion: (e.target as HTMLInputElement).value })} />
             </label>
-            <label class="field">
+            <AwsSsoFields value={form} onChange={(patch) => setForm({ ...form, ...patch })} />
+            {!formIsSso && <label class="field">
               <span>{t('settings.awsAccessKeyId')}</span>
               <input type="text" placeholder="AKIA…" value={form.awsAccessKeyId ?? ''} onInput={(e) => setForm({ ...form, awsAccessKeyId: (e.target as HTMLInputElement).value })} />
               <span class="field-note">{t('settings.awsAccessKeyIdNote')}</span>
-            </label>
-            <label class="field">
+            </label>}
+            {!formIsSso && <label class="field">
               <span>{t('settings.awsSessionToken')}</span>
               <input
                 type="password"
@@ -304,7 +320,7 @@ export function ModelProfilesSection() {
                 onInput={(e) => setForm({ ...form, awsSessionToken: (e.target as HTMLInputElement).value })}
               />
               <span class="field-note">{t('settings.awsSessionTokenNote')}</span>
-            </label>
+            </label>}
           </>}
           <div class="field-row">
             <label class="field">

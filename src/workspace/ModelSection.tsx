@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
+import { ssoConfigFromSettings } from '../shared/awsSso';
 import type { ModelProtocol, Settings } from '../shared/types';
 import { getSettingsForEdit, saveSettings } from '../background/storage';
 import { useT } from '../sidebar/i18n';
+import { AwsSsoFields } from './AwsSsoFields';
 import { Group } from './SettingsControls';
 
 const EMPTY: Settings = { baseUrl: '', apiKey: '', model: '' };
@@ -46,9 +48,12 @@ export function ModelSection() {
   };
 
   const isBedrock = Boolean(settings.bedrockMantle);
-  const valid = isBedrock
-    ? Boolean(settings.apiKey.trim() && settings.model.trim() && settings.awsRegion?.trim())
-    : Boolean(settings.baseUrl.trim() && settings.apiKey.trim() && settings.model.trim());
+  const isSso = isBedrock && Boolean(settings.awsSso);
+  const valid = isSso
+    ? Boolean(settings.model.trim() && settings.awsRegion?.trim() && ssoConfigFromSettings(settings))
+    : isBedrock
+      ? Boolean(settings.apiKey.trim() && settings.model.trim() && settings.awsRegion?.trim())
+      : Boolean(settings.baseUrl.trim() && settings.apiKey.trim() && settings.model.trim());
 
   const test = async () => {
     setTesting(true);
@@ -86,6 +91,11 @@ export function ModelSection() {
         awsRegion: settings.awsRegion?.trim() || undefined,
         awsAccessKeyId: settings.awsAccessKeyId?.trim() || undefined,
         awsSessionToken: settings.awsSessionToken?.trim() || undefined,
+        awsSso: (isBedrock && settings.awsSso) || undefined,
+        awsSsoStartUrl: settings.awsSsoStartUrl?.trim() || undefined,
+        awsSsoRegion: settings.awsSsoRegion?.trim() || undefined,
+        awsAccountId: settings.awsAccountId?.trim() || undefined,
+        awsSsoRoleName: settings.awsSsoRoleName?.trim() || undefined,
         decisionModelBaseUrl: settings.decisionModelBaseUrl?.trim() || undefined,
         decisionModelApiKey: settings.decisionModelApiKey?.trim() || undefined,
       });
@@ -135,7 +145,7 @@ export function ModelSection() {
           {isBedrock && <span class="field-note">{t('settings.bedrockEndpointNote')}</span>}
         </label>
 
-        <label class="field">
+        {!isSso && <label class="field">
           <span>{isBedrock ? t('settings.bedrockKey') : t('settings.apiKey')}</span>
           <input
             type="password"
@@ -143,7 +153,7 @@ export function ModelSection() {
             value={settings.apiKey}
             onInput={(e) => update({ apiKey: (e.target as HTMLInputElement).value })}
           />
-        </label>
+        </label>}
 
         <label class="field">
           <span>{t('settings.model')}</span>
@@ -181,7 +191,9 @@ export function ModelSection() {
             />
           </label>
 
-          <label class="field">
+          <AwsSsoFields value={settings} onChange={update} />
+
+          {!isSso && <label class="field">
             <span>{t('settings.awsAccessKeyId')}</span>
             <input
               type="text"
@@ -190,9 +202,9 @@ export function ModelSection() {
               onInput={(e) => update({ awsAccessKeyId: (e.target as HTMLInputElement).value })}
             />
             <span class="field-note">{t('settings.awsAccessKeyIdNote')}</span>
-          </label>
+          </label>}
 
-          <label class="field">
+          {!isSso && <label class="field">
             <span>{t('settings.awsSessionToken')}</span>
             <input
               type="password"
@@ -201,7 +213,7 @@ export function ModelSection() {
               onInput={(e) => update({ awsSessionToken: (e.target as HTMLInputElement).value })}
             />
             <span class="field-note">{t('settings.awsSessionTokenNote')}</span>
-          </label>
+          </label>}
         </>}
 
         {!isBedrock && <label class="field">

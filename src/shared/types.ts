@@ -258,6 +258,8 @@ export interface Settings {
    * `baseUrl` is an optional override (blank = the region's default Mantle
    * base). Auth is a Bedrock API key in `apiKey`, or — when `awsAccessKeyId`
    * is set — AWS Signature Version 4 with `apiKey` as the secret access key.
+   * With `awsSso`, requests are instead signed with temporary credentials from
+   * an IAM Identity Center sign-in and `apiKey` is unused.
    * See src/background/adapters/bedrockMantle.ts.
    */
   bedrockMantle?: boolean;
@@ -267,6 +269,21 @@ export interface Settings {
   awsAccessKeyId?: string;
   /** Bedrock Mantle only: optional session token for STS-issued temporary credentials. */
   awsSessionToken?: string;
+  /**
+   * Bedrock Mantle only: authenticate through AWS IAM Identity Center (SSO)
+   * instead of a key — the user signs in once (device authorization), and each
+   * request is signed with that user's temporary role credentials, so
+   * CloudTrail attributes calls to the person. See src/background/awsSso.ts.
+   */
+  awsSso?: boolean;
+  /** Bedrock Mantle SSO: Identity Center access portal URL, e.g. https://d-1234567890.awsapps.com/start. */
+  awsSsoStartUrl?: string;
+  /** Bedrock Mantle SSO: region of the Identity Center instance. Blank = `awsRegion`. */
+  awsSsoRegion?: string;
+  /** Bedrock Mantle SSO: AWS account ID that holds the Bedrock access. */
+  awsAccountId?: string;
+  /** Bedrock Mantle SSO: permission set name to get role credentials for. */
+  awsSsoRoleName?: string;
   /** Optional Ideogram API key used by the image-generation tool. */
   ideogramApiKey?: string;
   /**
@@ -496,6 +513,16 @@ export interface ModelProfile {
   awsAccessKeyId?: string;
   /** See Settings.awsSessionToken. */
   awsSessionToken?: string;
+  /** See Settings.awsSso. */
+  awsSso?: boolean;
+  /** See Settings.awsSsoStartUrl. */
+  awsSsoStartUrl?: string;
+  /** See Settings.awsSsoRegion. */
+  awsSsoRegion?: string;
+  /** See Settings.awsAccountId. */
+  awsAccountId?: string;
+  /** See Settings.awsSsoRoleName. */
+  awsSsoRoleName?: string;
   temperature?: number;
   maxTokens?: number;
   /** See Settings.graphWindowChars — only meaningful when this profile is assigned to the Knowledge Graph role. */

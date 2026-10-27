@@ -29,6 +29,7 @@ import type { EventTrigger } from './eventTriggers';
 import type { ScheduledTaskRecurrence } from './scheduledTasks';
 import type { Workflow } from './workflows';
 import type { ProviderId } from './providerIds';
+import type { AwsSsoConfig } from './awsSso';
 
 export type { ProviderId };
 
@@ -163,6 +164,9 @@ export type RuntimeRequest =
   | { type: 'index_mailbox'; repo: string }
   | { type: 'mailbox_connected' }
   | { type: 'mailbox_disconnect' }
+  | { type: 'aws_sso_sign_in'; config: AwsSsoConfig }
+  | { type: 'aws_sso_status'; config: AwsSsoConfig }
+  | { type: 'aws_sso_sign_out'; config: AwsSsoConfig }
   | { type: 'index_sharepoint_library'; repo: string; libraryUrl: string }
   | { type: 'sharepoint_session'; base?: string }
   | { type: 'transcribe_audio'; audioDataUrl: string }

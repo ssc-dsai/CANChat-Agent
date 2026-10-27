@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { isConnectionConfigured } from '../shared/awsSso';
 import type { BackgroundEvent, SidebarCommand } from '../shared/messages';
 import type {
   AgentStatus,
@@ -193,8 +194,7 @@ export function Sidebar() {
 
   useEffect(() => {
     chrome.storage.local.get('ba_settings').then((r) => {
-      const s = r.ba_settings as Settings | undefined;
-      const ok = Boolean(s?.model && (s?.subscriptionProvider || ((s?.baseUrl || s?.bedrockMantle) && s?.apiKey)));
+      const ok = isConnectionConfigured(r.ba_settings as Settings | undefined);
       setConfigured(ok);
       if (!ok) setShowOnboarding(true);
     });
@@ -331,8 +331,7 @@ export function Sidebar() {
       // "no model" banner clears (and onboarding dismisses) the moment a
       // connection is saved there; there is no settings overlay to close.
       if (changes.ba_settings) {
-        const s = changes.ba_settings.newValue as Settings | undefined;
-        const ok = Boolean(s?.model && (s?.subscriptionProvider || ((s?.baseUrl || s?.bedrockMantle) && s?.apiKey)));
+        const ok = isConnectionConfigured(changes.ba_settings.newValue as Settings | undefined);
         setConfigured(ok);
         if (ok) setShowOnboarding(false);
       }
