@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ModelProtocol, Settings } from '../../shared/types';
 import { getAdapter } from './index';
+
+const getAwsSsoCredentials = vi.hoisted(() =>
+  vi.fn(async () => ({ accessKeyId: 'ASIATEMP', secretAccessKey: 'temp-secret', sessionToken: 'temp-session' })),
+);
+vi.mock('../awsSso', () => ({ getAwsSsoCredentials }));
 
 const apiKeySettings: Settings = {
   baseUrl: '',
@@ -15,6 +20,16 @@ const sigv4Settings: Settings = {
   ...apiKeySettings,
   apiKey: 'secret-access-key',
   awsAccessKeyId: 'AKIDEXAMPLE',
+};
+
+const ssoSettings: Settings = {
+  ...apiKeySettings,
+  apiKey: '',
+  awsRegion: 'ca-central-1',
+  awsSso: true,
+  awsSsoStartUrl: 'https://d-1234567890.awsapps.com/start/',
+  awsAccountId: '123456789012',
+  awsSsoRoleName: 'BedrockUser',
 };
 
 const hi = [{ role: 'user' as const, content: 'hi' }];
@@ -79,6 +94,27 @@ describe('Bedrock Mantle adapter', () => {
     const s = { ...sigv4Settings, awsSessionToken: 'session-token-value' };
     const req = await getAdapter(s).buildRequest(s, hi);
     expect(req.headers['x-amz-security-token']).toBe('session-token-value');
+  });
+
+  it('signs with the IAM Identity Center role credentials in SSO mode', async () => {
+    const s: Settings = { ...ssoSettings, protocol: 'anthropic-messages', model: 'anthropic.claude-sonnet-5', awsAccessKeyId: 'AKIAIGNORED' };
+    const req = await getAdapter(s).buildRequest(s, hi);
+    expect(getAwsSsoCredentials).toHaveBeenCalledWith({
+      startUrl: 'https://d-1234567890.awsapps.com/start',
+      ssoRegion: 'ca-central-1',
+      accountId: '123456789012',
+      roleName: 'BedrockUser',
+    });
+    expect(req.url).toBe('https://bedrock-mantle.ca-central-1.api.aws/anthropic/v1/messages');
+    expect(req.headers.Authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=ASIATEMP\/\d{8}\/ca-central-1\/bedrock-mantle\/aws4_request/);
+    expect(req.headers['x-amz-security-token']).toBe('temp-session');
+    expect(req.headers['x-api-key']).toBeUndefined();
+    expect(JSON.stringify(req.headers)).not.toContain('temp-secret');
+  });
+
+  it('requires the full SSO config in SSO mode', async () => {
+    const s: Settings = { ...ssoSettings, awsAccountId: '' };
+    await expect(getAdapter(s).buildRequest(s, hi)).rejects.toThrow(/start URL, account ID, and permission set/);
   });
 
   it('requires a region and a key, and rejects Gemini native', async () => {

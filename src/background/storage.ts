@@ -5,6 +5,7 @@
 // device-local and never synced; the API key in particular never leaves here.
 // =============================================================================
 
+import { isConnectionConfigured } from '../shared/awsSso';
 import { pruneIndex } from '../shared/conversationMeta';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import { migrateSitesToCapabilities } from '../shared/capabilities';
@@ -103,9 +104,9 @@ export async function getSettings(): Promise<Settings | null> {
     }
     return out;
   }
-  // Bedrock Mantle derives its endpoint from the region when baseUrl is blank.
-  if ((!settings.baseUrl && !settings.bedrockMantle) || !settings.apiKey) return null;
-  const apiKey = await vaultDecrypt(settings.apiKey);
+  if (!isConnectionConfigured(settings)) return null;
+  // An IAM Identity Center connection has no key to decrypt.
+  const apiKey = settings.apiKey ? await vaultDecrypt(settings.apiKey) : '';
   if (apiKey === null) return null; // encrypted but vault locked/erased
   const out: Settings = { ...settings, apiKey };
   for (const f of OPTIONAL_SECRET_FIELDS) {

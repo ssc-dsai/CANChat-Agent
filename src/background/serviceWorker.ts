@@ -65,6 +65,8 @@ import {
   type SharePointSyncProgress,
 } from './sharepointIngest';
 import { connectMailbox, disconnectMailbox, isMailboxConnected } from './graphAuth';
+import { getAwsSsoStatus, signOutAwsSso, startAwsSsoSignIn } from './awsSso';
+import { isValidSsoConfig } from '../shared/awsSso';
 import { getProvider, listProviderDescriptors } from './providers/registry';
 import { isProviderId } from '../shared/providerIds';
 import { redact } from './providers/redact';
@@ -648,6 +650,23 @@ chrome.runtime.onMessage.addListener((request: RuntimeRequest, sender, sendRespo
   }
   if (request.type === 'mailbox_connected') {
     isMailboxConnected().then((connected) => sendResponse({ connected }));
+    return true;
+  }
+  if (request.type.startsWith('aws_sso_')) {
+    // Signing in hands out the user's AWS access, so only extension pages may
+    // drive it, and only for a well-formed config.
+    if (!isTrustedExtensionSender(sender, chrome.runtime.getURL('')) || !('config' in request) || !isValidSsoConfig(request.config)) {
+      sendResponse({ ok: false, error: 'Invalid AWS IAM Identity Center request.' });
+      return false;
+    }
+    const cfg = request.config;
+    const work =
+      request.type === 'aws_sso_sign_in'
+        ? startAwsSsoSignIn(cfg).then((prompt) => ({ ok: true, prompt }))
+        : request.type === 'aws_sso_sign_out'
+          ? signOutAwsSso(cfg).then(() => ({ ok: true }))
+          : getAwsSsoStatus(cfg).then((status) => ({ ok: true, status }));
+    work.then(sendResponse).catch((e) => sendResponse({ ok: false, error: e instanceof Error ? e.message : String(e) }));
     return true;
   }
   if (request.type === 'mailbox_disconnect') {
