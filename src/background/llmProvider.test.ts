@@ -84,6 +84,22 @@ describe('authHeaders', () => {
 });
 
 describe('testConnection', () => {
+  it('reports a Mantle model-list failure instead of hiding it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('/v1/models')
+          ? new Response('denied', { status: 403 })
+          : new Response('{"error":{"message":"not found"}}', { status: 404 }),
+      ),
+    );
+    const result = await testConnection({
+      baseUrl: '', apiKey: 'k', model: 'm', protocol: 'chat-completions', bedrockMantle: true, awsRegion: 'ca-central-1',
+    });
+    expect(result.models).toBeUndefined();
+    expect(result.detail).toContain('Could not list Bedrock Mantle models: Model list https://bedrock-mantle.ca-central-1.api.aws/v1/models returned 403: denied');
+  });
+
   it('lists Mantle models and flags an unserved model on failure', async () => {
     vi.stubGlobal(
       'fetch',

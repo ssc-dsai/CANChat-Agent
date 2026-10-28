@@ -344,8 +344,8 @@ export async function complete(
  * Bedrock's and an unserved model only comes back as a bare 404.
  */
 export async function testConnection(settings: Settings): Promise<TestConnectionResponse> {
-  const models = settings.bedrockMantle
-    ? listMantleModels(settings).catch(() => undefined)
+  const models: Promise<string[] | Error | undefined> = settings.bedrockMantle
+    ? listMantleModels(settings).catch((err: unknown) => (err instanceof Error ? err : new Error(String(err))))
     : Promise.resolve(undefined);
   let result: TestConnectionResponse;
   try {
@@ -363,6 +363,9 @@ export async function testConnection(settings: Settings): Promise<TestConnection
   }
   const available = await models;
   if (!available) return result;
+  if (available instanceof Error) {
+    return { ...result, detail: `${result.detail} — Could not list Bedrock Mantle models: ${available.message}` };
+  }
   if (!result.ok && !available.includes(settings.model.trim())) {
     result.detail += ` — "${settings.model.trim()}" is not served by Bedrock Mantle in ${settings.awsRegion?.trim()}. Pick one of the models below.`;
   }
