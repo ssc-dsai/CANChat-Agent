@@ -266,6 +266,31 @@ export function ModelSection() {
       {testResult && (
         <div class={`banner ${testResult.ok ? 'banner-ok' : 'banner-error'}`}>{testResult.detail}</div>
       )}
+      {testResult?.models && (
+        <div class="mantle-models">
+          <span class="field-note">
+            {testResult.models.length
+              ? t('settings.mantleModels', { region: settings.awsRegion?.trim() ?? '' })
+              : t('settings.mantleModelsNone', { region: settings.awsRegion?.trim() ?? '' })}
+          </span>
+          <div class="mantle-model-list">
+            {testResult.models.map((id) => (
+              <button
+                key={id}
+                type="button"
+                class={`btn btn-small${id === settings.model.trim() ? ' btn-primary' : ''}`}
+                onClick={() => {
+                  // Keep the list up while picking, unlike other field edits.
+                  setSettings((s) => ({ ...s, model: id }));
+                  setSaved(false);
+                }}
+              >
+                {id}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {saved && <div class="banner banner-ok">{t('settings.saved')}</div>}
 
       <div class="settings-actions">

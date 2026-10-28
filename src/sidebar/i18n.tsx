@@ -486,6 +486,8 @@ const EN: Dict = {
     'e.g. Answer in French.\nI work in geospatial data — prefer technical depth over simplification.',
   'settings.saved': 'Settings saved.',
   'settings.testing': 'Testing…',
+  'settings.mantleModels': 'Models Bedrock Mantle serves in {region} (click one to use it):',
+  'settings.mantleModelsNone': 'Bedrock Mantle lists no models for this key in {region}.',
   'settings.testConnection': 'Test connection',
   'settings.playbookIndexUrl': 'App playbook library URL',
   'settings.playbookIndexUrlNote':
@@ -989,6 +991,8 @@ const FR: Dict = {
     'p. ex. Réponds en français.\nJe travaille en données géospatiales — privilégie la profondeur technique à la simplification.',
   'settings.saved': 'Paramètres enregistrés.',
   'settings.testing': 'Essai en cours…',
+  'settings.mantleModels': 'Modèles offerts par Bedrock Mantle dans {region} (cliquez pour en choisir un) :',
+  'settings.mantleModelsNone': 'Bedrock Mantle n’offre aucun modèle pour cette clé dans {region}.',
   'settings.testConnection': 'Tester la connexion',
   'settings.playbookIndexUrl': 'URL de la bibliothèque de guides d’applications',
   'settings.playbookIndexUrlNote':
