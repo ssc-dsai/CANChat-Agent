@@ -84,6 +84,23 @@ describe('authHeaders', () => {
 });
 
 describe('testConnection', () => {
+  it('lists Mantle models and flags an unserved model on failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).endsWith('/v1/models')
+          ? new Response(JSON.stringify({ data: [{ id: 'openai.gpt-oss-120b' }] }), { status: 200 })
+          : new Response('{"error":{"message":"not found"}}', { status: 404 }),
+      ),
+    );
+    const result = await testConnection({
+      baseUrl: '', apiKey: 'k', model: 'nvidia.nope', protocol: 'chat-completions', bedrockMantle: true, awsRegion: 'ca-central-1',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.models).toEqual(['openai.gpt-oss-120b']);
+    expect(result.detail).toContain('"nvidia.nope" is not served by Bedrock Mantle in ca-central-1');
+  });
+
   it('constrains the probe so local servers do not run to their default token cap', async () => {
     let requestBody: Record<string, unknown> | undefined;
     vi.stubGlobal(
