@@ -20,6 +20,7 @@
 
 import type { BackgroundEvent, RepoInfo, RuntimeRequest, SidebarCommand, TestConnectionResponse } from '../shared/messages';
 import { MAIL_REPO } from '../shared/graphMail';
+import { MEMORY_ENABLED_KEY, SETTINGS_KEY } from '../shared/storageKeys';
 import { AgentRuntime } from './agentRuntime';
 import { recordLearnEvent, startLearnRecording, stopLearnRecording } from './learning';
 import { LlmError, testConnection, transcribe } from './llmProvider';
@@ -177,8 +178,8 @@ void reconcileJobs(); // re-arm alarms for durable jobs interrupted by eviction
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (changes.ba_settings) void syncMailAlarm();
-  if (changes.ba_memory_enabled) void syncMemoryDecayAlarm();
+  if (changes[SETTINGS_KEY]) void syncMailAlarm();
+  if (changes[MEMORY_ENABLED_KEY]) void syncMemoryDecayAlarm();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {

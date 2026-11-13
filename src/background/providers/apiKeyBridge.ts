@@ -11,8 +11,7 @@
 // =============================================================================
 
 import type { ModelProfile, Settings } from '../../shared/types';
-
-const SETTINGS_KEY = 'ba_settings';
+import { SETTINGS_KEY } from '../../shared/storageKeys';
 
 async function rawSettings(): Promise<Settings> {
   const r = await chrome.storage.local.get(SETTINGS_KEY);

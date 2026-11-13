@@ -12,6 +12,12 @@
 // =============================================================================
 
 import type { ToolDefinition } from '../background/llmProvider';
+import { TOOL_NAMES, type ToolName } from './tools';
+
+/** A catalogue tool whose name is validated against the TOOL_NAMES registry. */
+type CatalogTool = Omit<ToolDefinition, 'function'> & {
+  function: ToolDefinition['function'] & { name: ToolName };
+};
 
 const tabIdParam = {
   tabId: { type: 'number', description: 'The id of the target tab.' },
@@ -28,11 +34,11 @@ const reasonParam = {
 };
 
 /** Only offered to the model when the user has enabled persistent memory. */
-export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
+export const MEMORY_TOOL_DEFINITIONS: CatalogTool[] = [
   {
     type: 'function',
     function: {
-      name: 'save_memory',
+      name: TOOL_NAMES.save_memory,
       description:
         'Save one durable fact or entity to persistent memory, building a personal knowledge graph. Covers two cases: (1) a fact about the user (their work, projects, interests, preferences, ongoing activities); (2) a named entity, fact, event, or relationship from an article or page the user asked you to remember — cite sourceUrl/sourceTitle when it came from a page. One fact per call. Never save secrets, credentials, or other sensitive personal data.',
       parameters: {
@@ -55,7 +61,7 @@ export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'update_memory',
+      name: TOOL_NAMES.update_memory,
       description: 'Revise an existing memory entry when a fact has changed or needs correction.',
       parameters: {
         type: 'object',
@@ -70,7 +76,7 @@ export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'delete_memory',
+      name: TOOL_NAMES.delete_memory,
       description:
         'Delete a memory entry. Use immediately when the user asks you to forget something, or when an entry is obsolete.',
       parameters: {
@@ -84,11 +90,11 @@ export const MEMORY_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 ];
 
-export const TOOL_DEFINITIONS: ToolDefinition[] = [
+export const TOOL_DEFINITIONS: CatalogTool[] = [
   {
     type: 'function',
     function: {
-      name: 'list_tabs',
+      name: TOOL_NAMES.list_tabs,
       description: 'List all open browser tabs with their ids, titles, and URLs.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
@@ -96,7 +102,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'get_active_tab',
+      name: TOOL_NAMES.get_active_tab,
       description: 'Get the currently active browser tab (id, title, URL).',
       parameters: { type: 'object', properties: {}, required: [] },
     },
@@ -104,7 +110,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'get_tab_content',
+      name: TOOL_NAMES.get_tab_content,
       description:
         'Extract readable content from a tab: sentence-tagged text, title, headings, links, and metadata. Use after navigation or search to read the resulting page; cite returned [[sentence-id]] tokens inline.',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },
@@ -113,7 +119,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'read_app_content',
+      name: TOOL_NAMES.read_app_content,
       description:
         'Best-effort read of content the normal page tools cannot see — e.g. a canvas-rendered Google Doc or Sheet body. Returned text is sentence-tagged for inline citation. Try this when get_tab_content returns little; if it also returns nothing, use snapshot + vision.',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },
@@ -122,7 +128,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'capture_full_page',
+      name: TOOL_NAMES.capture_full_page,
       description:
         "Screenshot the whole active tab by scrolling top to bottom, returning the frames as images you can read. Use as a last resort for opaque pages whose content the text tools (get_tab_content, read_app_content) and the element map can't see — canvas-rendered apps, deeply nested DOM. Requires a vision-capable model and is token-heavy; prefer the text tools first.",
       parameters: {
@@ -137,7 +143,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'get_all_tab_contents',
+      name: TOOL_NAMES.get_all_tab_contents,
       description:
         'Extract sentence-tagged readable content from every open tab for inline citation. Requires all-tabs access and user approval each time.',
       parameters: { type: 'object', properties: { ...reasonParam }, required: ['reason'] },
@@ -146,7 +152,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'navigate',
+      name: TOOL_NAMES.navigate,
       description: 'Navigate an existing tab to a URL and wait for the page to load (reuses the tab).',
       parameters: {
         type: 'object',
@@ -161,7 +167,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'open_url',
+      name: TOOL_NAMES.open_url,
       description:
         "Open a URL in a NEW tab, collected into this conversation's tab group. Use this (rather than navigate) when you want to gather several pages to compare or summarize together; read them all at once with read_tab_group.",
       parameters: {
@@ -174,7 +180,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'read_tab_group',
+      name: TOOL_NAMES.read_tab_group,
       description:
         "Read every tab in a tab group. Omit name for this conversation's own group, or pass a mentioned group name (e.g. 'Wolf'). Returns each page's sentence-tagged text for cited summaries and comparisons.",
       parameters: {
@@ -189,7 +195,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'run_subtasks',
+      name: TOOL_NAMES.run_subtasks,
       description:
         'Run isolated, tight-budget mini-loops for page/source-specific subtasks, returning only compact conclusions to the parent. Use this for comparing or summarizing several pages/sources without pulling all raw text into the main context.',
       parameters: {
@@ -219,7 +225,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'search_web',
+      name: TOOL_NAMES.search_web,
       description:
         "Search the web using the browser's default search engine. Opens a new tab (collected into this conversation's tab group) with the results; follow up with get_tab_content on the returned tabId to read them.",
       parameters: {
@@ -232,7 +238,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'get_element_map',
+      name: TOOL_NAMES.get_element_map,
       description:
         'List interactive elements (links, buttons, inputs) on a tab with stable refIds. Always call this before click_element, fill_input, or submit_form and act on refIds.',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },
@@ -241,7 +247,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'query_pointer_target',
+      name: TOOL_NAMES.query_pointer_target,
       description:
         'Read the element currently under the cursor while the user holds Alt. Use this when the task needs hover context or when you want to inspect what the user is pointing at without clicking.',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },
@@ -250,7 +256,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'click_element',
+      name: TOOL_NAMES.click_element,
       description:
         'Click an element identified by a refId from get_element_map. State-changing: requires user approval.',
       parameters: {
@@ -267,7 +273,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'fill_input',
+      name: TOOL_NAMES.fill_input,
       description:
         'Fill a text input or textarea identified by a refId from get_element_map. State-changing: requires user approval.',
       parameters: {
@@ -285,7 +291,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'submit_form',
+      name: TOOL_NAMES.submit_form,
       description:
         'Submit the form containing the referenced element. State-changing: requires user approval.',
       parameters: {
@@ -302,7 +308,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'press_keys',
+      name: TOOL_NAMES.press_keys,
       description:
         'Dispatch a keyboard key or combo to the page — "Enter", "Control+Enter", "Escape", "Tab", or a single letter for app shortcuts (e.g. "c" to compose in Outlook/Gmail). Optionally focus a refId first. State-changing: requires user approval.',
       parameters: {
@@ -323,7 +329,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'wait_for_element',
+      name: TOOL_NAMES.wait_for_element,
       description:
         'Wait until an element matching a CSS selector becomes present/visible/enabled (or time out). Use before acting on dynamically-loaded content.',
       parameters: {
@@ -345,7 +351,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'click_at',
+      name: TOOL_NAMES.click_at,
       description:
         'Click at viewport coordinates (x, y) — for canvas/map content with no clickable element. Use element rects from get_element_map to choose coordinates. State-changing: requires user approval.',
       parameters: {
@@ -363,7 +369,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'drag',
+      name: TOOL_NAMES.drag,
       description:
         'Drag from one viewport coordinate to another — pan a map, move a slider, or drag-and-drop. State-changing: requires user approval.',
       parameters: {
@@ -383,7 +389,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'scroll_wheel',
+      name: TOOL_NAMES.scroll_wheel,
       description:
         'Dispatch a mouse wheel event at viewport coordinates — zoom a map (negative deltaY zooms in) or trigger lazy-loading. Viewport-only; no approval needed.',
       parameters: {
@@ -401,7 +407,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'add_to_repo',
+      name: TOOL_NAMES.add_to_repo,
       description:
         "Capture the current page (or this conversation's whole tab group) into a named on-device repository for later retrieval. The page text is chunked and embedded locally (OPFS). Use when the user wants to save pages to ask about later.",
       parameters: {
@@ -417,7 +423,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'search_repo',
+      name: TOOL_NAMES.search_repo,
       description:
         'Retrieve the most relevant grounded passages from a named on-device repository using semantic, keyword, and automatically available knowledge-graph evidence. Use this as the default repository search; answer from the returned passages and cite their [[sentence-id]] tokens.',
       parameters: {
@@ -434,7 +440,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'search_graph',
+      name: TOOL_NAMES.search_graph,
       description:
         'Query the knowledge graph extracted from a repository: returns the entities and relationships most relevant ' +
         'to the query, expanded one hop, each tagged with [[sentence-id]] evidence. Use this when the user explicitly ' +
@@ -455,7 +461,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'global_search',
+      name: TOOL_NAMES.global_search,
       description:
         'Answer a corpus-level question about a repository (notebook) by synthesizing across its knowledge-graph ' +
         'themes. Use for broad "what are the main themes / how does it all fit together / summarize the whole ' +
@@ -475,7 +481,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'list_repos',
+      name: TOOL_NAMES.list_repos,
       description: 'List the on-device repositories with their document and chunk counts.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
@@ -483,7 +489,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'request_web_fallback',
+      name: TOOL_NAMES.request_web_fallback,
       description:
         'Ask the user for permission to supplement an explicitly selected repository with external web sources. ' +
         'Use only when repository retrieval is insufficient. External tools remain unavailable unless the user approves.',
@@ -499,7 +505,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'sharepoint_search',
+      name: TOOL_NAMES.sharepoint_search,
       description:
         "Search the user's SharePoint/OneDrive using its Search API and the current signed-in browser session (no setup or token). File searches default to most-recently-modified first and to user-content file types (Office docs, PDFs, text/html, images, audio, video), avoiding executables/components like DLLs unless a specific fileType is supplied. Returns results with snippet, source document URL, creator/editor, and modified date. Set sortBy:'relevance' only when relevance ranking is explicitly more important than recency; editedByMe:true limits to files the signed-in user last edited. query is optional — omit it to list recent content files. Use the snippets as evidence and cite the URLs.",
       parameters: {
@@ -524,7 +530,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'microsoft365_search',
+      name: TOOL_NAMES.microsoft365_search,
       description:
         "Preferred direct endpoint-backed tool for the user's Microsoft 365 mail AND files, using the signed-in browser session (no setup or token). For Outlook mail questions, call this with source:'mail' before any browser/page/Outlook UI tools; do not navigate to Outlook unless this returns mailError/session failure. Files come from SharePoint/Microsoft Search (covers SharePoint sites and OneDrive) and default to most-recently-modified first plus user-content file types (Office docs, PDFs, text/html, images, audio, video), avoiding executables/components like DLLs unless a specific fileType is supplied; mail comes from Outlook on the web. Use this for questions about the user's own email or documents, with filters for time, document type, sender, and source. Returns ranked results — emails as {subject, from, received, url, preview}; files as {title, url, modified, modifiedBy, snippet} — each with a URL to cite. Examples: 'my last five emails from Brian Ray' → {source:'mail', from:'Brian Ray', orderBy:'date', top:5}; 'the last Word file I edited on my work SharePoint site' → {source:'files', fileType:'docx', editedByMe:true, top:1}. If the mail side errors, explain that the endpoint could not establish an Outlook/Microsoft 365 session and ask the user to sign in once, then retry; only then fall back to the /search-mail skill.",
       parameters: {
@@ -556,7 +562,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'calendar_search',
+      name: TOOL_NAMES.calendar_search,
       description:
         "Preferred direct endpoint-backed tool for Outlook calendar, schedule, meeting, and Teams-link questions, using the signed-in Outlook-on-the-web session (no setup or token). Call this before any browser/page/Outlook UI tools; do not navigate to Outlook unless this returns an endpoint/session error. Returns events with subject, time, location, organizer, attendees, body/preview, Teams URL when found, and an Outlook URL. For meeting prep, call this first, then use list_repos/search_repo separately to pull relevant documents.",
       parameters: {
@@ -575,7 +581,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'draft_email',
+      name: TOOL_NAMES.draft_email,
       description:
         "Create a saved Outlook email draft using the signed-in Outlook-on-the-web session. This does NOT send the email; it only saves a draft for the user to review and send manually. State-changing: requires user approval.",
       parameters: {
@@ -597,7 +603,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'start_research_job',
+      name: TOOL_NAMES.start_research_job,
       description:
         'Start a DURABLE, long-running deep-research job that runs in the BACKGROUND for minutes to hours, surviving browser idle and restarts. It decomposes the objective into web searches, reads many sources in parallel via read-only sub-agents (each in its own background tab), follows leads to a bounded depth, and produces a cited Markdown report saved to Products. Use this for exhaustive/large research the user wants done over time rather than a quick inline answer. Returns immediately with a job id; progress and controls are in the Jobs console. Read-only.',
       parameters: {
@@ -616,7 +622,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'schedule_task',
+      name: TOOL_NAMES.schedule_task,
       description:
         'Create a one-shot or recurring scheduled agent task. The task runs unattended in the background at the requested time using read-only tools where possible; approval-gated tools cannot run unattended and will be recorded as needing approval. All times are the user\'s LOCAL time (see the current local time in the working state). For "in N minutes/hours" use runInMinutes so the time is computed exactly; do not hand-compute an ISO time. Requires user approval because it creates persistent automation.',
       parameters: {
@@ -645,7 +651,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'list_scheduled_tasks',
+      name: TOOL_NAMES.list_scheduled_tasks,
       description: 'List scheduled tasks, including next run time and last run status.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
@@ -653,7 +659,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'cancel_scheduled_task',
+      name: TOOL_NAMES.cancel_scheduled_task,
       description: 'Cancel/delete a scheduled task by id. Requires user approval because it modifies persistent automation.',
       parameters: {
         type: 'object',
@@ -668,7 +674,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'search_known_sites',
+      name: TOOL_NAMES.search_known_sites,
       description:
         "Search the user's curated directory of known sites (names, URLs, descriptions, optional search-URL templates) for sites likely to contain the data a task needs. Check this before falling back to a generic web search. Some entries are MCP servers (they have an mcpUrl) — for those, use list_mcp_tools/call_mcp_tool instead of opening a URL.",
       parameters: {
@@ -686,7 +692,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'list_mcp_tools',
+      name: TOOL_NAMES.list_mcp_tools,
       description:
         "List the methods (tools) an MCP server exposes that could help with the current task. An MCP server is a known-site hint with an mcpUrl. Pass the hint's name (or the MCP URL directly), optionally a query to filter the methods. Returns each method's name, description, and inputSchema; then call the right one with call_mcp_tool.",
       parameters: {
@@ -702,7 +708,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'call_mcp_tool',
+      name: TOOL_NAMES.call_mcp_tool,
       description:
         'Invoke one method on an MCP server discovered via list_mcp_tools. The arguments object must match that method\'s inputSchema. State-changing / external: requires user approval.',
       parameters: {
@@ -723,7 +729,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'list_webmcp_tools',
+      name: TOOL_NAMES.list_webmcp_tools,
       description:
         'List the in-page tools the current web page exposes via WebMCP (the navigator.modelContext API). These run inside the page with the user\'s session. Omit tabId for the active tab. Returns each tool\'s name, description, and inputSchema; an empty list means the page offers none.',
       parameters: {
@@ -738,7 +744,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'call_webmcp_tool',
+      name: TOOL_NAMES.call_webmcp_tool,
       description:
         "Invoke one of the page's in-page WebMCP tools discovered via list_webmcp_tools. arguments must match that tool's inputSchema. Runs in the page with the user's session. Prefer this over hand-driving the UI when a matching tool exists. State-changing: requires user approval.",
       parameters: {
@@ -756,7 +762,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'save_as_skill',
+      name: TOOL_NAMES.save_as_skill,
       description:
         "Turn the current task into a reusable skill: the model generalizes the request, plan, and findings into named, invokable instructions (saved to Settings → Skills, invoked later by typing /name). Use when the user explicitly asks to save/turn this into a skill — don't call this speculatively for ordinary tasks. Re-running it on an already-saved skill of the same name updates and version-bumps it rather than duplicating.",
       parameters: {
@@ -771,7 +777,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'save_app_playbook',
+      name: TOOL_NAMES.save_app_playbook,
       description:
         "Persist a reusable playbook for operating a specific web app, scoped to its site origin. The body auto-loads whenever the user returns to that site. Use at the end of a /learn exploration to record how to drive the app (navigation, search, reading data) with concrete code snippets or element references. Requires user approval.",
       parameters: {
@@ -796,7 +802,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'export_data',
+      name: TOOL_NAMES.export_data,
       description:
         'Emit a structured table the user can download as CSV or JSON. Use when the task is to collect/scrape structured information (e.g. one row per item across several pages). Assemble rows as you extract; each row is an array of cell strings aligned to columns.',
       parameters: {
@@ -821,7 +827,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'create_file',
+      name: TOOL_NAMES.create_file,
       description:
         'Generate a downloadable plain-text file such as .txt or .md. Use when the user wants a text note, markdown document, config file, or other text-based file they can save. The user gets a download card.',
       parameters: {
@@ -843,7 +849,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'create_image',
+      name: TOOL_NAMES.create_image,
       description:
         'Generate a downloadable image from a text prompt using Ideogram. Use when the user asks for an illustration, concept image, poster, or other generated picture. The user gets a download card.',
       parameters: {
@@ -870,7 +876,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'create_word_document',
+      name: TOOL_NAMES.create_word_document,
       description:
         'Generate a downloadable Microsoft Word (.docx) file from markdown. Use when the user wants a Word document, report, letter, or formatted write-up they can save. The markdown supports headings, paragraphs, bold/italic, bulleted/numbered lists, tables, and code blocks. The user gets a download card.',
       parameters: {
@@ -887,7 +893,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'create_powerpoint',
+      name: TOOL_NAMES.create_powerpoint,
       description:
         'Generate a downloadable Microsoft PowerPoint (.pptx) deck from a structured list of slides. Use when the user wants a slide deck or presentation they can save. Each slide has a title, bullet points, and optional speaker notes; a title slide is added from the deck title. The user gets a download card.',
       parameters: {
@@ -915,7 +921,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'set_plan',
+      name: TOOL_NAMES.set_plan,
       description:
         'Lay out (or replace) your step-by-step plan for a multi-step task. Call this first whenever a task needs more than a couple of tool calls, and call it again to revise the plan if something changes. The plan is shown to the user.',
       parameters: {
@@ -934,7 +940,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'update_plan',
+      name: TOOL_NAMES.update_plan,
       description:
         'Update the status of one plan step. Keep exactly one step in_progress at a time; mark steps done as you complete them.',
       parameters: {
@@ -954,7 +960,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'record_finding',
+      name: TOOL_NAMES.record_finding,
       description:
         'Save one important intermediate result to your working notes (e.g. "Vessel X is en route to Rotterdam, ETA June 14"). Use this instead of relying on scrolling history — findings stay in view even as older tool output is compacted away.',
       parameters: {
@@ -969,7 +975,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'use_skill',
+      name: TOOL_NAMES.use_skill,
       description:
         "Load the full instructions of one of the user's skills by name and follow them for the current task. Use when the task matches a skill's description.",
       parameters: {
@@ -984,7 +990,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'run_javascript',
+      name: TOOL_NAMES.run_javascript,
       description:
         "Run JavaScript in the page's own context (it can read the page's variables, app state, and framework internals) and get the result back. The value of the last expression or an explicit return is JSON-serialized and returned. Use for tasks the other tools can't express — reading app/framework state or computing over page data. Requires user approval. Prefer the dedicated tools (get_tab_content, get_element_map, click_element, …) when they suffice.",
       parameters: {
@@ -1005,7 +1011,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'read_pdf',
+      name: TOOL_NAMES.read_pdf,
       description:
         "Extract the text of a PDF — including one open in the current tab. The normal page tools (get_tab_content) cannot read PDF text. Provide a url, or omit it (and tabId) to use the active tab. Scanned image-only PDFs yield no text.",
       parameters: {
@@ -1021,7 +1027,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'read_office_document',
+      name: TOOL_NAMES.read_office_document,
       description:
         "Extract the text of a Microsoft Office file (.docx Word, .pptx PowerPoint, .xlsx Excel). Use this for Office files the browser downloads instead of displaying — get_tab_content cannot see them. Provide a url, or omit it (and tabId) to use the active tab. Spreadsheets return raw cell values per sheet; legacy .doc/.xls/.ppt are not supported.",
       parameters: {
@@ -1037,7 +1043,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'get_video_transcript',
+      name: TOOL_NAMES.get_video_transcript,
       description:
         "Get the caption/subtitle transcript of the video on the current tab (YouTube, or any page exposing caption tracks). Prefer this over trying to watch or listen — it reads the page's existing transcript instantly. Not every video has captions; if none are found it says so.",
       parameters: {
@@ -1053,7 +1059,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'wait_for_page_state',
+      name: TOOL_NAMES.wait_for_page_state,
       description: 'Wait until a tab finishes loading (or times out after 20s).',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },
     },
@@ -1061,7 +1067,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'detect_auth_state',
+      name: TOOL_NAMES.detect_auth_state,
       description:
         'Check whether a tab is showing a login wall or is behind authentication. If auth is required the task pauses until the user logs in and resumes.',
       parameters: { type: 'object', properties: { ...tabIdParam }, required: ['tabId'] },
@@ -1078,36 +1084,36 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
  * stay one source of truth (see policy.ts `classifyTool` and the coverage test
  * in policy.test.ts that asserts every advertised tool is accounted for).
  */
-export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
-  'list_tabs',
-  'get_active_tab',
-  'get_tab_content',
-  'get_element_map',
-  'detect_auth_state',
-  'wait_for_element',
-  'search_known_sites',
-  'list_mcp_tools',
-  'list_webmcp_tools',
-  'sharepoint_search',
-  'microsoft365_search',
-  'calendar_search',
-  'list_scheduled_tasks',
-  'read_tab_group',
-  'search_repo',
-  'search_graph',
-  'global_search',
-  'list_repos',
-  'use_skill',
-  'set_plan',
-  'update_plan',
-  'record_finding',
-  'export_data',
-  'create_file',
-  'create_image',
-  'create_word_document',
-  'read_pdf',
-  'read_office_document',
-  'get_video_transcript',
-  'read_app_content',
-  'query_pointer_target',
+export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set<string>([
+  TOOL_NAMES.list_tabs,
+  TOOL_NAMES.get_active_tab,
+  TOOL_NAMES.get_tab_content,
+  TOOL_NAMES.get_element_map,
+  TOOL_NAMES.detect_auth_state,
+  TOOL_NAMES.wait_for_element,
+  TOOL_NAMES.search_known_sites,
+  TOOL_NAMES.list_mcp_tools,
+  TOOL_NAMES.list_webmcp_tools,
+  TOOL_NAMES.sharepoint_search,
+  TOOL_NAMES.microsoft365_search,
+  TOOL_NAMES.calendar_search,
+  TOOL_NAMES.list_scheduled_tasks,
+  TOOL_NAMES.read_tab_group,
+  TOOL_NAMES.search_repo,
+  TOOL_NAMES.search_graph,
+  TOOL_NAMES.global_search,
+  TOOL_NAMES.list_repos,
+  TOOL_NAMES.use_skill,
+  TOOL_NAMES.set_plan,
+  TOOL_NAMES.update_plan,
+  TOOL_NAMES.record_finding,
+  TOOL_NAMES.export_data,
+  TOOL_NAMES.create_file,
+  TOOL_NAMES.create_image,
+  TOOL_NAMES.create_word_document,
+  TOOL_NAMES.read_pdf,
+  TOOL_NAMES.read_office_document,
+  TOOL_NAMES.get_video_transcript,
+  TOOL_NAMES.read_app_content,
+  TOOL_NAMES.query_pointer_target,
 ]);

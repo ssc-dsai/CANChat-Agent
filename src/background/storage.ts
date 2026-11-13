@@ -24,18 +24,25 @@ import type {
 } from '../shared/types';
 import type { LlmMessage } from './llmProvider';
 import { getVaultState, isVaultUnlocked, vaultDecrypt, vaultEncrypt } from './vault';
-
-const SETTINGS_KEY = 'ba_settings';
-const SITES_KEY = 'ba_sites';
-const CAPABILITIES_KEY = 'ba_capabilities';
-const SKILLS_KEY = 'ba_skills';
-const MEMORY_KEY = 'ba_memory';
-const MEMORY_ENABLED_KEY = 'ba_memory_enabled';
-const MEMORY_MIN_CONFIDENCE_KEY = 'ba_memory_min_confidence';
-const MEMORY_GRAPH_KEY = 'ba_memory_graph';
-const LESSONS_KEY = 'ba_lessons';
-const PROJECTS_KEY = 'ba_projects';
-const ACTIVE_PROJECT_KEY = 'ba_active_project';
+import {
+  SETTINGS_KEY,
+  SITES_KEY,
+  CAPABILITIES_KEY,
+  SKILLS_KEY,
+  MEMORY_KEY,
+  MEMORY_ENABLED_KEY,
+  MEMORY_MIN_CONFIDENCE_KEY,
+  MEMORY_GRAPH_KEY,
+  LESSONS_KEY,
+  PROJECTS_KEY,
+  ACTIVE_PROJECT_KEY,
+  CONVERSATION_INDEX_KEY,
+  CONVERSATION_KEY_PREFIX,
+  CONVERSATION_LABELS_KEY,
+  ACTIVE_CONVERSATION_KEY,
+  AUTH_TOKENS_KEY,
+  SESSION_APPROVALS_KEY,
+} from '../shared/storageKeys';
 
 export const LESSON_MAX_ENTRIES = 50;
 
@@ -43,10 +50,6 @@ export const LESSON_MAX_ENTRIES = 50;
 // One lightweight index array plus one body record per conversation. Splitting
 // them keeps the History list cheap to render and lets autosave rewrite a single
 // body instead of one giant blob.
-export const CONVERSATION_INDEX_KEY = 'ba_conv_index';
-export const CONVERSATION_KEY_PREFIX = 'ba_conv_';
-export const CONVERSATION_LABELS_KEY = 'ba_conv_labels';
-export const ACTIVE_CONVERSATION_KEY = 'ba_active_conversation';
 export const MAX_SAVED_CONVERSATIONS = 100;
 
 /** Storage key for a conversation body. Index entries are keyed by id alone. */
@@ -181,9 +184,6 @@ export async function migrateLegacySites(): Promise<void> {
 }
 
 // --- Auth token storage (session-scoped, cleared on SW restart) ---------------
-
-const AUTH_TOKENS_KEY = 'ba_auth_tokens';
-const SESSION_APPROVALS_KEY = 'ba_session_approvals';
 
 export async function getAuthTokens(): Promise<Record<string, string>> {
   try {

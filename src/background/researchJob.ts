@@ -14,6 +14,7 @@ import type { Settings } from '../shared/types';
 import type { FrontierItem, JobRecord } from '../shared/jobs';
 import { seedFrontier, type FrontierState } from '../shared/jobs';
 import { complete, resolveModelForRole } from './llmProvider';
+import { TOOL_NAMES } from '../shared/tools';
 import { extractJsonObject, runScopedSubtask, SCOPED_SUBTASK_TOOLS } from './scopedSubtask';
 import { registerJobType, type JobItemOutcome, type JobTypeHandler } from './jobEngine';
 import type { JobFinding } from './jobStore';
@@ -21,14 +22,14 @@ import * as browser from './browserToolAdapter';
 import { extractOffice, extractPdf, productSave } from './offscreenClient';
 
 // Read-only web tools the research sub-agent may use (subset of the scoped set).
-const RESEARCH_TOOL_NAMES = new Set([
-  'search_web',
-  'open_url',
-  'get_tab_content',
-  'get_active_tab',
-  'read_pdf',
-  'read_office_document',
-  'read_app_content',
+const RESEARCH_TOOL_NAMES = new Set<string>([
+  TOOL_NAMES.search_web,
+  TOOL_NAMES.open_url,
+  TOOL_NAMES.get_tab_content,
+  TOOL_NAMES.get_active_tab,
+  TOOL_NAMES.read_pdf,
+  TOOL_NAMES.read_office_document,
+  TOOL_NAMES.read_app_content,
 ]);
 const RESEARCH_TOOLS = SCOPED_SUBTASK_TOOLS.filter((t) => RESEARCH_TOOL_NAMES.has(t.function.name));
 

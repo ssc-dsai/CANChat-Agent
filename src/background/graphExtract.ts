@@ -359,6 +359,18 @@ export interface WindowScore {
   repeatedLineRatio: number;
 }
 
+// Tuning for scoreWindowInformationValue's weighted content-quality proxy.
+// The five weights sum to 1.0; the stopword band marks prose-like density.
+const WINDOW_WEIGHT_DENSITY = 0.35;
+const WINDOW_WEIGHT_PROPER_NOUN = 0.2;
+const WINDOW_WEIGHT_DIGIT_PUNCT = 0.2;
+const WINDOW_WEIGHT_STOPWORD = 0.1;
+const WINDOW_WEIGHT_REPEATED = 0.15;
+/** Stopword-ratio band that reads as natural prose (outside it, the window is penalized). */
+const STOPWORD_RATIO_MIN = 0.15;
+const STOPWORD_RATIO_MAX = 0.6;
+const STOPWORD_SCORE_OUT_OF_BAND = 0.3;
+
 /**
  * Cheap, deterministic, no-model proxy for "is this window worth an LLM
  * extraction call": combines sentence density, proper-noun-phrase density (an
@@ -404,10 +416,15 @@ export function scoreWindowInformationValue(text: string, seenLines?: Set<string
   const densityScore = Math.min(1, wordsPerLine / 8);
   const properNounScore = Math.min(1, properNounPhrases / lines.length);
   const digitPunctScore = 1 - Math.min(1, digitPunctRatio * 4);
-  const stopwordScore = stopwordRatio >= 0.15 && stopwordRatio <= 0.6 ? 1 : 0.3;
+  const stopwordScore = stopwordRatio >= STOPWORD_RATIO_MIN && stopwordRatio <= STOPWORD_RATIO_MAX ? 1 : STOPWORD_SCORE_OUT_OF_BAND;
   const repeatedScore = 1 - Math.min(1, repeatedLineRatio);
 
-  const score = densityScore * 0.35 + properNounScore * 0.2 + digitPunctScore * 0.2 + stopwordScore * 0.1 + repeatedScore * 0.15;
+  const score =
+    densityScore * WINDOW_WEIGHT_DENSITY +
+    properNounScore * WINDOW_WEIGHT_PROPER_NOUN +
+    digitPunctScore * WINDOW_WEIGHT_DIGIT_PUNCT +
+    stopwordScore * WINDOW_WEIGHT_STOPWORD +
+    repeatedScore * WINDOW_WEIGHT_REPEATED;
 
   return { score, wordsPerLine, properNounPhrases, digitPunctRatio, stopwordRatio, repeatedLineRatio };
 }

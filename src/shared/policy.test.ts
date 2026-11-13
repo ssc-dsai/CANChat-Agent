@@ -153,7 +153,7 @@ describe('isApprovalStillValid — approval binding', () => {
 // class is correct — only that a human made a deliberate choice for every tool.
 // -----------------------------------------------------------------------------
 describe('tool classification coverage', () => {
-  const advertisedTools = [...TOOL_DEFINITIONS, ...MEMORY_TOOL_DEFINITIONS].map((t) => t.function.name);
+  const advertisedTools: string[] = [...TOOL_DEFINITIONS, ...MEMORY_TOOL_DEFINITIONS].map((t) => t.function.name);
 
   it('advertises at least the known core tools (guards against an empty catalogue)', () => {
     expect(advertisedTools).toContain('open_url');

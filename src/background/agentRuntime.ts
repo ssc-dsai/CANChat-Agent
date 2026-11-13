@@ -166,6 +166,8 @@ const SINGLE_TAB_CHARS = 12000;
 const MAX_IMAGE_BYTES = 64 * 1024 * 1024; // 64 MB
 const MULTI_TAB_CHARS = 5000;
 const CONVERSATION_CHAR_BUDGET = 90000; // compact older tool output beyond this
+/** Default durability for a memory saved explicitly by the user (save_memory). */
+const DEFAULT_MEMORY_DURABILITY = 0.7;
 
 function startOfTodayIso(): string {
   const d = new Date();
@@ -3622,7 +3624,7 @@ export class AgentRuntime {
           label: subject || text.split(/\s+/).slice(0, 6).join(' '),
           summary: text,
           confidence: 1,
-          durability: 0.7,
+          durability: DEFAULT_MEMORY_DURABILITY,
           status: 'active',
           projectId: this.activeProjectId ?? undefined,
           createdAt: now,
