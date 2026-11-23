@@ -10,8 +10,7 @@
 
 import { DEFAULT_GITLAB_INSTANCE } from '../../shared/gitlabDuoAuth';
 import type { Settings } from '../../shared/types';
-
-const SETTINGS_KEY = 'ba_settings';
+import { SETTINGS_KEY } from '../../shared/storageKeys';
 
 type ProviderConfigFields = Pick<Settings, 'gitlabInstanceUrl' | 'gitlabDuoClientId'>;
 

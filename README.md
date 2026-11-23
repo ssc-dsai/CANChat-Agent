@@ -45,7 +45,7 @@ When you send a message, the agent runs a think→act→observe loop against a s
 Three principles shape the design:
 
 - **Browser-first.** If the browser can do it, the agent does it through the browser — searches use your default search engine in a real tab, not a search API; site data comes from the rendered page, not a scraper. This means the agent sees exactly what you would see, with your sessions and your cookies.
-- **Read-only by default.** Reading pages is free; *changing* anything (clicking buttons, filling forms, submitting) always stops and asks you first. So does reading all your tabs at once.
+- **Read-only by default.** Reading pages is free; *changing* anything (clicking buttons, submitting forms, running JavaScript) always stops and asks you first. So does reading all your tabs at once.
 - **Pause, don't fail.** When a task hits a login wall or a missing permission, the agent doesn't abandon the task — it pauses, tells you what it needs, and resumes where it left off once you've acted.
 
 If a question refers to "the page" or "this article" without saying which, the agent assumes you mean the currently active tab.
@@ -167,7 +167,7 @@ The status pill is color-coded: neutral **Idle**, purple **Thinking…/Using bro
 The row of buttons under the header controls what page content is handed to the agent *up front* (the agent reads the active tab by default, and can fetch any tab itself mid-task with its tools):
 
 - **Screenshot** — captures the **visible part of the current tab as an image** and attaches it to your next message. This is the tool for content that text extraction can't see: PowerBI reports, canvas-rendered dashboards and spreadsheets, Figma, embedded PDFs, charts. The image appears in the thread immediately (with a pending chip above the input — ✕ discards it) and is sent with whatever you ask next. **Requires a vision-capable model** (e.g. GPT-4o-class, llava/qwen-vl locally). Captures only the visible viewport.
-- **Capture full page** — like Screenshot, but captures the **whole page** by scrolling top to bottom and taking a series of overlapping screenshots, all attached to your next message (the vision model "reads" them). Use it for long or opaque pages where a single viewport isn't enough. Also available to the agent as the `capture_full_page` tool (it'll reach for it when a page's content is invisible to the text tools). **Vision-model required, and token-heavy** (many images) — it's the last-resort escalation. It stops at the bottom (or when scrolling stops changing the view) and caps at ~20 frames. Caveat: it scrolls the window or the largest inner scroll region, so apps that scroll a custom canvas (e.g. Excel Online's grid) may not page past the first view.
+- **Capture full page** — like Screenshot, but captures the **whole page** by scrolling top to bottom and taking a series of overlapping screenshots, all attached to your next message (the vision model "reads" them). Use it for long or opaque pages where a single viewport isn't enough. Also available to the agent as the `capture_full_page` tool (it'll reach for it when a page's content is invisible to the text tools). **Vision-model required, and token-heavy** (many images) — it's the last-resort escalation. It stops at the bottom (or when scrolling stops changing the view) and captures 12 frames by default, capped at 20. Caveat: it scrolls the window or the largest inner scroll region, so apps that scroll a custom canvas (e.g. Excel Online's grid) may not page past the first view.
 - **Refresh** — re-extracts whatever is currently in context.
 
 Each tab in context is listed with a status dot — green (readable), amber (login required), red (blocked or unreadable, e.g. `chrome://` pages) — and a **stale** tag once a snapshot is older than 5 minutes. Stale context isn't deleted; the agent is told it may be out of date and re-fetches when freshness matters.
@@ -198,7 +198,7 @@ Three kinds of amber cards appear in the chat when the agent needs you:
 
 | Card | When | Your options |
 |---|---|---|
-| **Approve action?** | The agent wants to do something state-changing: click, type into a field, submit a form, **run JavaScript**, or read all tabs. The card leads with the agent's plain-language reason — *what* it's doing and *why* — with the exact mechanics (element, code) tucked under a "Technical detail" toggle | Approve / Deny — a denial is reported to the agent, which continues without it |
+| **Approve action?** | The agent wants to do something state-changing: click, submit a form, **run JavaScript**, or read all tabs. The card leads with the agent's plain-language reason — *what* it's doing and *why* — with the exact mechanics (element, code) tucked under a "Technical detail" toggle | Approve / Deny — a denial is reported to the agent, which continues without it |
 | **Authentication required** | A page redirected to login (detected via URL patterns, password fields, sign-in text, known identity providers) | Sign in to the site in the browser as usual, then **Resume** — the agent re-checks and continues |
 | **Needs access to \<site\>** | You've manually restricted the extension's site access and the agent opened a page it can't read | **Allow this site** / **Allow all sites** / Stop — granting resumes and retries automatically |
 
@@ -237,7 +237,7 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `read_app_content` | Best-effort read of canvas-rendered content the page tools can't see (Google Docs/Sheets bodies) | – |
 | `capture_full_page` | Screenshot the whole page top-to-bottom and read it visually — last resort for opaque pages (needs a vision model) | – |
 | `click_element` | Click an element | **Yes** |
-| `fill_input` | Type into a field | **Yes** |
+| `fill_input` | Type into a field (low-risk write — visible indication, no approval card) | – |
 | `submit_form` | Submit a form | **Yes** |
 | `set_plan` / `update_plan` | Draft and track the step-by-step plan shown in the sidebar | – |
 | `record_finding` | Save an intermediate result to working notes that survive context compaction | – |
@@ -258,6 +258,22 @@ The collapsible **Tool activity** bar at the bottom shows every tool call with a
 | `call_mcp_tool` | Invoke a method on an MCP-server entry over HTTP | **Yes** |
 | `list_webmcp_tools` | List the in-page tools the current page exposes via WebMCP (`navigator.modelContext`) | – |
 | `call_webmcp_tool` | Invoke one of the page's in-page WebMCP tools | **Yes** |
+| `run_subtasks` | Fan out tight-budget read-only mini-loops over several pages/sources in parallel, returning only compact conclusions | – |
+| `search_graph` | Query the knowledge graph extracted from a repository: entities and relationships most relevant to the query, with sentence-level evidence | – |
+| `global_search` | Answer a corpus-level question about a repository by synthesizing across its knowledge-graph themes | – |
+| `request_web_fallback` | Ask the user for permission to supplement a selected repository with external web sources | **Yes** |
+| `microsoft365_search` | Search your Microsoft 365 mail and files (SharePoint/OneDrive) via the signed-in browser session — no setup or token | – |
+| `calendar_search` | Search your Outlook calendar (events, meetings, Teams links) via the signed-in session | – |
+| `draft_email` | Create a saved Outlook email draft (does not send) — user reviews and sends manually | **Yes** |
+| `start_research_job` | Start a durable, long-running deep-research job that runs in the background and produces a cited report saved to Products | **Yes** |
+| `schedule_task` | Create a one-shot or recurring scheduled agent task that runs unattended in the background | **Yes** |
+| `list_scheduled_tasks` | List scheduled tasks with next run time and last run status | – |
+| `cancel_scheduled_task` | Cancel/delete a scheduled task by id | **Yes** |
+| `save_as_skill` | Distill the current task into a reusable skill saved to Settings → Skills (invoked later by `/name`) | **Yes** |
+| `create_file` | Generate a downloadable plain-text file (`.txt`, `.md`, config) — a download card appears in the chat | – |
+| `create_image` | Generate a downloadable image from a text prompt (Ideogram) — a download card appears in the chat | – |
+| `create_word_document` | Generate a downloadable Microsoft Word (`.docx`) file from markdown — a download card appears in the chat | – |
+| `create_powerpoint` | Generate a downloadable Microsoft PowerPoint (`.pptx`) deck from a structured slide list — a download card appears in the chat | – |
 | `save_memory` / `update_memory` / `delete_memory` | Add, revise, or forget durable facts about you — only when Memory is enabled ([§6½](#6½-memory--what-the-agent-remembers-about-you)) | – |
 
 ## 4¾. SharePoint search (poor-man's RAG)
@@ -512,7 +528,7 @@ Off by default. When enabled (**Settings → Memory → "Remember things about m
 
 The mechanics:
 
-- Memory holds at most **100 entries**; past that the agent is told to consolidate before saving more.
+- Memory holds at most **500 entries**; past that the agent is told to consolidate before saving more.
 - When the toggle is **off**, the agent doesn't see the entries *and* loses the memory tools entirely — it cannot read or write memory. Existing entries stay stored (grayed out in Settings) until you delete them.
 - The agent is instructed never to store secrets, credentials, or sensitive page content. Since every entry is plain text in Settings, you can audit exactly what it knows at any time.
 - Toggle changes apply from the next task.
@@ -521,7 +537,7 @@ The mechanics:
 
 **Host access is granted at install.** The manifest requests `<all_urls>`, so the agent never stalls mid-task on a browser permission prompt. The trade-off is deliberate: enforcement moved from the browser's permission layer to the **application layer**, where it's visible and per-action:
 
-- **Always asks first:** reading all tabs at once, clicking anything, typing into any field, submitting any form. Each request appears as an approval card naming the exact element and tab.
+- **Always asks first:** reading all tabs at once, clicking anything, submitting any form, running JavaScript. Each request appears as an approval card naming the exact element and tab.
 - **Read-only default:** everything else the agent does is observation.
 - **Auth pause:** the agent never tries to get around a login — it detects login walls (URL patterns, password fields, sign-in text, known identity providers like Okta/Auth0/Microsoft/Google/Atlassian) and waits for you.
 - **Fallback re-grant card:** if you restrict the extension's site access manually (`chrome://extensions` → CANChat Agent → Details → Site access), the agent pauses with an inline **Allow this site / Allow all sites** card instead of failing.
@@ -529,6 +545,10 @@ The mechanics:
 - **Offscreen document** (`offscreen` permission): a hidden page created on demand to run pdf.js for `read_pdf` and an OOXML unzip/parse for `read_office_document`. No data leaves the device; it fetches the file with your existing session so cookie-gated PDFs and Office files work. Office support covers OOXML only (`.docx`/`.pptx`/`.xlsx`); legacy binary `.doc`/`.xls`/`.ppt` are not supported, and spreadsheets return raw cell values (not formatted/computed display).
 - **Tab groups** (`tabGroups` permission): used to collect the tabs the agent opens into a named per-conversation group. The extension never reads or closes tabs you opened yourself unless you ask.
 - **Downloads** (`downloads` permission): used only to save files *you* ask for — CSV/JSON tables, generated Word documents, exported conversations, and backups. Every save opens a **Save As dialog**, so you choose the filename and folder each time rather than having files dropped silently into your Downloads folder.
+- **Cookies** (`cookies` permission): read the browser's cookie jar to detect signed-in sessions (e.g. SharePoint, Microsoft 365) so the agent can authenticate API calls with your existing login. Cookies are never sent anywhere except the host they belong to.
+- **Alarms** (`alarms` permission): keep the service worker alive for long-running background jobs (research jobs, scheduled tasks) across browser idle periods.
+- **Identity** (`identity` permission): one-time OAuth sign-in for AWS IAM Identity Center (SSO) when using a Bedrock Mantle connection with SSO auth. The token is used only to mint short-lived SigV4 credentials; it is not stored.
+- **Notifications** (`notifications` permission): show a system notification when a background job (research job, scheduled task) completes while the side panel is closed.
 
 **What's stored, what isn't:**
 
@@ -565,10 +585,13 @@ The mechanics:
 
 ```text
 extension/
-  public/manifest.json        MV3 manifest (sidePanel, tabs, scripting, search, downloads, <all_urls>)
+  public/manifest.json        MV3 manifest (sidePanel, tabs, scripting, search, downloads, <all_urls>, cookies, alarms, identity, notifications)
   sidebar.html                Side panel page
+  workspace.html              Full-tab Workspace (Models, Skills, Repos, Memory, Jobs, etc.)
+  offscreen.html              Hidden page for pdf.js / OOXML parsing
+  microphone.html             One-time mic-permission page
   src/
-    sidebar/                  Preact UI
+    sidebar/                  Preact UI (side panel)
       Sidebar.tsx             Layout, port connection, event routing
       ChatPanel.tsx           Chat, approval/auth/permission cards, skill hints, citations
       TabContextPanel.tsx     Context buttons and tab list
@@ -577,6 +600,14 @@ extension/
       i18n.tsx                In-app EN/FR localization (catalogue + provider)
       SkillsSection.tsx       Skills manager
       Markdown.tsx            Sanitized markdown renderer (marked + DOMPurify)
+    workspace/                Preact UI (full-tab Workspace)
+      Workspace.tsx           Workspace shell and section routing
+      ModelSection.tsx        Model connection + advanced settings
+      MemoryPage.tsx          Memory management
+      JobsPage.tsx            Background jobs console
+      ProductsPage.tsx        Generated products (reports, files)
+      ProjectsPage.tsx        Project management
+      AuditPage.tsx           Audit log
     background/               Service worker
       serviceWorker.ts        Port hub, message routing, skill seeding
       agentRuntime.ts         Agent loop, approvals, pauses, prompt assembly
@@ -584,15 +615,40 @@ extension/
       tabContextManager.ts    Context snapshots and staleness
       authDetector.ts         Multi-signal login detection
       llmProvider.ts          OpenAI-compatible client (abortable, 120s timeout)
+      llmNetwork.ts           Request pipeline: timeout, retry, backoff
       storage.ts              Settings, sites, skills persistence
+      adapters/               Provider protocol adapters
+        openaiChat.ts         OpenAI Chat Completions
+        openaiResponses.ts    OpenAI Responses
+        anthropicMessages.ts  Anthropic Messages
+        geminiNative.ts       Gemini native
+        bedrockMantle.ts      AWS Bedrock Mantle wrapper (SigV4 + SSO)
+      providers/              Subscription provider integrations
+        gitlabDuo.ts          GitLab Duo
+        xaiGrok.ts            xAI / SuperGrok
     content/                  Injected on demand
       contentScript.ts        Message handler (extract / element map / act)
       domExtractor.ts         Structured extraction + element refs
       readabilityExtractor.ts Main-content heuristics
-    shared/                   Types, message protocol, tool schemas
+      webmcpBridge.ts         WebMCP navigator.modelContext bridge (MAIN world)
+      pointerTracker.ts       Always-on pointer/Alt-hover tracker
+      interactionRecorder.ts  Learn-mode interaction capture
+    offscreen/                Offscreen document (hidden page)
+      offscreen.ts            Entry point; routes parse requests
+      repoStore.ts            OPFS-backed repository storage + vectors
+      localEmbed.ts           Local embedding model (LiteRT WASM)
+      anydocParse.ts          PDF/Office text extraction (pdf.js / OOXML)
+    microphone/
+      microphone.ts           Mic-permission page logic
+    shared/                   Types, message protocol, tool schemas, policy
+      schemas.ts              Tool catalogue (JSON schemas advertised to the model)
+      policy.ts               Risk classification + approval decision engine
+      memoryGraph.ts          Memory node store (500-entry cap)
+      repoChunk.ts            Page chunking and dedup for repositories
+      url.ts                  URL/host normalization utilities
 ```
 
-Stack: **TypeScript + Preact + Vite** (three build passes: app, content script, and the WebMCP bridge as single IIFEs).
+Stack: **TypeScript + Preact + Vite** (five build passes: the app bundle, plus the content script, WebMCP bridge, pointer tracker, and interaction recorder each as single IIFEs).
 
 ```bash
 mise run typecheck   # tsc --noEmit

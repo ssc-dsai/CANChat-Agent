@@ -22,6 +22,8 @@ import { pickMainContent, readableText } from './readabilityExtractor';
 const MAX_TEXT_CHARS = 20000;
 const MAX_LINKS = 100;
 const MAX_HEADINGS = 50;
+/** Fraction of the viewport height scrolled per step (see scrollStep). */
+const VIEWPORT_SCROLL_FRACTION = 0.9;
 
 function extractMetadata(): Record<string, string> {
   const metadata: Record<string, string> = {};
@@ -426,7 +428,7 @@ function findScroller(): Element | null {
 // Scroll down ~90% of a viewport, handling window and inner scrollers.
 export function scrollStep(): { scrolled: boolean; atBottom: boolean } {
   const vh = window.innerHeight;
-  const step = Math.floor(vh * 0.9);
+  const step = Math.floor(vh * VIEWPORT_SCROLL_FRACTION);
 
   const docMax = document.documentElement.scrollHeight - vh;
   if (docMax > 8) {

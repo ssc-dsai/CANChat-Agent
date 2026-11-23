@@ -11,21 +11,22 @@
 import type { Settings } from '../shared/types';
 import { TOOL_DEFINITIONS } from '../shared/schemas';
 import { complete, resolveModelForRole, type LlmMessage, type LlmToolCall } from './llmProvider';
+import { TOOL_NAMES } from '../shared/tools';
 
 /** Read-only tools a scoped sub-agent may call (never state-changing). */
-export const SCOPED_SUBTASK_ALLOWED = new Set([
-  'get_active_tab',
-  'get_tab_content',
-  'read_app_content',
-  'open_url',
-  'search_web',
-  'read_pdf',
-  'read_office_document',
-  'get_video_transcript',
-  'list_repos',
-  'search_repo',
-  'microsoft365_search',
-  'calendar_search',
+export const SCOPED_SUBTASK_ALLOWED = new Set<string>([
+  TOOL_NAMES.get_active_tab,
+  TOOL_NAMES.get_tab_content,
+  TOOL_NAMES.read_app_content,
+  TOOL_NAMES.open_url,
+  TOOL_NAMES.search_web,
+  TOOL_NAMES.read_pdf,
+  TOOL_NAMES.read_office_document,
+  TOOL_NAMES.get_video_transcript,
+  TOOL_NAMES.list_repos,
+  TOOL_NAMES.search_repo,
+  TOOL_NAMES.microsoft365_search,
+  TOOL_NAMES.calendar_search,
 ]);
 
 export const SCOPED_SUBTASK_TOOLS = TOOL_DEFINITIONS.filter((t) => SCOPED_SUBTASK_ALLOWED.has(t.function.name));

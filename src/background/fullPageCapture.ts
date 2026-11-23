@@ -7,6 +7,8 @@ import { scrollStep } from './browserToolAdapter';
 const MAX_FRAMES_CEILING = 20;
 const FRAME_WIDTH = 1280;
 const STEP_DELAY_MS = 600;
+/** JPEG quality (0..1) for the downscaled canvas frames. */
+const JPEG_QUALITY = 0.8;
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -29,7 +31,7 @@ async function downscale(dataUrl: string): Promise<string> {
   const canvas = new OffscreenCanvas(FRAME_WIDTH, Math.round(bitmap.height * scale));
   const ctx = canvas.getContext('2d')!;
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const out = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+  const out = await canvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
   return blobToDataUrl(out);
 }
 

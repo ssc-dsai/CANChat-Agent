@@ -8,6 +8,15 @@ import type { CapabilityRegistryEntry } from './capabilities';
 import type { ExportedRepo } from './messages';
 import { emptyMemoryGraph, type MemoryGraph } from './memoryGraph';
 import type { LessonEntry, MemoryEntry, Settings, SiteEntry, Skill } from './types';
+import {
+  CAPABILITIES_KEY,
+  LESSONS_KEY,
+  MEMORY_GRAPH_KEY,
+  MEMORY_KEY,
+  SETTINGS_KEY,
+  SITES_KEY,
+  SKILLS_KEY,
+} from './storageKeys';
 
 /** A repository with its vectors decoded back into an Int8Array. */
 export interface ParsedRepo {
@@ -72,13 +81,13 @@ export function parseBackup(input: unknown): ParsedBackup {
   }
   const storage = (b.storage ?? {}) as Record<string, unknown>;
   return {
-    settings: (storage.ba_settings as Settings | undefined) ?? null,
-    skills: Array.isArray(storage.ba_skills) ? (storage.ba_skills as Skill[]) : [],
-    sites: Array.isArray(storage.ba_sites) ? (storage.ba_sites as SiteEntry[]) : [],
-    capabilities: Array.isArray(storage.ba_capabilities) ? (storage.ba_capabilities as CapabilityRegistryEntry[]) : [],
-    memory: Array.isArray(storage.ba_memory) ? (storage.ba_memory as MemoryEntry[]) : [],
-    memoryGraph: isMemoryGraph(storage.ba_memory_graph) ? storage.ba_memory_graph : emptyMemoryGraph(),
-    lessons: Array.isArray(storage.ba_lessons) ? (storage.ba_lessons as LessonEntry[]) : [],
+    settings: (storage[SETTINGS_KEY] as Settings | undefined) ?? null,
+    skills: Array.isArray(storage[SKILLS_KEY]) ? (storage[SKILLS_KEY] as Skill[]) : [],
+    sites: Array.isArray(storage[SITES_KEY]) ? (storage[SITES_KEY] as SiteEntry[]) : [],
+    capabilities: Array.isArray(storage[CAPABILITIES_KEY]) ? (storage[CAPABILITIES_KEY] as CapabilityRegistryEntry[]) : [],
+    memory: Array.isArray(storage[MEMORY_KEY]) ? (storage[MEMORY_KEY] as MemoryEntry[]) : [],
+    memoryGraph: isMemoryGraph(storage[MEMORY_GRAPH_KEY]) ? storage[MEMORY_GRAPH_KEY] : emptyMemoryGraph(),
+    lessons: Array.isArray(storage[LESSONS_KEY]) ? (storage[LESSONS_KEY] as LessonEntry[]) : [],
     repos: Array.isArray(b.repos) ? b.repos.map(parseRepo) : [],
   };
 }

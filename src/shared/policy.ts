@@ -11,6 +11,8 @@
 // module is pure (no chrome.*, no I/O) so it unit-tests in the Node env.
 // =============================================================================
 
+import { TOOL_NAMES } from './tools';
+
 /**
  * Action classes from specification.md §12.3, ordered by escalating control.
  * The ordering matters: `actionRank` uses it for the "session approval only
@@ -139,59 +141,59 @@ export function evaluatePolicy(input: PolicyInput): PolicyDecision {
  */
 export const TOOL_ACTION_CLASS: Record<string, ActionClass> = {
   // --- read -------------------------------------------------------------
-  list_tabs: 'read',
-  get_active_tab: 'read',
-  get_tab_content: 'read',
-  get_element_map: 'read',
-  detect_auth_state: 'read',
-  wait_for_element: 'read',
-  search_known_sites: 'read',
-  list_mcp_tools: 'read',
-  list_webmcp_tools: 'read',
-  sharepoint_search: 'read',
-  microsoft365_search: 'read',
-  calendar_search: 'read',
-  list_scheduled_tasks: 'read',
+  [TOOL_NAMES.list_tabs]: 'read',
+  [TOOL_NAMES.get_active_tab]: 'read',
+  [TOOL_NAMES.get_tab_content]: 'read',
+  [TOOL_NAMES.get_element_map]: 'read',
+  [TOOL_NAMES.detect_auth_state]: 'read',
+  [TOOL_NAMES.wait_for_element]: 'read',
+  [TOOL_NAMES.search_known_sites]: 'read',
+  [TOOL_NAMES.list_mcp_tools]: 'read',
+  [TOOL_NAMES.list_webmcp_tools]: 'read',
+  [TOOL_NAMES.sharepoint_search]: 'read',
+  [TOOL_NAMES.microsoft365_search]: 'read',
+  [TOOL_NAMES.calendar_search]: 'read',
+  [TOOL_NAMES.list_scheduled_tasks]: 'read',
   // Navigation / page inspection: opening or moving to a URL to *read* it is
   // read-class (domain permission), not an approval-worthy action. Committing
   // actions on the page (click/submit/type) stay gated below.
-  open_url: 'read',
-  navigate: 'read',
-  search_web: 'read',
-  scroll_wheel: 'read',
-  wait_for_page_state: 'read',
-  capture_full_page: 'read',
-  run_subtasks: 'read', // fans out read-only scoped sub-agents
+  [TOOL_NAMES.open_url]: 'read',
+  [TOOL_NAMES.navigate]: 'read',
+  [TOOL_NAMES.search_web]: 'read',
+  [TOOL_NAMES.scroll_wheel]: 'read',
+  [TOOL_NAMES.wait_for_page_state]: 'read',
+  [TOOL_NAMES.capture_full_page]: 'read',
+  [TOOL_NAMES.run_subtasks]: 'read', // fans out read-only scoped sub-agents
 
   // --- low-risk write (drafting into an unsent form; local-only writes) --
-  fill_input: 'low_risk_write',
-  add_to_repo: 'low_risk_write', // ingests a page into the local RAG store (no external effect)
-  create_powerpoint: 'low_risk_write', // generates a local file, like create_word_document
-  save_memory: 'low_risk_write', // local memory note
-  update_memory: 'low_risk_write',
-  delete_memory: 'low_risk_write', // local note removal — not an external record deletion
+  [TOOL_NAMES.fill_input]: 'low_risk_write',
+  [TOOL_NAMES.add_to_repo]: 'low_risk_write', // ingests a page into the local RAG store (no external effect)
+  [TOOL_NAMES.create_powerpoint]: 'low_risk_write', // generates a local file, like create_word_document
+  [TOOL_NAMES.save_memory]: 'low_risk_write', // local memory note
+  [TOOL_NAMES.update_memory]: 'low_risk_write',
+  [TOOL_NAMES.delete_memory]: 'low_risk_write', // local note removal — not an external record deletion
 
   // --- external communication / outbound with the user's session -------
-  submit_form: 'external_comms',
-  draft_email: 'external_comms',
-  call_mcp_tool: 'external_comms',
-  call_webmcp_tool: 'external_comms',
-  request_web_fallback: 'external_comms',
-  get_all_tab_contents: 'external_comms', // bulk cross-tab read — treat as sensitive per spec
+  [TOOL_NAMES.submit_form]: 'external_comms',
+  [TOOL_NAMES.draft_email]: 'external_comms',
+  [TOOL_NAMES.call_mcp_tool]: 'external_comms',
+  [TOOL_NAMES.call_webmcp_tool]: 'external_comms',
+  [TOOL_NAMES.request_web_fallback]: 'external_comms',
+  [TOOL_NAMES.get_all_tab_contents]: 'external_comms', // bulk cross-tab read — treat as sensitive per spec
 
   // --- persistence / record modification --------------------------------
-  save_as_skill: 'record_modification',
-  save_app_playbook: 'record_modification',
-  schedule_task: 'record_modification',
-  start_research_job: 'record_modification', // starts persistent background automation — confirm first
+  [TOOL_NAMES.save_as_skill]: 'record_modification',
+  [TOOL_NAMES.save_app_playbook]: 'record_modification',
+  [TOOL_NAMES.schedule_task]: 'record_modification',
+  [TOOL_NAMES.start_research_job]: 'record_modification', // starts persistent background automation — confirm first
 
   // --- destructive (irreversible, or arbitrary code) --------------------
-  cancel_scheduled_task: 'destructive',
-  run_javascript: 'destructive', // arbitrary code in the page — worst case
-  press_keys: 'destructive', // keyboard input can submit/trigger
-  click_at: 'destructive', // coordinate click can commit anything
-  drag: 'destructive', // drag can reorder/drop
-  click_element: 'external_comms', // a click can commit an outbound action
+  [TOOL_NAMES.cancel_scheduled_task]: 'destructive',
+  [TOOL_NAMES.run_javascript]: 'destructive', // arbitrary code in the page — worst case
+  [TOOL_NAMES.press_keys]: 'destructive', // keyboard input can submit/trigger
+  [TOOL_NAMES.click_at]: 'destructive', // coordinate click can commit anything
+  [TOOL_NAMES.drag]: 'destructive', // drag can reorder/drop
+  [TOOL_NAMES.click_element]: 'external_comms', // a click can commit an outbound action
 };
 
 /**

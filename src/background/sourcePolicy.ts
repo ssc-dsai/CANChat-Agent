@@ -1,4 +1,5 @@
 import type { ToolDefinition } from './llmTypes';
+import { TOOL_NAMES } from '../shared/tools';
 
 export type SourcePolicy =
   | { mode: 'unrestricted' }
@@ -6,27 +7,27 @@ export type SourcePolicy =
 
 // Tools that can acquire factual content outside the explicitly selected local
 // repository. Output-only and planning tools remain available in repo-only mode.
-export const EXTERNAL_SOURCE_TOOLS: ReadonlySet<string> = new Set([
-  'search_web',
-  'open_url',
-  'navigate',
-  'get_tab_content',
-  'get_all_tab_contents',
-  'read_tab_group',
-  'read_app_content',
-  'read_pdf',
-  'read_office_document',
-  'get_video_transcript',
-  'search_known_sites',
-  'sharepoint_search',
-  'microsoft365_search',
-  'calendar_search',
-  'list_mcp_tools',
-  'call_mcp_tool',
-  'list_webmcp_tools',
-  'call_webmcp_tool',
-  'run_subtasks',
-  'start_research_job',
+export const EXTERNAL_SOURCE_TOOLS: ReadonlySet<string> = new Set<string>([
+  TOOL_NAMES.search_web,
+  TOOL_NAMES.open_url,
+  TOOL_NAMES.navigate,
+  TOOL_NAMES.get_tab_content,
+  TOOL_NAMES.get_all_tab_contents,
+  TOOL_NAMES.read_tab_group,
+  TOOL_NAMES.read_app_content,
+  TOOL_NAMES.read_pdf,
+  TOOL_NAMES.read_office_document,
+  TOOL_NAMES.get_video_transcript,
+  TOOL_NAMES.search_known_sites,
+  TOOL_NAMES.sharepoint_search,
+  TOOL_NAMES.microsoft365_search,
+  TOOL_NAMES.calendar_search,
+  TOOL_NAMES.list_mcp_tools,
+  TOOL_NAMES.call_mcp_tool,
+  TOOL_NAMES.list_webmcp_tools,
+  TOOL_NAMES.call_webmcp_tool,
+  TOOL_NAMES.run_subtasks,
+  TOOL_NAMES.start_research_job,
 ]);
 
 export function normalizeRepoName(name: string): string {
