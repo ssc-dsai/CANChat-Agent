@@ -1,10 +1,12 @@
 import { DEFAULT_LOCAL_EMBED_MODEL, type ModelRole, type Settings } from '../shared/types';
 import { embedLocal } from './offscreenClient';
 import { getAdapter } from './adapters';
+import { listMantleModels } from './adapters/bedrockMantle';
 import { apiVersion, authHeaders, buildUrl, LLM_TIMEOUT_MS, requestWithRetry, resolve, type RetryOpts } from './llmNetwork';
 import { LlmError } from './llmTypes';
 import type { ContentPart, LlmMessage, LlmResponseMessage, LlmToolCall, ResponseFormatSpec, ToolDefinition } from './llmTypes';
 import { getProvider } from './providers/registry';
+import type { TestConnectionResponse } from '../shared/messages';
 import type { ProviderChatMessage } from './providers/types';
 
 // =============================================================================
@@ -337,9 +339,15 @@ export async function complete(
 /**
  * Settings-screen probe: a trivial one-shot completion that confirms the
  * endpoint, key, and model all work together. Never throws — it converts any
- * failure into `{ ok: false, detail }` for display.
+ * failure into `{ ok: false, detail }` for display. On Bedrock Mantle it also
+ * lists the region's model IDs, since Mantle's catalog differs from regular
+ * Bedrock's and an unserved model only comes back as a bare 404.
  */
-export async function testConnection(settings: Settings): Promise<{ ok: boolean; detail: string }> {
+export async function testConnection(settings: Settings): Promise<TestConnectionResponse> {
+  const models: Promise<string[] | Error | undefined> = settings.bedrockMantle
+    ? listMantleModels(settings).catch((err: unknown) => (err instanceof Error ? err : new Error(String(err))))
+    : Promise.resolve(undefined);
+  let result: TestConnectionResponse;
   try {
     // The probe should fail fast: no retries and a tiny deterministic completion,
     // since some local OpenAI-compatible servers default to very large outputs.
@@ -349,8 +357,17 @@ export async function testConnection(settings: Settings): Promise<{ ok: boolean;
     const message = await complete({ ...settings, retryOnRateLimit: false, temperature: 0, maxTokens: probeMaxTokens }, [
       { role: 'user', content: 'Reply with the single word: ok' },
     ]);
-    return { ok: true, detail: `Connected. Model replied: ${(message.content ?? '').slice(0, 100)}` };
+    result = { ok: true, detail: `Connected. Model replied: ${(message.content ?? '').slice(0, 100)}` };
   } catch (err) {
-    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    result = { ok: false, detail: err instanceof Error ? err.message : String(err) };
   }
+  const available = await models;
+  if (!available) return result;
+  if (available instanceof Error) {
+    return { ...result, detail: `${result.detail} — Could not list Bedrock Mantle models: ${available.message}` };
+  }
+  if (!result.ok && !available.includes(settings.model.trim())) {
+    result.detail += ` — "${settings.model.trim()}" is not served by Bedrock Mantle in ${settings.awsRegion?.trim()}. Pick one of the models below.`;
+  }
+  return { ...result, models: available };
 }

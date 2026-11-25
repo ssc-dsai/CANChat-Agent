@@ -45,6 +45,24 @@ async function sign(req: AdapterRequest, region: string, credentials: SigV4Crede
   return { ...req, headers: { ...headers, ...signed } };
 }
 
+/**
+ * Key-based auth for a non-SSO Mantle connection: a Bedrock API key, or AWS
+ * credentials to sign with when an access key ID is set.
+ */
+function mantleKeyAuth(settings: Settings): { apiKey: string } | { credentials: SigV4Credentials } {
+  const secret = settings.apiKey?.trim();
+  const accessKeyId = settings.awsAccessKeyId?.trim();
+  if (!secret) {
+    throw new LlmError(
+      accessKeyId
+        ? 'AWS Bedrock requires the secret access key for this access key ID. Set it in Settings → Models.'
+        : 'AWS Bedrock requires a Bedrock API key (or an AWS access key ID and secret access key). Set it in Settings → Models.',
+    );
+  }
+  if (!accessKeyId) return { apiKey: secret };
+  return { credentials: { accessKeyId, secretAccessKey: secret, sessionToken: settings.awsSessionToken?.trim() || undefined } };
+}
+
 /** Wrap a Chat Completions / Responses / Anthropic Messages adapter so it targets Bedrock Mantle. */
 export function withBedrockMantle(inner: ProtocolAdapter, protocol: ModelProtocol | undefined): ProtocolAdapter {
   return {
@@ -65,32 +83,56 @@ export function withBedrockMantle(inner: ProtocolAdapter, protocol: ModelProtoco
         return sign(req, region, await getAwsSsoCredentials(cfg));
       }
 
-      const secret = settings.apiKey?.trim();
-      const accessKeyId = settings.awsAccessKeyId?.trim();
-      if (!secret) {
-        throw new LlmError(
-          accessKeyId
-            ? 'AWS Bedrock requires the secret access key for this access key ID. Set it in Settings → Models.'
-            : 'AWS Bedrock requires a Bedrock API key (or an AWS access key ID and secret access key). Set it in Settings → Models.',
-        );
-      }
-
+      const auth = mantleKeyAuth(settings);
       // Azure's api-version quirk never applies here, and in SigV4 mode the
       // secret must not leak into a Bearer/x-api-key header.
       const req = await inner.buildRequest(
-        { ...settings, baseUrl: base, apiVersion: undefined, apiKey: accessKeyId ? '' : secret },
+        { ...settings, baseUrl: base, apiVersion: undefined, apiKey: 'apiKey' in auth ? auth.apiKey : '' },
         messages,
         tools,
         responseFormat,
       );
-      if (!accessKeyId) return req;
-      return sign(req, region, {
-        accessKeyId,
-        secretAccessKey: secret,
-        sessionToken: settings.awsSessionToken?.trim() || undefined,
-      });
+      return 'apiKey' in auth ? req : sign(req, region, auth.credentials);
     },
 
     parseResponse: inner.parseResponse,
   };
+}
+
+/**
+ * List the model IDs Mantle serves in the connection's region (`GET
+ * /v1/models`, OpenAI's list shape), authenticated the same way as inference.
+ * A `baseUrl` override is honored for the OpenAI shapes (e.g. `/openai/v1`);
+ * the Anthropic base has no model list, so Messages connections use `/v1`.
+ */
+export async function listMantleModels(settings: Settings): Promise<string[]> {
+  const region = settings.awsRegion?.trim();
+  if (!region) throw new LlmError('AWS Bedrock requires a region. Set it in Settings → Models.');
+  const override = settings.protocol === 'anthropic-messages' ? '' : settings.baseUrl?.trim();
+  const url = `${(override || defaultMantleBaseUrl(region, 'chat-completions')).replace(/\/+$/, '')}/models`;
+
+  let headers: Record<string, string>;
+  if (usesAwsSso(settings)) {
+    const cfg = ssoConfigFromSettings(settings);
+    if (!cfg) {
+      throw new LlmError('AWS IAM Identity Center sign-in needs a start URL, account ID, and permission set. Set them in Settings → Models.');
+    }
+    headers = await signRequest('GET', url, '', region, MANTLE_SERVICE, await getAwsSsoCredentials(cfg));
+  } else {
+    const auth = mantleKeyAuth(settings);
+    headers = 'apiKey' in auth
+      ? { Authorization: `Bearer ${auth.apiKey}` }
+      : await signRequest('GET', url, '', region, MANTLE_SERVICE, auth.credentials);
+  }
+
+  const response = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new LlmError(`Model list ${url} returned ${response.status}: ${text.slice(0, 300)}`);
+  }
+  const data = (await response.json()) as { data?: Array<{ id?: unknown }> };
+  return (data.data ?? [])
+    .map((m) => m.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    .sort();
 }

@@ -209,6 +209,8 @@ html, body, #app { margin: 0; height: 100%; font-family: -apple-system, BlinkMac
 .btn:hover:not(:disabled) { background: var(--brand-soft); }
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn-small { padding: 3px 8px; font-size: 12px; }
+.mantle-models { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.mantle-model-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; }
 .btn-primary { background: var(--accent-fill); border-color: var(--accent-fill); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--accent-fill-hover); }
 

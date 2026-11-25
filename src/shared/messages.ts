@@ -293,6 +293,8 @@ export interface AddFilesResponse {
 export interface TestConnectionResponse {
   ok: boolean;
   detail: string;
+  /** Bedrock Mantle only: the model IDs served in the connection's region. */
+  models?: string[];
 }
 
 export interface TranscribeResponse {

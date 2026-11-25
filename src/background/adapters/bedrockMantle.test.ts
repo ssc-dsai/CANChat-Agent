@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ModelProtocol, Settings } from '../../shared/types';
+import { listMantleModels } from './bedrockMantle';
 import { getAdapter } from './index';
 
 const getAwsSsoCredentials = vi.hoisted(() =>
@@ -136,5 +137,49 @@ describe('Bedrock Mantle adapter', () => {
       choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
     });
     expect(msg.content).toBe('ok');
+  });
+});
+
+describe('listMantleModels', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const stubModels = () => {
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ object: 'list', data: [{ id: 'openai.gpt-oss-120b' }, { id: 'anthropic.claude-sonnet-5' }] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('lists the region default /v1/models with a Bedrock API key, sorted', async () => {
+    const fetchMock = stubModels();
+    const ids = await listMantleModels({ ...apiKeySettings, awsRegion: 'ca-central-1' });
+    expect(ids).toEqual(['anthropic.claude-sonnet-5', 'openai.gpt-oss-120b']);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://bedrock-mantle.ca-central-1.api.aws/v1/models');
+    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer bedrock-api-key');
+  });
+
+  it('uses /v1 for Anthropic Messages and honors an OpenAI-shape override', async () => {
+    const fetchMock = stubModels();
+    await listMantleModels({ ...apiKeySettings, protocol: 'anthropic-messages', baseUrl: 'https://x.example/anthropic' });
+    await listMantleModels({ ...apiKeySettings, baseUrl: 'https://bedrock-mantle.us-east-1.api.aws/openai/v1/' });
+    expect(fetchMock.mock.calls.map(([u]) => u)).toEqual([
+      'https://bedrock-mantle.us-east-1.api.aws/v1/models',
+      'https://bedrock-mantle.us-east-1.api.aws/openai/v1/models',
+    ]);
+  });
+
+  it('signs the GET with SigV4 when an access key ID is set', async () => {
+    const fetchMock = stubModels();
+    await listMantleModels(sigv4Settings);
+    const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+    expect(headers.Authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE\/\d{8}\/us-east-1\/bedrock-mantle\/aws4_request/);
+    expect(JSON.stringify(headers)).not.toContain('secret-access-key');
+  });
+
+  it('surfaces a non-OK response as an error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('denied', { status: 403 })));
+    await expect(listMantleModels(apiKeySettings)).rejects.toThrow(/403: denied/);
   });
 });
