@@ -1066,6 +1066,62 @@ body {
   color: var(--text-dim);
   margin-left: 4px;
 }
+.approval-site {
+  margin-top: 4px;
+  font-weight: 600;
+  word-break: break-all;
+}
+.script-approval {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.script-approval-site {
+  font-weight: 600;
+  font-size: 14px;
+  word-break: break-all;
+}
+.script-approval-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  word-break: break-word;
+}
+.script-approval-warnings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.script-warning {
+  background: #fbe0e0;
+  color: #a32626;
+  font-weight: 600;
+}
+.script-approval-note {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.script-approval-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.script-approval-code {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  background: var(--bg, #fff);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .approval-remember {
   display: flex;
   align-items: center;

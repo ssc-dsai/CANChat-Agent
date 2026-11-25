@@ -1,13 +1,7 @@
-import DOMPurify from 'dompurify';
-import { marked } from 'marked';
 import type { ChatMessageView, Citation, DataExport, FileArtifact } from '../shared/types';
 import { injectCitationChips } from '../shared/citations';
 import { saveFile } from './download';
-
-// marked's gfm/breaks options and DOMPurify's link hook are configured globally
-// in Markdown.tsx (loaded with the sidebar); set the options here too so this
-// module renders identically even if imported on its own.
-marked.setOptions({ gfm: true, breaks: true });
+import { EXPORT_CSP_META, renderSafeMarkdown } from './safeHtml';
 
 export function escapeHtml(s: string): string {
   return s
@@ -29,7 +23,7 @@ function splitSources(text: string): { body: string; sources: string | null } {
 }
 
 export function renderMarkdown(text: string): string {
-  return DOMPurify.sanitize(marked.parse(text, { async: false }));
+  return renderSafeMarkdown(text);
 }
 
 function renderImages(images: string[]): string {
@@ -162,7 +156,7 @@ export function exportConversationHtml(messages: ChatMessageView[]): void {
   const exportedAt = now.toLocaleString();
   const body = messages.map(renderMessage).join('\n');
   const html =
-    `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n` +
+    `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n${EXPORT_CSP_META}\n` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">\n` +
     `<title>CANChat Agent conversation — ${escapeHtml(now.toISOString().slice(0, 10))}</title>\n` +
     `<style>${STYLE}</style>\n</head>\n<body>\n<div class="wrap">\n` +

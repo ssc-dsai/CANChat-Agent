@@ -164,7 +164,6 @@ export const TOOL_ACTION_CLASS: Record<string, ActionClass> = {
   run_subtasks: 'read', // fans out read-only scoped sub-agents
 
   // --- low-risk write (drafting into an unsent form; local-only writes) --
-  fill_input: 'low_risk_write',
   add_to_repo: 'low_risk_write', // ingests a page into the local RAG store (no external effect)
   create_powerpoint: 'low_risk_write', // generates a local file, like create_word_document
   save_memory: 'low_risk_write', // local memory note
@@ -173,6 +172,9 @@ export const TOOL_ACTION_CLASS: Record<string, ActionClass> = {
 
   // --- external communication / outbound with the user's session -------
   submit_form: 'external_comms',
+  // Typing is outbound too: the page's own script can read a field as it fills,
+  // so text typed into a hostile page leaves without any submit.
+  fill_input: 'external_comms',
   draft_email: 'external_comms',
   call_mcp_tool: 'external_comms',
   call_webmcp_tool: 'external_comms',

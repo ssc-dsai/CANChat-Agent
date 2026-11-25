@@ -10,7 +10,7 @@
 // =============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { BackgroundEvent, SidebarCommand } from '../shared/messages';
+import type { BackgroundEvent, SidebarCommand, ApprovalContext } from '../shared/messages';
 import type {
   AgentStatus,
   ChatMessageView,
@@ -140,7 +140,7 @@ export function Sidebar() {
   const [messages, setMessages] = useState<ChatMessageView[]>([]);
   const [activities, setActivities] = useState<ToolActivity[]>([]);
   const [context, setContext] = useState<TabContextSummary | null>(null);
-  const [approval, setApproval] = useState<{ requestId: string; description: string; detail: string; approvalContext?: { toolName: string; capabilityKind?: string; capabilityName?: string; trustLevel?: string; authMethod?: string; authConfigured: boolean } } | null>(null);
+  const [approval, setApproval] = useState<{ requestId: string; description: string; detail: string; approvalContext?: ApprovalContext } | null>(null);
   const [authNotice, setAuthNotice] = useState<{ origin: string; message: string } | null>(null);
   const [permissionNotice, setPermissionNotice] = useState<{ origin: string; message: string } | null>(null);
   const [pendingSnapshots, setPendingSnapshots] = useState<string[]>([]);

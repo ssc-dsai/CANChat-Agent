@@ -257,21 +257,27 @@ any state-changing/outbound action, plus **typed validation** of model-supplied 
 ```ts
 export function toLatLng(input: unknown): [number, number] | null { … if (la<-90||la>90||ln<-180||ln>180) return null; … }
 ```
-Restricted-URL refusal (above) blocks a class of injected navigation. **Residual:** there is **no
-dedicated prompt-injection instruction block in the application's own system prompt**, and no automated
-detection of injected instructions in page/tool/MCP content — the gate + validation are the safety net.
-**Finding:** add explicit injection-handling guidance and consider input provenance tagging; verify via CA-8.
+Restricted-URL refusal (above) blocks a class of injected navigation. Added controls:
+- **Provenance tagging.** Results of tools that read third-party content (pages, documents, mail, search,
+  repositories, MCP/WebMCP, page scripts) reach the model wrapped in `<untrusted_content>` markers, and the
+  system prompt (appended last, after any custom instructions) says marked content is data, never
+  instructions (`src/shared/untrustedContent.ts`).
+- **Outbound-URL provenance.** `navigate`/`open_url`/`read_pdf`/`read_office_document` open a URL without
+  asking only if it came from the user, from link fields of browser/web tool results, or a registered site;
+  a URL the model composed needs approval and is refused in unattended runs and subtasks
+  (`src/shared/urlProvenance.ts`). Echoes of the model's own search queries are never trusted.
+- **Other outbound channels.** `fill_input` is approval-gated; MCP calls resolve only registered servers or
+  URLs the user typed; research jobs read only tabs they opened.
+**Residual:** markers reduce but cannot eliminate injection, and there is no automated detection of
+injected instructions; a URL chosen from many pre-existing page links remains a low-bandwidth channel.
+Verify via CA-8 red-teaming.
 
 ### SI-15 — Information Output Filtering — ✅ Implemented
-Model/Markdown output is sanitized with DOMPurify before rendering, and links are forced safe.
-`src/sidebar/Markdown.tsx`:
-```ts
-DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-  if (node.tagName === 'A') { node.setAttribute('target','_blank'); node.setAttribute('rel','noopener noreferrer'); }
-});
-const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { async: false })), [text]);
-```
-(Same pattern in `src/sidebar/conversationExport.ts` for exported HTML.)
+Model/Markdown output is sanitized by one shared policy (`src/sidebar/safeHtml.ts`) used by the panel and
+the HTML exports: DOMPurify with HTML-only profile, links forced to new tabs, and everything that makes a
+request on render removed — remote `<img>` (only `data:`/`blob:` images survive), `style` attributes,
+`srcset`, media, SVG, and forms. The extension CSP adds `img-src 'self' data: blob:` and
+`form-action 'none'`; exported HTML files carry their own CSP meta tag (no scripts, no network loads).
 
 ### SI-3 — Malicious Code Protection — ⚠️ Partial
 Browser-internal surfaces are refused (`isRestrictedUrl`) and rendered output is sanitized (SI-15);
@@ -282,8 +288,10 @@ the host AV/endpoint.
 Live status, notices, and the activity panel surface agent behaviour (see AU-2 evidence and status bar).
 
 ### SI-2 / SI-7 — ⚠️ Partial
-Imported backups/conversations are schema-validated before use (`src/shared/backupFormat.ts`,
-`parseConversationFile`), giving input-integrity checking. **Residual:** no artifact signing; update
+Backup restore writes only an allowlist of configuration keys, each shape-checked; vault, token and
+audit keys are never restored, and the confirmation lists every change to endpoints, prompts, MCP servers
+and skills before anything is written (`src/shared/backupRestore.ts`). Conversations are validated by
+`parseConversationFile`. **Residual:** no artifact signing; update
 cadence depends on the distribution channel (Web Store vs. unpacked).
 
 ### SI-16 — ➖ Inherited (V8/Chromium memory safety; TS is memory-safe).

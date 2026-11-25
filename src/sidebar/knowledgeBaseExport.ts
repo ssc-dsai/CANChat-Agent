@@ -8,6 +8,7 @@
 import type { CommunitySummary, DocGraph, GraphEdge, GraphNode } from '../shared/docGraph';
 import type { Citation, NotebookOverview, StudioDoc, StudioKind } from '../shared/types';
 import { escapeHtml, renderMarkdown, downloadBlob } from './conversationExport';
+import { EXPORT_CSP_META } from './safeHtml';
 import { citationTokenRe } from '../shared/citations';
 
 const SAFE_ID = /^[\w:#.\-]+$/;
@@ -659,7 +660,7 @@ export function exportKnowledgeBaseHtml(repo: string, data: KnowledgeBaseExportD
   const subtitleMeta = `<div class="meta">Repository: ${escapeHtml(repo)} &bull; Exported ${escapeHtml(now.toLocaleString())}</div>`;
 
   const html =
-    `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n` +
+    `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n${EXPORT_CSP_META}\n` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">\n` +
     `<title>${escapeHtml(displayTitle)} &mdash; Knowledge Base export</title>\n` +
     `<style>${KB_STYLE}</style>\n</head>\n<body>\n<div class="wrap">\n` +

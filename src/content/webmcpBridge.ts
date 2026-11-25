@@ -5,7 +5,8 @@
 // into a page global the extension can read via executeScript.
 //
 // Passive: it only captures tools the page voluntarily registers. It reads no
-// page content and changes no page behaviour.
+// page content and changes no page behaviour. It also pins pristine copies of
+// eval/JSON.stringify for run_javascript (see jsRunner in browserToolAdapter).
 
 interface WebMcpTool {
   name: string;
@@ -23,6 +24,22 @@ interface Registry {
     __CANAGENT_WEBMCP__?: Registry;
     navigator: Navigator & { modelContext?: Record<string, unknown> };
   };
+
+  // Pin the browser's own eval and JSON.stringify before any page script runs,
+  // so run_javascript's MAIN-world runner can't be handed page replacements that
+  // read the agent's script or forge its result. Frozen and non-configurable:
+  // the page can neither redefine the property nor swap the functions in it.
+  try {
+    Object.defineProperty(window, '__CANAGENT_RT__', {
+      // eslint-disable-next-line no-eval
+      value: Object.freeze({ eval: window.eval, stringify: JSON.stringify }),
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+  } catch {
+    // Already defined (bridge ran twice) — the first, pristine copy stands.
+  }
 
   // Single shared registry for this page.
   const registry: Registry = w.__CANAGENT_WEBMCP__ ?? { tools: new Map<string, WebMcpTool>() };

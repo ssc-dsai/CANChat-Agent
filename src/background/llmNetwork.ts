@@ -87,30 +87,44 @@ export async function requestWithRetry(
   }
 }
 
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve the base URL and API key for a given service. Embeddings and
  * transcription can each override the primary endpoint/key; blank falls back.
+ *
+ * The main API key only follows an override to the SAME origin as the main
+ * endpoint (e.g. another deployment path on one Azure resource). An override
+ * on a different host must bring its own key — otherwise changing just the
+ * embedding URL (by hand, remote config or a restored backup) would send the
+ * main provider's key to that host.
  */
 export function resolve(settings: Settings, kind: 'chat' | 'embedding' | 'transcription'): {
   base: string;
   key: string;
 } {
-  const base =
+  const override =
     kind === 'embedding'
       ? settings.embeddingBaseUrl
       : kind === 'transcription'
         ? settings.transcriptionBaseUrl
         : undefined;
-  const key =
+  const ownKey =
     kind === 'embedding'
       ? settings.embeddingApiKey
       : kind === 'transcription'
         ? settings.transcriptionApiKey
         : undefined;
-  return {
-    base: (base?.trim() || settings.baseUrl).replace(/\/+$/, ''),
-    key: key?.trim() || settings.apiKey,
-  };
+  const base = (override?.trim() || settings.baseUrl).replace(/\/+$/, '');
+  if (ownKey?.trim()) return { base, key: ownKey.trim() };
+  const sameHost = !override?.trim() || originOf(base) === originOf(settings.baseUrl);
+  return { base, key: sameHost ? settings.apiKey : '' };
 }
 
 /**

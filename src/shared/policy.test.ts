@@ -99,6 +99,10 @@ describe('classifyTool', () => {
     expect(classifyTool('run_javascript', READ_ONLY)).toBe('destructive');
   });
 
+  it('gates fill_input: a page can read a field as it is typed into', () => {
+    expect(classifyTool('fill_input', READ_ONLY)).toBe('external_comms');
+  });
+
   it('falls back to read for known read-only tools', () => {
     expect(classifyTool('list_tabs', READ_ONLY)).toBe('read');
   });
