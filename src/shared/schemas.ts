@@ -692,7 +692,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       parameters: {
         type: 'object',
         properties: {
-          server: { type: 'string', description: 'The MCP hint name, or the MCP server URL.' },
+          server: { type: 'string', description: 'The MCP hint name, or an MCP server URL the user typed in chat.' },
           query: { type: 'string', description: 'Optional keywords to filter the methods.' },
         },
         required: ['server'],
@@ -708,7 +708,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       parameters: {
         type: 'object',
         properties: {
-          server: { type: 'string', description: 'The MCP hint name, or the MCP server URL.' },
+          server: { type: 'string', description: 'The MCP hint name, or an MCP server URL the user typed in chat.' },
           name: { type: 'string', description: 'The method name from list_mcp_tools.' },
           arguments: {
             type: 'object',

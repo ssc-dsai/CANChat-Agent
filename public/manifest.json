@@ -51,7 +51,7 @@
     "default_path": "sidebar.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; form-action 'none'"
   },
   "icons": {
     "16": "icons/icon16.png",

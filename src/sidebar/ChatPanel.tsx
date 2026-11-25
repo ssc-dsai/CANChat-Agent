@@ -11,7 +11,7 @@
 import { memo } from 'preact/compat';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
-import type { SidebarCommand } from '../shared/messages';
+import type { ApprovalContext, SidebarCommand } from '../shared/messages';
 import type { AgentStatus, ChatMessageView, Citation, DataExport, FileArtifact, SiteEntry, Skill } from '../shared/types';
 import { UPLOAD_ACCEPT } from '../shared/uploadFile';
 import { captureDrop, clipboardIsEmail, itemsFromFiles, type DroppedItem } from './dropCapture';
@@ -20,7 +20,7 @@ import { DOCS_URL } from './links';
 import { RepoUpload } from './RepoUpload';
 import { UploadBanner } from './UploadBanner';
 import { saveFile } from './download';
-import { useT } from './i18n';
+import { useT, type Translator } from './i18n';
 import { Markdown } from './Markdown';
 import { CitationView } from './CitationView';
 
@@ -140,7 +140,7 @@ function splitSources(text: string): { body: string; sources: string | null } {
 interface Props {
   messages: ChatMessageView[];
   status: AgentStatus;
-  approval: { requestId: string; description: string; detail: string; approvalContext?: { toolName: string; capabilityKind?: string; capabilityName?: string; trustLevel?: string; authMethod?: string; authConfigured: boolean } } | null;
+  approval: { requestId: string; description: string; detail: string; approvalContext?: ApprovalContext } | null;
   authNotice: { origin: string; message: string } | null;
   permissionNotice: { origin: string; message: string } | null;
   pendingSnapshots: string[];
@@ -700,21 +700,39 @@ export const ChatPanel = memo(function ChatPanel({
                   {approval.approvalContext.capabilityName && <span class="approval-cap-name">{approval.approvalContext.capabilityName}</span>}
                 </div>
               )}
-              <div class="prompt-reason">{approval.description}</div>
-              <details class="prompt-tech">
-                <summary>{tr('approval.tech')}</summary>
-                <div class="prompt-detail">{approval.detail}</div>
-              </details>
+              {approval.approvalContext?.script ? (
+                <ScriptApproval script={approval.approvalContext.script} reason={approval.description} tr={tr} />
+              ) : (
+                <>
+                  {approval.approvalContext?.target?.origin && (
+                    <div class="approval-site">{tr('approval.site', { site: approval.approvalContext.target.origin })}</div>
+                  )}
+                  {approval.approvalContext?.destinationUrl && (
+                    <>
+                      <div class="script-approval-label">{tr('approval.url.label')}</div>
+                      <pre class="script-approval-code" data-testid="approval-url">{approval.approvalContext.destinationUrl}</pre>
+                    </>
+                  )}
+                  <div class="prompt-reason">{approval.description}</div>
+                  <details class="prompt-tech">
+                    <summary>{tr('approval.tech')}</summary>
+                    <div class="prompt-detail">{approval.detail}</div>
+                  </details>
+                </>
+              )}
             </div>
             <div class="prompt-actions-col">
-              <label class="approval-remember">
-                <input type="checkbox" checked={rememberSession} onChange={() => setRememberSession(!rememberSession)} />
-                <span>{tr('approval.allow')}</span>
-              </label>
+              {/* Scripts and composed URLs are each their own decision, so don't offer it. */}
+              {!approval.approvalContext?.script && !approval.approvalContext?.destinationUrl && (
+                <label class="approval-remember">
+                  <input type="checkbox" checked={rememberSession} onChange={() => setRememberSession(!rememberSession)} />
+                  <span>{tr('approval.allow')}</span>
+                </label>
+              )}
               <div class="prompt-btn-row">
                 <button
                   class="btn btn-primary"
-                  onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: true, rememberForSession: rememberSession })}
+                  onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: true, rememberForSession: rememberSession && !approval.approvalContext?.script && !approval.approvalContext?.destinationUrl })}
                 >
                   {tr('approval.approve')}
                 </button>
@@ -936,3 +954,41 @@ export const ChatPanel = memo(function ChatPanel({
     </div>
   );
 });
+
+/**
+ * The run_javascript approval body. Leads with the facts the user can check —
+ * which site, risky APIs, the complete script — and labels the model's own
+ * explanation as such, since a prompt-injected model writes that line too.
+ */
+function ScriptApproval({
+  script,
+  reason,
+  tr,
+}: {
+  script: NonNullable<ApprovalContext['script']>;
+  reason: string;
+  tr: Translator;
+}) {
+  const site = script.origin ?? tr('approval.script.noSite');
+  return (
+    <div class="script-approval" data-testid="script-approval">
+      <div class="script-approval-site">{tr('approval.script.title', { site })}</div>
+      <div class="script-approval-meta">
+        {tr(`approval.script.scope.${script.scope}`)}
+        {script.title ? ` · ${script.title}` : ''}
+      </div>
+      {script.warnings.length > 0 && (
+        <ul class="script-approval-warnings">
+          {script.warnings.map((w) => (
+            <li key={w} class="approval-tag script-warning">{tr(`approval.script.warn.${w}`)}</li>
+          ))}
+        </ul>
+      )}
+      <div class="script-approval-note">{tr('approval.script.note', { site })}</div>
+      <div class="script-approval-label">{tr('approval.script.code', { n: script.code.length })}</div>
+      <pre class="script-approval-code">{script.code}</pre>
+      <div class="script-approval-label">{tr('approval.script.reason')}</div>
+      <div class="prompt-reason">{reason}</div>
+    </div>
+  );
+}

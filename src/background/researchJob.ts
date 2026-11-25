@@ -18,14 +18,16 @@ import { extractJsonObject, runScopedSubtask, SCOPED_SUBTASK_TOOLS } from './sco
 import { registerJobType, type JobItemOutcome, type JobTypeHandler } from './jobEngine';
 import type { JobFinding } from './jobStore';
 import * as browser from './browserToolAdapter';
+import { UNTRUSTED_OUTPUT_TOOLS, wrapUntrusted } from '../shared/untrustedContent';
 import { extractOffice, extractPdf, productSave } from './offscreenClient';
 
 // Read-only web tools the research sub-agent may use (subset of the scoped set).
+// No get_active_tab: a research job runs in the background on the public web
+// and must never reach into the user's own tabs (mail, intranet, banking).
 const RESEARCH_TOOL_NAMES = new Set([
   'search_web',
   'open_url',
   'get_tab_content',
-  'get_active_tab',
   'read_pdf',
   'read_office_document',
   'read_app_content',
@@ -55,6 +57,10 @@ function isHttp(u: string): boolean {
 function makeResearchDispatch(): { dispatch: (name: string, args: Record<string, unknown>) => Promise<string>; closeTabs: () => Promise<void> } {
   const opened: number[] = [];
   const dispatch = async (name: string, args: Record<string, unknown>): Promise<string> => {
+    const result = await dispatchRaw(name, args);
+    return UNTRUSTED_OUTPUT_TOOLS.has(name) && !result.startsWith('Error') ? wrapUntrusted(name, result) : result;
+  };
+  const dispatchRaw = async (name: string, args: Record<string, unknown>): Promise<string> => {
     switch (name) {
       case 'search_web': {
         const r = await browser.searchWeb(String(args.query ?? ''));
@@ -66,12 +72,17 @@ function makeResearchDispatch(): { dispatch: (name: string, args: Record<string,
         if (r.tabId > 0) opened.push(r.tabId);
         return JSON.stringify(r);
       }
-      case 'get_active_tab':
-        return JSON.stringify(await browser.getActiveTab());
       case 'get_tab_content':
-        return JSON.stringify(await browser.getTabContent(Number(args.tabId)));
-      case 'read_app_content':
-        return await browser.readAppContent(Number(args.tabId));
+      case 'read_app_content': {
+        // Only tabs this job opened itself — never the user's own tabs.
+        const tabId = Number(args.tabId);
+        if (!opened.includes(tabId)) {
+          return `Error: a research job can only read tabs it opened (search_web / open_url). Tab ${args.tabId} is not one of them.`;
+        }
+        return name === 'get_tab_content'
+          ? JSON.stringify(await browser.getTabContent(tabId))
+          : await browser.readAppContent(tabId);
+      }
       case 'read_pdf':
         return JSON.stringify(await extractPdf(String(args.url ?? '')));
       case 'read_office_document':

@@ -15,7 +15,9 @@ describe('extension manifest security baseline', () => {
   });
 
   it('does not relax extension CSP for remote scripts', () => {
-    expect(manifest.content_security_policy.extension_pages).toBe("script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
+    expect(manifest.content_security_policy.extension_pages).toBe(
+      "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; form-action 'none'",
+    );
     expect(manifest.content_security_policy.extension_pages).not.toMatch(/https?:/);
   });
 });

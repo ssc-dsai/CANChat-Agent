@@ -11,6 +11,7 @@
 // `serviceWorker.ts` and `Sidebar.tsx` are exhaustively type-checked.
 // =============================================================================
 
+import type { ScriptWarning } from './scriptRisk';
 import type {
   AgentStatus,
   ChatMessageView,
@@ -90,6 +91,24 @@ export interface ApprovalContext {
   params?: Record<string, unknown>;
   /** Epoch ms after which this approval is no longer valid. */
   expiresAt?: number;
+  /**
+   * Set when the agent wants to open a URL it composed itself. The card shows
+   * the whole address, since any data in it goes to that site. Never
+   * session-approvable: each such URL is its own decision.
+   */
+  destinationUrl?: string;
+  /**
+   * run_javascript only: everything the user needs to judge the script, shown
+   * ahead of the model's own explanation. `code` is the complete script that
+   * will run (scripts too long to show in full are refused before approval).
+   */
+  script?: {
+    code: string;
+    origin?: string;
+    title?: string;
+    warnings: ScriptWarning[];
+    scope: 'active_tab' | 'conversation_group';
+  };
 }
 
 /** Events pushed from the background to every connected sidebar. */

@@ -215,7 +215,8 @@ integrity checks on imported backups/conversations.
 ### SI-10 — Information Input Validation
 **Central PBMM integrity control for this system.** This is the **prompt-injection** surface: instructions
 embedded in page content, tool output, MCP results, or documents must be treated as **data, not commands**.
-The system prompt contains injection defenses plus the approval gate; assess their effectiveness, and the
+The system prompt marks third-party tool output as data (`<untrusted_content>`), outbound URLs the model
+composes need approval, plus the approval gate; assess their effectiveness, and the
 validation of model-supplied parameters (URLs, coordinates, JS) before acting.
 
 ### SI-15 — Information Output Filtering

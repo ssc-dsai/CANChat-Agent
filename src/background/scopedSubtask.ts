@@ -10,6 +10,7 @@
 
 import type { Settings } from '../shared/types';
 import { TOOL_DEFINITIONS } from '../shared/schemas';
+import { UNTRUSTED_CONTENT_RULE } from '../shared/untrustedContent';
 import { complete, resolveModelForRole, type LlmMessage, type LlmToolCall } from './llmProvider';
 
 /** Read-only tools a scoped sub-agent may call (never state-changing). */
@@ -118,7 +119,8 @@ export async function runScopedSubtask(
     {
       role: 'system',
       content:
-        'You are a scoped sub-agent running inside a larger task. Solve ONLY the assigned subtask. Keep your context small. Use only the provided tools to inspect the assigned page/source; do not perform state-changing actions. When done, reply ONLY JSON: {"conclusion":"<compact answer with key facts>","sources":["<url or source id>"]}. No prose or code fence.',
+        'You are a scoped sub-agent running inside a larger task. Solve ONLY the assigned subtask. Keep your context small. Use only the provided tools to inspect the assigned page/source; do not perform state-changing actions. When done, reply ONLY JSON: {"conclusion":"<compact answer with key facts>","sources":["<url or source id>"]}. No prose or code fence.\n\n' +
+        UNTRUSTED_CONTENT_RULE,
     },
     {
       role: 'user',

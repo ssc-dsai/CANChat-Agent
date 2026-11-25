@@ -22,10 +22,14 @@
 // =============================================================================
 
 import type { ApprovalContext } from '../shared/messages';
+import type { PolicyDecision } from '../shared/policy';
 import { mapWithConcurrency } from '../shared/asyncPool';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import { resolveAuth } from '../shared/capabilities';
 import { classifyTool, evaluatePolicy, isApprovalStillValid } from '../shared/policy';
+import { MAX_SCRIPT_CHARS, scriptRiskWarnings, scriptTargetScope, urlOrigin } from '../shared/scriptRisk';
+import { UNTRUSTED_CONTENT_RULE, UNTRUSTED_OUTPUT_TOOLS, unwrapUntrusted, wrapUntrusted } from '../shared/untrustedContent';
+import { extractUrlsFromText, KnownUrls, normalizeNavUrl, URL_FETCH_TOOLS, URL_HARVEST_TOOLS } from '../shared/urlProvenance';
 import { redactArgs, sha256Hex, type AuditEvent } from '../shared/audit';
 import { appendAuditEvent, deleteAuditLog } from '../shared/auditLog';
 import { clearCheckpoint, readCheckpoint, writeCheckpoint } from '../shared/checkpoint';
@@ -98,7 +102,8 @@ import { complete, embedChunks, embedderId, LlmError, LLM_TIMEOUT_MS, messagesCo
 import { extractJsonObject, runScopedSubtask, type ScopedSubtaskInput } from './scopedSubtask';
 import { startJob } from './jobEngine';
 import { DEFAULT_RESEARCH_LIMITS } from '../shared/jobs';
-import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing, withMergedSystemState } from './loopHelpers';
+import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
+import { withTrailingState } from './workingState';
 import { generateDocument, generatePresentation, graphGet as repoGraphGet, productSave, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { selectSubgraph, renderSubgraphForModel, type DocGraph } from '../shared/docGraph';
 import { rankCommunities, renderCommunitiesForModel } from '../shared/graphCommunities';
@@ -371,7 +376,7 @@ Planning multi-step tasks:
 - Once you set a plan, EXECUTE it — do not give a final answer while it still has pending or in_progress steps. If a step turns out to be unnecessary, mark it done or skipped with update_plan first; only then answer.
 - Size the plan to the actual work: use as few or as many steps as the task genuinely needs — a 2-step plan for something small, 8+ for something involved. Do NOT pad to a fixed number, and skip planning entirely for trivial one-shot tasks.
 - As you discover important intermediate results, call record_finding to save them. Do not rely on scrolling back through history — older tool output gets compacted away, but findings and the plan stay in view in the working-state block.
-- A live working-state block (active tab, plan, findings, step budget) is provided as a status update at the END of the conversation and refreshed every step — always read the latest one. Watch the remaining step budget and pace yourself; when it runs low, record what matters and produce your best answer.
+- A live working-state block (active tab, plan, findings, step budget) is provided inside <working_state> tags at the END of the latest user turn and refreshed every step — always read the latest one. The runtime writes it, not the user. Watch the remaining step budget and pace yourself; when it runs low, record what matters and produce your best answer.
 - You can issue several independent read-only tool calls in one turn — they run in parallel (e.g. get_tab_content on several tabs at once).
 - Before giving your final answer, verify the goal is actually met (re-read the page or re-check the result) rather than assuming an action worked.
 - When the task is to collect structured information (one row per item, often across several pages), gather it as you go and call export_data with columns and rows — the user gets a downloadable CSV/JSON table.
@@ -495,15 +500,42 @@ function mcpPromptBlock(capabilities: CapabilityRegistryEntry[]): string {
   );
 }
 
-/** Resolve an MCP server reference (hint name or raw URL) to its endpoint + token. */
-function resolveMcpServer(capabilities: CapabilityRegistryEntry[], server: string): { endpoint: string; token?: string } | null {
+/** Hosts of sites the user registered; navigation anywhere on them is trusted. */
+function knownSiteHosts(capabilities: CapabilityRegistryEntry[]): string[] {
+  const hosts: string[] = [];
+  for (const c of capabilities) {
+    for (const raw of [c.url, c.searchUrlTemplate]) {
+      if (!raw) continue;
+      try {
+        hosts.push(new URL(raw.replace(/\{[^}]*\}/g, 'x')).hostname);
+      } catch {
+        // not a URL — skip
+      }
+    }
+  }
+  return hosts;
+}
+
+/**
+ * Resolve an MCP server reference to its endpoint + token. Only servers the user
+ * set up count: a registered hint (by name or exact URL), or a URL the user
+ * typed in chat. A URL the model composed or found on a page is refused, since
+ * an MCP call is a POST that could reach intranet/loopback hosts or carry data.
+ */
+function resolveMcpServer(
+  capabilities: CapabilityRegistryEntry[],
+  server: string,
+  userUrls: ReadonlySet<string>,
+): { endpoint: string; token?: string } | null {
   const ref = server.trim();
   if (!ref) return null;
   const byName = capabilities.find((c) => c.kind === 'mcp' && c.mcpUrl && c.name.toLowerCase() === ref.toLowerCase());
   if (byName) return { endpoint: byName.mcpUrl!, token: byName.mcpToken };
   if (/^https?:\/\//i.test(ref)) {
     const byUrl = capabilities.find((c) => c.kind === 'mcp' && c.mcpUrl === ref);
-    return { endpoint: ref, token: byUrl?.mcpToken };
+    if (byUrl) return { endpoint: byUrl.mcpUrl!, token: byUrl.mcpToken };
+    const normalized = normalizeNavUrl(ref);
+    if (normalized && userUrls.has(normalized)) return { endpoint: ref };
   }
   return null;
 }
@@ -550,6 +582,11 @@ interface PermissionWait {
 
 export class AgentRuntime {
   private conversation: LlmMessage[] = [];
+  // URLs this conversation has legitimately seen (user messages, link fields of
+  // browser/web tool results). Bound to the `conversation` array's identity, so
+  // loading or clearing a conversation rebuilds it. See shared/urlProvenance.
+  private knownUrls = new KnownUrls();
+  private knownUrlsFor: LlmMessage[] | null = null;
   private messages: ChatMessageView[] = [];
   private activities: ToolActivity[] = [];
   private status: AgentStatus = 'idle';
@@ -629,7 +666,7 @@ export class AgentRuntime {
   // reflection, and persisted back to storage after each mutation).
   private memoryGraph: MemoryGraph = emptyMemoryGraph();
   // Working-state (relevant-subgraph) tier: computed once per user turn (not
-  // per agent step) and appended to the mutable trailing message, never the
+  // per agent step) and carried in the trailing working-state block, never the
   // byte-stable systemBase — see runLoop and buildStateBlock.
   private relevantMemoryBlock = '';
   // Per-conversation tab group (reset only on clearConversation).
@@ -907,6 +944,10 @@ export class AgentRuntime {
       timestamp: new Date().toISOString(),
       images: snapshots.length > 0 ? snapshots.map((s) => s.dataUrl) : undefined,
     });
+    // Bookmarks the user @-mentioned are addresses they chose to share.
+    for (const m of mentions ?? []) {
+      if (m.kind === 'bookmark') this.urlLedger().add(m.value);
+    }
     this.running = true;
     this.stopRequested = false;
     this.pauseRequested = false;
@@ -1550,7 +1591,8 @@ export class AgentRuntime {
       const toolName = callNames.get(m.tool_call_id);
       if (toolName !== 'get_tab_content' && toolName !== 'read_app_content') continue;
       try {
-        const parsed = JSON.parse(m.content) as { url?: string; title?: string; text?: string };
+        // Results reach the conversation wrapped as untrusted content; read the JSON inside.
+        const parsed = JSON.parse(unwrapUntrusted(m.content)) as { url?: string; title?: string; text?: string };
         if (parsed.text) found = { url: parsed.url ?? '', title: parsed.title ?? '', text: parsed.text };
       } catch {
         // Not JSON (an error string, etc.) — skip.
@@ -2258,7 +2300,7 @@ export class AgentRuntime {
       // No active tab (or restricted); playbooks just won't auto-activate.
     }
     // The base system prompt is fixed for the task; the live state block is
-    // merged into it only for outgoing model calls (see withWorkingState).
+    // added at the end of each outgoing request only (see withWorkingState).
     const capabilities = this.scopedCapabilities(await getCapabilities());
     this.knownSiteNames = capabilities.map((c) => c.name);
     this.memoryGraph = memoryEnabled ? await getMemoryGraph() : emptyMemoryGraph();
@@ -2272,8 +2314,10 @@ export class AgentRuntime {
       (memoryEnabled ? renderCoreMemoryBlock(this.memoryGraph, this.activeProjectId) + lessonsPromptBlock(lessonEntries) : '') +
       customInstructions;
     this.systemBase += sourcePolicyPrompt(this.sourcePolicy);
+    // Last, so custom instructions (user- or remote-config-supplied) can't displace it.
+    this.systemBase += `\n\n${UNTRUSTED_CONTENT_RULE}`;
     // Keep conversation[0] = the byte-stable system base (no volatile state).
-    // The live working-state is folded into that system message only at call time
+    // The live working-state is appended after the last turn only at call time
     // (see withWorkingState), so history remains free of volatile state.
     if (this.conversation.length === 0) {
       this.conversation.push({ role: 'system', content: this.systemBase });
@@ -2653,9 +2697,68 @@ export class AgentRuntime {
     }
   }
 
+  /**
+   * The conversation's URL ledger, rebuilt whenever the conversation array is
+   * replaced (load / clear / new chat). The user's own messages are re-read on
+   * every call, so a new message counts as soon as it is sent.
+   */
+  private urlLedger(): KnownUrls {
+    if (this.knownUrlsFor !== this.conversation) {
+      this.knownUrls = new KnownUrls();
+      this.knownUrlsFor = this.conversation;
+      // Restored tool outputs: only `tool` messages, never assistant text, whose
+      // tool_calls hold the model's own composed URLs.
+      for (const m of this.conversation) {
+        if (m.role === 'tool' && typeof m.content === 'string') this.knownUrls.addFromToolResult(m.content);
+      }
+    }
+    for (const m of this.messages) {
+      if (m.role === 'user') this.knownUrls.addFromUserText(m.text);
+    }
+    return this.knownUrls;
+  }
+
+  /** URLs the user typed in this conversation's messages (normalized). */
+  private userMessageUrls(): Set<string> {
+    const out = new Set<string>();
+    for (const m of this.messages) {
+      if (m.role !== 'user') continue;
+      for (const u of extractUrlsFromText(m.text)) {
+        const n = normalizeNavUrl(u);
+        if (n) out.add(n);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Tool dispatch for scoped sub-agents. They can't show an approval card, so a
+   * URL nobody has seen is refused outright rather than opened.
+   */
+  private async dispatchSubtaskTool(
+    name: string,
+    args: Record<string, unknown>,
+    capabilities: CapabilityRegistryEntry[],
+  ): Promise<string> {
+    if (URL_FETCH_TOOLS.has(name) && typeof args.url === 'string' && args.url.trim()) {
+      const trust = this.urlLedger().check(args.url, knownSiteHosts(capabilities));
+      if (!trust.trusted) {
+        return (
+          `Error: ${args.url} was not given by the user or found on a page or search result, so a subtask may not open it. ` +
+          'Use a link from a page you read, or search for it.'
+        );
+      }
+    }
+    const result = await this.dispatchTool(name, args);
+    if (URL_HARVEST_TOOLS.has(name)) this.urlLedger().addFromToolResult(result);
+    if (name === 'search_web') this.urlLedger().noteModelQuery(String(args.query ?? ''));
+    return UNTRUSTED_OUTPUT_TOOLS.has(name) && !result.startsWith('Error') ? wrapUntrusted(name, result) : result;
+  }
+
   private async runScopedSubtasks(args: Record<string, unknown>): Promise<string> {
     const settings = await getSettings();
     if (!settings) return 'Error: no model configured.';
+    const capabilities = this.scopedCapabilities(await getCapabilities());
     const rawTasks = Array.isArray(args.tasks) ? args.tasks : [];
     const tasks = rawTasks
       .slice(0, 12)
@@ -2680,7 +2783,7 @@ export class AgentRuntime {
     const results = await mapWithConcurrency(tasks, 3, (task) =>
       runScopedSubtask(settings, task, {
         maxSteps,
-        dispatch: (name, a) => this.dispatchTool(name, a),
+        dispatch: (name, a) => this.dispatchSubtaskTool(name, a, capabilities),
         shouldStop: () => this.stopRequested,
         signal: this.makeSignal(),
       }),
@@ -2993,11 +3096,30 @@ export class AgentRuntime {
     // Page content never reaches evaluatePolicy — pages only ever feed name/args.
     const target = await this.resolveTarget(args);
     if (stopped()) return stoppedResult();
+
+    // run_javascript runs with the target page's full authority, so it is
+    // checked before the user is ever asked: the script must fit on the
+    // approval card, and it may only aim at the active tab or this
+    // conversation's own tabs.
+    if (name === 'run_javascript') {
+      const preflight = await this.preflightScript(args);
+      if (stopped()) return stoppedResult();
+      if (!preflight.ok) {
+        this.finishActivity(activity, 'denied', preflight.error);
+        void this.audit({
+          eventType: 'TOOL_DENIED', tool: name, target, inputDigest: await sha256Hex(JSON.stringify(args)),
+          policyRule: preflight.rule, result: 'denied', unattended: this.unattended,
+        });
+        return `Error: ${preflight.error}`;
+      }
+      approvalContext = { toolName: name, authConfigured: false, script: preflight.script };
+    }
+
     const inputDigest = await sha256Hex(JSON.stringify(args));
     if (stopped()) return stoppedResult();
     const sessionApprovedTools = await getSessionApprovals();
     if (stopped()) return stoppedResult();
-    const decision = evaluatePolicy({
+    let decision: PolicyDecision = evaluatePolicy({
       tool: name,
       actionClass: classifyTool(name, READ_ONLY_TOOLS),
       attended: !this.unattended,
@@ -3006,6 +3128,25 @@ export class AgentRuntime {
       sessionApprovedTools,
       unattendedBlockedTools: UNATTENDED_BLOCKED_TOOLS,
     });
+    // Opening a URL is an outbound request. A URL the model composed itself (not
+    // one the user gave or a page/search showed) could carry private data out,
+    // so it needs the user's eye — or is refused when nobody is watching.
+    let unseenUrl: string | undefined;
+    if (decision.kind !== 'deny' && URL_FETCH_TOOLS.has(name) && typeof args.url === 'string' && args.url.trim()) {
+      const trust = this.urlLedger().check(args.url, knownSiteHosts(capabilities));
+      if (!trust.trusted) {
+        unseenUrl = args.url.trim();
+        decision = this.unattended
+          ? { kind: 'deny', rule: 'unattended_unseen_url' }
+          : { kind: 'needs_approval', reasonClass: 'external_comms' };
+        approvalContext = {
+          toolName: name,
+          authConfigured: false,
+          target: { origin: urlOrigin(unseenUrl) },
+          destinationUrl: unseenUrl,
+        };
+      }
+    }
     void this.audit({
       eventType: 'POLICY_DECISION', tool: name, target, inputDigest,
       policyDecision: decision.kind === 'allow' ? 'allow' : decision.kind === 'deny' ? 'deny' : 'needs_approval',
@@ -3030,8 +3171,10 @@ export class AgentRuntime {
         return `Error: tool "${name}" requires user approval and cannot run unattended in a scheduled task.`;
       }
       approvalId = crypto.randomUUID();
-      const reason =
-        typeof args.reason === 'string' && args.reason.trim()
+      const reason = unseenUrl
+        ? 'The agent wants to open a web address it wrote itself — not one from your messages or from a page it read. ' +
+          'Opening it sends the whole address to that site, so check it holds nothing you would not share with them.'
+        : typeof args.reason === 'string' && args.reason.trim()
           ? args.reason.trim()
           : 'The agent wants to perform this action.';
       // Bind the approval to this exact action so granting it can't authorize a
@@ -3041,7 +3184,9 @@ export class AgentRuntime {
         toolName: name,
         authConfigured: approvalContext?.authConfigured ?? false,
         approvalId,
-        target,
+        // For a composed URL the site that matters is the destination, not the
+        // tab it would load in.
+        target: unseenUrl ? approvalContext?.target : target,
         params: redactArgs(args),
         expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
       };
@@ -3054,21 +3199,29 @@ export class AgentRuntime {
         return 'The user denied this action. Do not retry it; ask the user how to proceed or finish with what you have.';
       }
       void this.audit({ eventType: 'APPROVAL_GRANTED', tool: name, target, inputDigest, approvalId, unattended: false });
+      if (unseenUrl) this.urlLedger().add(unseenUrl);
     }
 
     if (stopped()) return stoppedResult();
     this.setStatus('acting', name);
     const startedAt = Date.now();
     try {
-      const result = await this.dispatchTool(name, args, signal);
+      // A script runs only on the origin the user approved; the adapter re-checks
+      // it so a page that navigates away while the card is open can't inherit it.
+      const approvedScript =
+        name === 'run_javascript' && approvalId !== null ? { origin: approvalContext?.script?.origin } : undefined;
+      const result = await this.dispatchTool(name, args, signal, { approvedScript });
       if (stopped()) return stoppedResult();
+      if (URL_HARVEST_TOOLS.has(name)) this.urlLedger().addFromToolResult(result);
+      if (name === 'search_web') this.urlLedger().noteModelQuery(String(args.query ?? ''));
       this.finishActivity(activity, 'ok');
       void this.audit({
         eventType: 'TOOL_EXECUTED', tool: name, target, inputDigest,
         outputDigest: await sha256Hex(result), approvalId, policyDecision: 'allow',
         result: 'success', durationMs: Date.now() - startedAt, unattended: this.unattended,
       });
-      return result;
+      // Third-party content reaches the model marked as data, not instructions.
+      return UNTRUSTED_OUTPUT_TOOLS.has(name) && !result.startsWith('Error') ? wrapUntrusted(name, result) : result;
     } catch (err) {
       if (stopped()) return stoppedResult();
       const message = err instanceof Error ? err.message : String(err);
@@ -3080,6 +3233,59 @@ export class AgentRuntime {
       });
       return `Error from ${name}: ${message}`;
     }
+  }
+
+  /** Checks a run_javascript call before approval and gathers what the card shows. */
+  private async preflightScript(
+    args: Record<string, unknown>,
+  ): Promise<
+    | { ok: true; script: NonNullable<ApprovalContext['script']> }
+    | { ok: false; error: string; rule: string }
+  > {
+    const code = typeof args.code === 'string' ? args.code : '';
+    if (!code.trim()) return { ok: false, error: 'run_javascript needs non-empty code.', rule: 'script_empty' };
+    if (code.length > MAX_SCRIPT_CHARS) {
+      return {
+        ok: false,
+        rule: 'script_too_long',
+        error:
+          `the script is ${code.length} characters, over the ${MAX_SCRIPT_CHARS}-character limit that lets the user review all of it. ` +
+          'Write a shorter script, or use the dedicated page tools instead.',
+      };
+    }
+    const active = await browser.queryActiveTab();
+    // No tabId means the active tab, as for the other page tools. Written back
+    // into args so the approval, audit digest and dispatch all name that tab.
+    if (!Number.isFinite(Number(args.tabId)) || args.tabId === null || args.tabId === '') {
+      if (active?.id === undefined) return { ok: false, error: 'there is no active tab to run in.', rule: 'script_no_tab' };
+      args.tabId = active.id;
+    }
+    let tab: chrome.tabs.Tab;
+    try {
+      tab = await chrome.tabs.get(Number(args.tabId));
+    } catch {
+      return { ok: false, error: 'that tab no longer exists.', rule: 'script_no_tab' };
+    }
+    const scope = scriptTargetScope(tab, active?.id, this.groupId);
+    if (!scope.ok) {
+      return {
+        ok: false,
+        rule: 'script_out_of_scope',
+        error:
+          "run_javascript may only target the user's active tab or a tab in this conversation's tab group. " +
+          'Ask the user to switch to that tab, or open the page with open_url first. Do not retry on this tab.',
+      };
+    }
+    return {
+      ok: true,
+      script: {
+        code,
+        origin: urlOrigin(tab.url),
+        title: tab.title,
+        warnings: scriptRiskWarnings(code),
+        scope: scope.reason,
+      },
+    };
   }
 
   /** Best-effort resolve of a tool's target tab origin, for audit + approval binding. */
@@ -3113,7 +3319,12 @@ export class AgentRuntime {
     }
   }
 
-  private async dispatchTool(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
+  private async dispatchTool(
+    name: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+    opts: { approvedScript?: { origin?: string } } = {},
+  ): Promise<string> {
     const tabId = Number(args.tabId);
     switch (name) {
       case 'list_tabs':
@@ -3353,9 +3564,9 @@ export class AgentRuntime {
         return searchKnownSites(this.scopedCapabilities(await getCapabilities()), String(args.query));
       case 'list_mcp_tools': {
         const caps = this.scopedCapabilities(await getCapabilities());
-        const resolved = resolveMcpServer(caps, String(args.server));
+        const resolved = resolveMcpServer(caps, String(args.server), this.userMessageUrls());
         if (!resolved) {
-          return `Error: no MCP server hint named "${String(args.server)}". Add one in Settings → Hints (set an MCP endpoint URL), or pass the full MCP URL.`;
+          return `Error: "${String(args.server)}" is not a registered MCP server. Use a hint name from Settings → Hints, or a server URL the user typed in chat.`;
         }
         // Use auth config from capability when available.
         const mcpCap = caps.find((c) => c.mcpUrl === resolved.endpoint || c.name.toLowerCase() === String(args.server).toLowerCase());
@@ -3383,8 +3594,10 @@ export class AgentRuntime {
       }
       case 'call_mcp_tool': {
         const caps = this.scopedCapabilities(await getCapabilities());
-        const resolved = resolveMcpServer(caps, String(args.server));
-        if (!resolved) return `Error: no MCP server "${String(args.server)}".`;
+        const resolved = resolveMcpServer(caps, String(args.server), this.userMessageUrls());
+        if (!resolved) {
+          return `Error: "${String(args.server)}" is not a registered MCP server. Use a hint name from Settings → Hints, or a server URL the user typed in chat.`;
+        }
         const mcpCap = caps.find((c) => c.mcpUrl === resolved.endpoint || c.name.toLowerCase() === String(args.server).toLowerCase());
         const mcpAuth = mcpCap ? resolveAuth(mcpCap) : null;
         const token = mcpAuth?.method === 'token' ? mcpAuth.token : resolved.token;
@@ -3754,7 +3967,10 @@ export class AgentRuntime {
       case 'submit_form':
         return JSON.stringify(await browser.submitForm(tabId, String(args.selectorOrRef)));
       case 'run_javascript':
-        return browser.runJavascript(tabId, String(args.code));
+        // Only executeToolCall's approval path supplies approvedScript; any other
+        // route into the dispatcher (e.g. a future subtask allowlist slip) is refused.
+        if (!opts.approvedScript) return JSON.stringify({ __error: 'run_javascript requires user approval.' });
+        return browser.runJavascript(tabId, String(args.code), opts.approvedScript.origin);
       case 'press_keys':
         return JSON.stringify(
           await browser.pressKeys(tabId, String(args.combo), args.targetRef ? String(args.targetRef) : undefined),
@@ -3887,26 +4103,27 @@ export class AgentRuntime {
   // ----- working state (plan, findings, budget) -----
 
   // Build the outgoing message array for a model call: the persisted conversation
-  // plus live working state folded into the initial system message. Built fresh
+  // plus live working state at the very end (see workingState.ts). Built fresh
   // per call and never stored, so volatile state never lands in history,
-  // compaction, or persistence. Folding avoids system/user/system role sequences
-  // that stricter local chat templates reject.
+  // compaction, or persistence — and everything before it stays byte-identical
+  // between steps, so providers can reuse the cached prompt prefix.
   private withWorkingState(): LlmMessage[] {
-    return withMergedSystemState(repairToolPairing(this.conversation), this.buildStateBlock());
+    return withTrailingState(repairToolPairing(this.conversation), this.buildStateBlock());
   }
 
   private buildStateBlock(): string {
     const remaining = Math.max(0, this.stepBudget - this.stepsUsed);
-    const lines: string[] = ['\n\n=== Working state (updated each step) ==='];
+    const lines: string[] = [];
     // The model has no innate clock — give it the current LOCAL time every call so
     // relative ("in two minutes") and fixed times resolve correctly. All times you
-    // reason about or schedule are in this local timezone.
+    // reason about or schedule are in this local timezone. Minute precision is
+    // enough: relative scheduling goes through runInMinutes.
     const now = new Date();
     const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'local'; } })();
     const offsetMin = -now.getTimezoneOffset();
     const offset = `UTC${offsetMin >= 0 ? '+' : '-'}${String(Math.floor(Math.abs(offsetMin) / 60)).padStart(2, '0')}:${String(Math.abs(offsetMin) % 60).padStart(2, '0')}`;
     lines.push(
-      `Current local time: ${now.toLocaleString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })} (${tz}, ${offset}). ` +
+      `Current local time: ${now.toLocaleString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} (${tz}, ${offset}). ` +
         `All times are LOCAL. For scheduling relative to now (e.g. "in 2 minutes"), prefer schedule_task's runInMinutes; for a fixed local time use runAt or a recurrence timeOfDay.`,
     );
     if (this.activeTabLabel)
@@ -4431,7 +4648,7 @@ export class AgentRuntime {
       case 'submit_form':
         return `Submit the form at "${args.selectorOrRef}" on tab ${args.tabId}`;
       case 'run_javascript':
-        return `Run JavaScript on tab ${args.tabId}:\n${String(args.code).slice(0, 200)}`;
+        return `Run JavaScript on tab ${args.tabId}`;
       case 'press_keys':
         return `Press "${args.combo}" on tab ${args.tabId}`;
       case 'click_at':

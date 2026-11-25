@@ -1,18 +1,7 @@
-import DOMPurify from 'dompurify';
-import { marked } from 'marked';
 import { useMemo } from 'preact/hooks';
 import { injectCitationChips } from '../shared/citations';
 import type { Citation } from '../shared/types';
-
-// Links in the side panel must open in a real tab, not navigate the panel.
-DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-  if (node.tagName === 'A') {
-    node.setAttribute('target', '_blank');
-    node.setAttribute('rel', 'noopener noreferrer');
-  }
-});
-
-marked.setOptions({ gfm: true, breaks: true });
+import { renderSafeMarkdown } from './safeHtml';
 
 export function Markdown({
   text,
@@ -27,7 +16,7 @@ export function Markdown({
   const html = useMemo(() => {
     // Sanitize first, then swap the (literal, sanitization-surviving) [[id]] tokens
     // for chip markup built from validated ids — so chips aren't user-injectable HTML.
-    let out = DOMPurify.sanitize(marked.parse(text, { async: false }));
+    let out = renderSafeMarkdown(text);
     if (citations && citations.length > 0) {
       const numberById = new Map(citations.map((c, i) => [c.sentenceId, i + 1] as const));
       out = injectCitationChips(out, numberById);

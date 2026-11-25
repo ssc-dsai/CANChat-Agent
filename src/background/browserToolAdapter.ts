@@ -29,6 +29,7 @@ import type {
 } from '../shared/types';
 import { resolveOfficeUrl, resolvePdfUrl } from '../shared/url';
 import { normalizeUrl } from '../shared/repoChunk';
+import { SCRIPT_TIMEOUT_MS, urlOrigin } from '../shared/scriptRisk';
 import { buildFileKql, clampTop, type M365SearchFilters } from '../shared/microsoftSearch';
 import { buildGraphMailSearchUrl, parseGraphMailSearch } from '../shared/graphMail';
 import { analyzeAuthState } from './authDetector';
@@ -140,7 +141,7 @@ export async function listTabs(): Promise<TabSummary[]> {
  * a chrome:// surface). Returns undefined only when there is genuinely no
  * active tab anywhere.
  */
-async function queryActiveTab(): Promise<chrome.tabs.Tab | undefined> {
+export async function queryActiveTab(): Promise<chrome.tabs.Tab | undefined> {
   let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab) [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) {
@@ -608,19 +609,31 @@ const MAX_JS_RESULT_CHARS = 10000;
 // Runs in the page's MAIN world. Arbitrary code via eval, so the result of the
 // last expression flows back. Wrapped in async so `await` works. Note: pages
 // whose CSP forbids unsafe-eval will throw here — returned as __error, not a crash.
+//
+// The page owns this world and can replace `window.eval` / `JSON.stringify` to
+// read the script or forge its result. The WebMCP bridge (document_start, before
+// any page script) pins the browser's originals on a non-configurable
+// `__CANAGENT_RT__`; prefer those. Tabs opened before the extension loaded lack
+// the bridge and fall back to the page's globals. Result values themselves are
+// still page data and must be treated as untrusted.
 function jsRunner(src: string): Promise<string> {
+  const rt = (window as unknown as {
+    __CANAGENT_RT__?: { eval?: (s: string) => unknown; stringify?: (v: unknown) => string };
+  }).__CANAGENT_RT__;
+  // Calling eval through a variable makes it an indirect (global-scope) eval.
+  const run = typeof rt?.eval === 'function' ? rt.eval : window.eval;
+  const stringify = typeof rt?.stringify === 'function' ? rt.stringify : JSON.stringify;
   return (async () => {
     try {
-      // eslint-disable-next-line no-eval
-      const result = await (0, eval)(src);
-      return JSON.stringify(result ?? null);
+      const result = await run(src);
+      return stringify(result ?? null);
     } catch (e) {
-      return JSON.stringify({ __error: String(e) });
+      return stringify({ __error: String(e) });
     }
   })();
 }
 
-export async function runJavascript(tabId: number, code: string): Promise<string> {
+export async function runJavascript(tabId: number, code: string, approvedOrigin: string | undefined): Promise<string> {
   let tab: chrome.tabs.Tab;
   try {
     tab = await chrome.tabs.get(tabId);
@@ -630,20 +643,44 @@ export async function runJavascript(tabId: number, code: string): Promise<string
   if (isRestrictedUrl(tab.url ?? '')) {
     return JSON.stringify({ __error: 'Cannot run scripts on browser-internal pages.' });
   }
-  let injection: chrome.scripting.InjectionResult<string>[];
-  try {
-    injection = await chrome.scripting.executeScript({
-      target: { tabId },
-      world: 'MAIN',
-      func: jsRunner,
-      args: [code],
+  // The approval names a site. If the tab moved to another origin while the
+  // card was open, the user never approved running there.
+  if (urlOrigin(tab.url) !== approvedOrigin) {
+    return JSON.stringify({
+      __error: `The tab changed site after approval (approved ${approvedOrigin ?? 'no origin'}, now ${urlOrigin(tab.url) ?? 'no origin'}). The script was not run.`,
     });
+  }
+  let injection: chrome.scripting.InjectionResult<string>[];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timedOut = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), SCRIPT_TIMEOUT_MS);
+    });
+    const outcome = await Promise.race([
+      chrome.scripting.executeScript({
+        target: { tabId, frameIds: [0] },
+        world: 'MAIN',
+        func: jsRunner,
+        args: [code],
+      }),
+      timedOut,
+    ]);
+    if (outcome === 'timeout') {
+      // executeScript can't be cancelled; the page keeps whatever it started,
+      // but the agent stops waiting on it.
+      return JSON.stringify({
+        __error: `The script did not finish within ${SCRIPT_TIMEOUT_MS / 1000}s and its result was abandoned.`,
+      });
+    }
+    injection = outcome;
   } catch (err) {
     const message = String(err);
     const note = /Cannot access|cannot be scripted|permission/i.test(message)
       ? 'No permission to run scripts on this tab. The user can grant access with "Allow this site".'
       : message;
     return JSON.stringify({ __error: note });
+  } finally {
+    clearTimeout(timer);
   }
   let out = injection[0]?.result ?? 'null';
   if (out.length > MAX_JS_RESULT_CHARS) {

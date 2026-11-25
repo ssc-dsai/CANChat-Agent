@@ -2,6 +2,7 @@ import type { Settings } from '../../shared/types';
 import { resolve } from '../llmNetwork';
 import type { ContentPart, LlmMessage, LlmResponseMessage, LlmToolCall, ResponseFormatSpec, ToolDefinition } from '../llmTypes';
 import { LlmError } from '../llmTypes';
+import { isWorkingStateText, splitWorkingState } from '../workingState';
 import { toAnthropicTools } from './toolSchema';
 import type { AdapterRequest, ProtocolAdapter } from './types';
 
@@ -19,16 +20,26 @@ import type { AdapterRequest, ProtocolAdapter } from './types';
 //    blocks on a `user` message (not a `role: 'tool'` message) — Anthropic
 //    also requires strictly alternating user/assistant turns, so consecutive
 //    canonical `tool` messages (parallel tool calls) must merge into one
-//    `user` turn with multiple `tool_result` blocks.
+//    `user` turn with multiple `tool_result` blocks. Consecutive user turns
+//    (the agent loop's working-state block after tool results) merge the same way.
+//  - Prompt caching is explicit: nothing is cached without `cache_control`.
+//    For agent-loop requests (ones that end in a working-state block, see
+//    ../workingState.ts) on Anthropic or Bedrock Mantle, two breakpoints go in:
+//    the system prompt (covers tools + system) and the last block before the
+//    state (covers the conversation so far). The volatile state sits after
+//    both, so each step reads the previous step's prefix from cache. Other
+//    Messages-compatible servers get no markers, since some reject the field.
 // =============================================================================
 
 const ANTHROPIC_VERSION = '2023-06-01';
 const DEFAULT_MAX_TOKENS = 4096;
 
-interface AnthropicTextBlock { type: 'text'; text: string }
-interface AnthropicImageBlock { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
-interface AnthropicToolUseBlock { type: 'tool_use'; id: string; name: string; input: unknown }
-interface AnthropicToolResultBlock { type: 'tool_result'; tool_use_id: string; content: string }
+interface CacheControl { type: 'ephemeral' }
+interface Cacheable { cache_control?: CacheControl }
+interface AnthropicTextBlock extends Cacheable { type: 'text'; text: string }
+interface AnthropicImageBlock extends Cacheable { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+interface AnthropicToolUseBlock extends Cacheable { type: 'tool_use'; id: string; name: string; input: unknown }
+interface AnthropicToolResultBlock extends Cacheable { type: 'tool_result'; tool_use_id: string; content: string }
 type AnthropicBlock = AnthropicTextBlock | AnthropicImageBlock | AnthropicToolUseBlock | AnthropicToolResultBlock;
 
 interface AnthropicMessage {
@@ -45,6 +56,19 @@ function parseDataUrl(url: string): { mediaType: string; data: string } {
 function buildAnthropicUrl(base: string): string {
   const versionedBase = /\/v1$/.test(base) ? base : `${base}/v1`;
   return `${versionedBase}/messages`;
+}
+
+const EPHEMERAL: CacheControl = { type: 'ephemeral' };
+
+/** Text as blocks, with a trailing working-state block split into a block of its own. */
+function textBlocks(text: string): AnthropicTextBlock[] {
+  const split = splitWorkingState(text);
+  if (!split) return text ? [{ type: 'text', text }] : [];
+  return [...(split.stable ? [{ type: 'text' as const, text: split.stable }] : []), { type: 'text', text: split.state }];
+}
+
+function asBlocks(content: string | AnthropicBlock[]): AnthropicBlock[] {
+  return typeof content === 'string' ? textBlocks(content) : content;
 }
 
 function toBlocks(content: ContentPart[]): AnthropicBlock[] {
@@ -82,7 +106,7 @@ function buildMessages(messages: LlmMessage[]): { system: string | undefined; me
     }
 
     const blocks: AnthropicBlock[] = Array.isArray(m.content) ? toBlocks(m.content) : [];
-    if (typeof m.content === 'string' && m.content) blocks.push({ type: 'text', text: m.content });
+    if (typeof m.content === 'string') blocks.push(...textBlocks(m.content));
     for (const tc of m.tool_calls ?? []) {
       let input: unknown = {};
       try {
@@ -92,10 +116,52 @@ function buildMessages(messages: LlmMessage[]): { system: string | undefined; me
       }
       blocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input });
     }
-    out.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: blocks.length > 0 ? blocks : '' });
+    const role = m.role === 'assistant' ? 'assistant' : 'user';
+    const last = out[out.length - 1];
+    if (role === 'user' && last?.role === 'user' && blocks.length > 0) {
+      // Messages turns must alternate; text after tool results joins their turn.
+      last.content = [...asBlocks(last.content), ...blocks];
+      continue;
+    }
+    out.push({ role, content: blocks.length > 0 ? blocks : '' });
   }
 
   return { system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined, messages: out };
+}
+
+/** Endpoints known to accept `cache_control`: Anthropic itself and Bedrock Mantle. */
+function supportsPromptCaching(settings: Settings, base: string): boolean {
+  if (settings.bedrockMantle) return true;
+  try {
+    const host = new URL(base).hostname;
+    return host === 'api.anthropic.com' || /^bedrock-mantle\.[a-z0-9-]+\.api\.aws$/.test(host);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Put a cache breakpoint on the last block before the trailing working-state
+ * block. Returns false (and marks nothing) when the request has no such block.
+ */
+function markBeforeWorkingState(messages: AnthropicMessage[]): boolean {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== 'user' || !Array.isArray(last.content)) return false;
+  const at = last.content.findIndex((b) => b.type === 'text' && isWorkingStateText(b.text));
+  if (at < 0) return false;
+  if (at > 0) {
+    last.content[at - 1].cache_control = EPHEMERAL;
+    return true;
+  }
+  const prev = messages[messages.length - 2];
+  if (prev) {
+    const blocks = asBlocks(prev.content);
+    if (blocks.length > 0) {
+      blocks[blocks.length - 1].cache_control = EPHEMERAL;
+      prev.content = blocks;
+    }
+  }
+  return true;
 }
 
 export const anthropicMessagesAdapter: ProtocolAdapter = {
@@ -105,18 +171,19 @@ export const anthropicMessagesAdapter: ProtocolAdapter = {
   // This protocol keeps relying on prompt-based JSON instructions plus the
   // existing looksTruncated/extractWindowAdaptive recovery in graphExtract.ts.
   buildRequest(settings: Settings, messages: LlmMessage[], tools?: ToolDefinition[], _responseFormat?: ResponseFormatSpec): AdapterRequest {
+    const { base, key } = resolve(settings, 'chat');
     const { system, messages: anthropicMessages } = buildMessages(messages);
+    const cached = supportsPromptCaching(settings, base) && markBeforeWorkingState(anthropicMessages);
     const body: Record<string, unknown> = {
       model: settings.model,
       max_tokens: settings.maxTokens ?? DEFAULT_MAX_TOKENS,
       messages: anthropicMessages,
     };
-    if (system) body.system = system;
+    if (system) body.system = cached ? [{ type: 'text', text: system, cache_control: EPHEMERAL }] : system;
     if (tools && tools.length > 0) body.tools = toAnthropicTools(tools);
     // Some Claude deployments enable thinking modes that reject `temperature`.
     // It is optional in Messages requests, so provider defaults are the portable choice.
 
-    const { base, key } = resolve(settings, 'chat');
     return {
       url: buildAnthropicUrl(base),
       headers: {
