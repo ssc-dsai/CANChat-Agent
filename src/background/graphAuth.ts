@@ -3,13 +3,16 @@
 // creation. Runs in the service worker: launches the interactive sign-in via
 // chrome.identity, exchanges the code for tokens, and refreshes silently.
 // Tokens live in chrome.storage.local (same trust level as the configured API
-// key). Pure URL/PKCE construction is in shared/graphAuth.ts. No client secret
-// — this is a public PKCE client.
+// key), sealed by the encryption vault when it is unlocked; while it is locked
+// a sealed record reads as "not connected". Pure URL/PKCE construction is in
+// shared/graphAuth.ts. No client secret — this is a public PKCE client.
 // =============================================================================
 
 import { buildAuthUrl, buildTokenBody, parseCodeFromRedirect, pkcePair, tokenEndpoint } from '../shared/graphAuth';
+import { GRAPH_TOKENS_STORAGE_KEY } from '../shared/secretFields';
+import { sealTokenRecord, unsealTokenRecord } from './secretSealing';
 
-const TOKEN_KEY = 'graphTokens';
+const TOKEN_KEY = GRAPH_TOKENS_STORAGE_KEY;
 
 interface StoredTokens {
   accessToken: string;
@@ -28,11 +31,12 @@ interface TokenResponse {
 
 async function loadTokens(): Promise<StoredTokens | null> {
   const r = await chrome.storage.local.get(TOKEN_KEY);
-  return (r[TOKEN_KEY] as StoredTokens) ?? null;
+  const stored = r[TOKEN_KEY] as StoredTokens | undefined;
+  return stored ? unsealTokenRecord('graph', stored) : null;
 }
 
 async function saveTokens(t: StoredTokens): Promise<void> {
-  await chrome.storage.local.set({ [TOKEN_KEY]: t });
+  await chrome.storage.local.set({ [TOKEN_KEY]: await sealTokenRecord('graph', t) });
 }
 
 export async function disconnectMailbox(): Promise<void> {

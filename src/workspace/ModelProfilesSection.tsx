@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { getSettingsForEdit, saveSettings } from '../background/storage';
 import { ssoConfigFromSettings } from '../shared/awsSso';
 import type { ModelProfile, ModelProtocol, ModelRole, Settings } from '../shared/types';
 import { useT } from '../sidebar/i18n';
@@ -64,9 +65,11 @@ function newId(): string {
 
 const EMPTY_SETTINGS: Settings = { baseUrl: '', apiKey: '', model: '' };
 
-async function loadSettings(): Promise<Settings> {
-  const r = await chrome.storage.local.get('ba_settings');
-  return (r.ba_settings as Settings | undefined) ?? EMPTY_SETTINGS;
+// Profile API keys / session tokens are sealed by the encryption vault when it
+// is unlocked, so read and write through the storage layer (decrypt on load,
+// re-seal on save; saving is refused while the vault is locked).
+async function loadSettings(): Promise<{ settings: Settings; locked: boolean }> {
+  return getSettingsForEdit();
 }
 
 // A named alternate endpoint routed by role — the main chat model (Settings
@@ -80,16 +83,29 @@ export function ModelProfilesSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
+  const [locked, setLocked] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   useEffect(() => {
-    loadSettings().then(setSettings);
+    loadSettings().then((r) => {
+      setSettings(r.settings);
+      setLocked(r.locked);
+    });
   }, []);
 
   const profiles = settings.modelProfiles ?? [];
 
   const patch = async (next: Partial<Settings>) => {
-    const merged = { ...settings, ...next };
-    setSettings(merged);
-    await chrome.storage.local.set({ ba_settings: merged });
+    try {
+      // Merge onto a fresh read so fields other sections saved since mount survive.
+      const { settings: current } = await getSettingsForEdit();
+      const merged = { ...current, ...next };
+      await saveSettings(merged);
+      setSettings(merged);
+      setSaveError(null);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const formIsBedrock = Boolean(form.bedrockMantle);
@@ -205,6 +221,8 @@ export function ModelProfilesSection() {
     <div class="ws-model-profiles">
       <h2>{t('modelProfiles.title')}</h2>
       <p class="settings-note">{t('modelProfiles.note')}</p>
+      {locked && <div class="banner banner-error">{t('modelProfiles.vaultLocked')}</div>}
+      {saveError && <div class="banner banner-error">{saveError}</div>}
 
       {profiles.length > 0 && (
       <ul class="sites-list">

@@ -109,6 +109,20 @@ export interface ApprovalContext {
     warnings: ScriptWarning[];
     scope: 'active_tab' | 'conversation_group';
   };
+  /**
+   * What "Allow for this session" would cover (policy.sessionApprovalKey): the
+   * tool on one site or one MCP server/method. Absent means the card offers no
+   * session option — the call has no scope to pin it to, or is a one-off kind.
+   */
+  sessionKey?: string;
+  /** Human label for that scope (a site or an MCP server), shown on the checkbox. */
+  sessionScope?: string;
+  /**
+   * Set when the agent wants to read a tab the user hasn't shared with it
+   * (not the active tab, not in this conversation's tab group, not in the
+   * shared tab context). Its title is shown so the user knows which one.
+   */
+  otherTab?: { title?: string; url?: string };
 }
 
 /** Events pushed from the background to every connected sidebar. */

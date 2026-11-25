@@ -45,8 +45,13 @@ export interface PolicyInput {
   /** Trust level of the sourcing capability, if the tool came from the registry. */
   trustLevel?: string;
   capabilityKind?: string;
-  /** Tools the user already approved "for this session". */
+  /** Approval keys the user already approved "for this session" (see sessionApprovalKey). */
   sessionApprovedTools: ReadonlySet<string>;
+  /**
+   * This call's session-approval key — the tool plus the site or MCP server it
+   * acts on. Undefined means the call can't be covered by a session approval.
+   */
+  sessionApprovalKey?: string;
   /** Tools that are fine attended but must never run unattended (silent). */
   unattendedBlockedTools?: ReadonlySet<string>;
 }
@@ -80,6 +85,26 @@ function isTrusted(level: string | undefined): boolean {
  *   5. low-risk writes are allowed (the UI shows a visible indication).
  *   6. everything else (external comms, record mods, destructive) needs approval.
  */
+/**
+ * What a "remember for this session" approval covers: one tool on one site, or
+ * one MCP method on one server — never the tool everywhere. Returns undefined
+ * when the call has no scope to pin it to (a page tool whose tab can't be
+ * resolved), so the UI doesn't offer to remember it.
+ */
+export function sessionApprovalKey(
+  tool: string,
+  scope: { origin?: string; mcpServer?: string; mcpMethod?: string; tabScoped?: boolean },
+): string | undefined {
+  if (scope.mcpServer !== undefined) {
+    const server = scope.mcpServer.trim().toLowerCase();
+    if (!server) return undefined;
+    return scope.mcpMethod !== undefined ? `${tool}@mcp:${server}#${scope.mcpMethod}` : `${tool}@mcp:${server}`;
+  }
+  if (scope.origin) return `${tool}@${scope.origin}`;
+  if (scope.tabScoped) return undefined;
+  return tool;
+}
+
 export function evaluatePolicy(input: PolicyInput): PolicyDecision {
   const { tool, actionClass, attended, trustLevel, sessionApprovedTools } = input;
 
@@ -108,7 +133,8 @@ export function evaluatePolicy(input: PolicyInput): PolicyDecision {
   // classes: a "remember for session" tick must never blanket-authorize
   // deletes or payments.
   if (
-    sessionApprovedTools.has(tool) &&
+    input.sessionApprovalKey !== undefined &&
+    sessionApprovedTools.has(input.sessionApprovalKey) &&
     actionRank(actionClass) <= actionRank('record_modification')
   ) {
     return { kind: 'allow' };

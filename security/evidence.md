@@ -74,6 +74,19 @@ if (APPROVAL_REQUIRED.has(name)) {
 **Screenshot:** `docs/usability/screenshots/05-approval-prompt.png` (the approval card the user must accept).
 **Residual:** correctness of the read-only vs. gated classification should be re-reviewed per tool.
 
+**Approval scope.** "Allow for this session" is keyed on the tool *and* the site or MCP server it acts
+on (`sessionApprovalKey` in `src/shared/policy.ts`): approving `call_mcp_tool` for one server's method
+does not approve another server or method, and a page tool approved on one origin is asked again on
+another. Calls with no resolvable scope, `run_javascript`, composed URLs and unshared tabs are never
+session-approvable. The checkbox starts unticked on every card. The card shows the concrete action in
+full first (`describeAction`, with any cut marked) and labels the model's `reason` as the model's own
+explanation.
+
+**Message senders.** Every runtime message, the `sidebar` port and the offscreen document check the
+sender (`src/shared/senderTrust.ts`): extension pages may send any type; content scripts only
+`learn_record_event` (and only for the host of the frame that sent it); anything else is rejected
+before its handler runs.
+
 ### AC-4 — Information Flow Enforcement — ⚠️ Partial
 Outbound data flow is **scoped by explicit user gesture** (active tab vs. all tabs) and the model is
 told not to exfiltrate to destinations from page content, but there is **no content-level DLP** on what
@@ -84,6 +97,12 @@ async includeTabContext(scope: 'active' | 'all'): Promise<void> { … }   // 'al
 ```
 **Residual:** once a tab/repository is in scope, its full content can be transmitted to the configured
 endpoint; there is no field-level redaction. Pair with SC-7(5) (endpoint allow-list).
+
+**Per-tab scope.** A tool that takes a `tabId` (reads such as `get_tab_content`, and page actions) needs
+approval on a tab the user hasn't shared with the conversation — not the active tab, not in its tab
+group or the shared tab context, and not opened by the agent — and is denied in unattended runs
+(`unsharedTab` in `executeToolCall`). This closes reading every tab one by one around the
+`get_all_tab_contents` gate. An approved tab stays usable for the rest of that conversation.
 
 ### AC-6 — Least Privilege (incl. AC-6(9)/(10)) — ⚠️ Partial
 The tool surface is split into read-only vs. gated, and the privileged `run_javascript` path is both
@@ -175,9 +194,12 @@ Header handling distinguishes Azure (`api-key`) vs. OpenAI (`Authorization: Bear
 // src/background/llmProvider.ts
 return version ? { 'api-key': key } : { Authorization: `Bearer ${key}` };
 ```
-**Residual (Gap-adjacent):** the key is stored **in plaintext** and is **included in backup/export
-files** (`src/shared/backupFormat.ts`), so the authenticator can leave the device unencrypted. See
-SC-28 and MP-5.
+**Backups:** the default export removes every credential listed in `src/shared/secretFields.ts`
+(provider, profile, embedding, transcription, decision-model and image keys, AWS session tokens, MCP
+tokens and capability auth values, Graph/provider/AWS SSO token records) and any vault ciphertext
+(`stripSecretsForBackup`); a type-level check fails the build if a new credential-named field is not
+listed. Including secrets is an explicit, warned choice.
+**Residual:** without the vault (opt-in, SC-28) these credentials are plaintext in `chrome.storage.local`.
 
 ### IA-9 — Service Identification & Authentication — ⚠️ Partial
 The endpoint URL is user-supplied and reached over TLS (https) by default; there is **no pinning or
@@ -220,11 +242,15 @@ export async function runJavascript(tabId: number, code: string): Promise<string
 }
 ```
 
-### SC-28 / SC-28(1) — Protection of Information at Rest — ❌ Gap
-There is **no application-layer encryption** of the API key, memory (PII), repositories, history, or
-backups; all are stored as plaintext in `chrome.storage.local` / OPFS. Compensating factors:
-**local-only, never synced** (see IA-5). **Finding:** for PBMM, evaluate at-rest encryption or
-OS-keystore protection; this is a residual confidentiality risk, especially via export (MP-5).
+### SC-28 / SC-28(1) — Protection of Information at Rest — ⚠️ Partial
+An **opt-in passphrase vault** (`src/background/vault.ts`; PBKDF2-SHA-256 600k iterations, AES-GCM,
+wrapped data key) encrypts every credential in `src/shared/secretFields.ts` while unlocked
+(`sealSecretsAtRest`), and readers fail closed while it is locked. It **auto-locks** after an idle
+timeout (default 30 minutes, set per vault; enforced on every vault read and by a one-minute alarm).
+**Residual:** the vault is off by default, so credentials are plaintext until the user sets it up;
+memory, conversations, repositories and embeddings are not encrypted; secrets written while locked stay
+plaintext until the next unlock; AWS role credentials in session storage stay valid until they expire.
+Compensating factor: **local-only, never synced** (see IA-5).
 
 ### SC-7 — Boundary Protection — ⚠️ Partial / SC-7(5) deny-by-default — ❌ Gap
 Internal pages are excluded (`isRestrictedUrl`, above) and contexts are separated. **But** outbound
@@ -239,10 +265,14 @@ const delayMs = backoffDelay(attempt, res.headers.get('Retry-After'));
 await abortableSleep(delayMs, opts.signal);
 ```
 **Screenshot:** `docs/usability/screenshots/10-error-retry.png`.
+HTML from emails, Graph mail/calendar, SharePoint summaries and captions is converted with linear-time
+code (`src/shared/htmlToText.ts`, 2 MB input cap; non-backtracking tag patterns elsewhere), so a hostile
+email cannot stall mailbox sync (200 KB of `<` previously took ~29 s).
 
 ### SC-23 — Session Authenticity — ⚠️ Partial (confused-deputy)
-Mitigated indirectly by the approval gate (AC-3) over session-authenticated actions; no dedicated
-control beyond that. **Residual:** assess via red-team (CA-8).
+Mitigated by the approval gate (AC-3) over session-authenticated actions, per-site session approvals,
+the per-tab scope (AC-4), and `run_javascript`'s active-tab/tab-group limit. **Residual:** assess via
+red-team (CA-8).
 
 ### SC-12/13 — ➖ Inherited (platform TLS / OS crypto).
 
@@ -283,6 +313,9 @@ request on render removed — remote `<img>` (only `data:`/`blob:` images surviv
 Browser-internal surfaces are refused (`isRestrictedUrl`) and rendered output is sanitized (SI-15);
 however ingested documents/pages (PDF/Office/repo) are **not malware-scanned**. **Residual:** relies on
 the host AV/endpoint.
+Files the agent offers for download (`create_file`) keep only plain-text data extensions
+(`src/shared/textFileSafety.ts`); scripts, executables, `.html`, `.svg` and the like get `.txt`
+appended, and trailing dots/spaces that Windows would drop are removed.
 
 ### SI-4 — System Monitoring — ✅ (user-facing)
 Live status, notices, and the activity panel surface agent behaviour (see AU-2 evidence and status bar).
@@ -302,8 +335,10 @@ cadence depends on the distribution channel (Web Store vs. unpacked).
 
 ### CM-6 / CM-2 — Configuration Settings & Baseline — ⚠️ Partial
 The manifest is the configuration baseline (`public/manifest.json`); security-relevant settings default
-safely (e.g., retry/verify/summarize default-on; memory opt-in). **Residual:** no formally documented
-hardened baseline doc.
+safely (e.g., retry/verify/summarize default-on; memory opt-in). Remote config
+(`src/shared/remoteConfig.ts`) cannot set the system prompt, prompt overrides or any endpoint, and may
+only turn `restrictBackgroundToLocal` on, never off; every accepted field is type-checked.
+**Residual:** no formally documented hardened baseline doc; remote config has no signature beyond HTTPS.
 
 ### CM-7 / CM-7(1) — Least Functionality — ✅ (within design)
 Memory tools are only advertised to the model when the user has enabled memory:
@@ -361,8 +396,9 @@ Memory delete + repo doc delete exist similarly; **Screenshot:** `docs/usability
 **Residual:** OPFS repo blobs and uninstall residue should be verified for complete erasure.
 
 ### MP-5 — Media Transport — ⚠️ Partial
-Backup export is a plaintext JSON bundle containing the key + PII (`src/shared/backupFormat.ts`); no
-encryption-at-export. **Residual = SC-28.**
+Backup export is a plaintext JSON bundle (`src/shared/backupFormat.ts`). By default it carries no
+credentials (IA-5); it still contains PII (memory, conversations) and is not encrypted at export.
+**Residual = SC-28.**
 
 ### CP-9 / CP-10 — Backup & Recovery — ✅ Implemented
 Export/import round-trips the full state (settings, skills, sites, memory, repositories); validated by

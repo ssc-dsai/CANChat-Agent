@@ -3,6 +3,7 @@ import {
   classifyTool,
   evaluatePolicy,
   isApprovalStillValid,
+  sessionApprovalKey,
   TOOL_ACTION_CLASS,
   type ActionClass,
   type PolicyInput,
@@ -56,19 +57,62 @@ describe('evaluatePolicy — attended', () => {
 });
 
 describe('evaluatePolicy — session approval short-circuit', () => {
-  it('allows a previously session-approved external-comms tool', () => {
-    const d = evaluatePolicy(base({ tool: 'submit_form', actionClass: 'external_comms', sessionApprovedTools: new Set(['submit_form']) }));
+  const onA = 'submit_form@https://a.example';
+
+  it('allows a tool session-approved on the same site', () => {
+    const d = evaluatePolicy(base({ tool: 'submit_form', actionClass: 'external_comms', sessionApprovedTools: new Set([onA]), sessionApprovalKey: onA }));
     expect(d.kind).toBe('allow');
   });
 
+  it('does NOT carry a session approval to another site', () => {
+    const d = evaluatePolicy(base({
+      tool: 'submit_form', actionClass: 'external_comms', sessionApprovedTools: new Set([onA]),
+      sessionApprovalKey: 'submit_form@https://b.example',
+    }));
+    expect(d.kind).toBe('needs_approval');
+  });
+
+  it('does NOT honour a bare tool-name approval for a call with no key', () => {
+    const d = evaluatePolicy(base({ tool: 'submit_form', actionClass: 'external_comms', sessionApprovedTools: new Set(['submit_form']) }));
+    expect(d.kind).toBe('needs_approval');
+  });
+
+  it('does NOT carry an MCP approval to another server or method', () => {
+    const approved = new Set([sessionApprovalKey('call_mcp_tool', { mcpServer: 'Jira', mcpMethod: 'search' })!]);
+    const call = (server: string, method: string) => evaluatePolicy(base({
+      tool: 'call_mcp_tool', actionClass: 'external_comms', sessionApprovedTools: approved,
+      sessionApprovalKey: sessionApprovalKey('call_mcp_tool', { mcpServer: server, mcpMethod: method }),
+    })).kind;
+    expect(call('jira', 'search')).toBe('allow');
+    expect(call('evil', 'search')).toBe('needs_approval');
+    expect(call('jira', 'delete_issue')).toBe('needs_approval');
+  });
+
   it('does NOT let session approval cover destructive actions', () => {
-    const d = evaluatePolicy(base({ tool: 'run_javascript', actionClass: 'destructive', sessionApprovedTools: new Set(['run_javascript']) }));
+    const key = 'run_javascript@https://a.example';
+    const d = evaluatePolicy(base({ tool: 'run_javascript', actionClass: 'destructive', sessionApprovedTools: new Set([key]), sessionApprovalKey: key }));
     expect(d.kind).toBe('needs_approval');
   });
 
   it('does NOT let session approval cover financial/legal', () => {
-    const d = evaluatePolicy(base({ tool: 'pay', actionClass: 'financial_legal', sessionApprovedTools: new Set(['pay']) }));
+    const d = evaluatePolicy(base({ tool: 'pay', actionClass: 'financial_legal', sessionApprovedTools: new Set(['pay']), sessionApprovalKey: 'pay' }));
     expect(d.kind).toBe('deny');
+  });
+});
+
+describe('sessionApprovalKey', () => {
+  it('pins page tools to the site and refuses an unresolved tab', () => {
+    expect(sessionApprovalKey('click_element', { origin: 'https://a.example', tabScoped: true })).toBe('click_element@https://a.example');
+    expect(sessionApprovalKey('click_element', { tabScoped: true })).toBeUndefined();
+  });
+
+  it('pins MCP calls to server and method, case-insensitive on the server', () => {
+    expect(sessionApprovalKey('call_mcp_tool', { mcpServer: ' Jira ', mcpMethod: 'search' })).toBe('call_mcp_tool@mcp:jira#search');
+    expect(sessionApprovalKey('call_mcp_tool', { mcpServer: '' })).toBeUndefined();
+  });
+
+  it('falls back to the tool for tools with no site or server', () => {
+    expect(sessionApprovalKey('draft_email', {})).toBe('draft_email');
   });
 });
 

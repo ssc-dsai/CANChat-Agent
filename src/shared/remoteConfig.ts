@@ -8,6 +8,18 @@
 // apiKey, or any other endpoint/credential field — it can only ever repoint
 // requests to already-configured, already-trusted infrastructure. See the
 // plan doc for the full field-by-field rationale.
+//
+// The document is fetched over HTTPS with no signature or integrity check, so
+// whoever controls (or can tamper with) the URL controls these fields. Hence:
+//   - nothing that becomes agent instructions: `systemPrompt` and
+//     `promptOverrides` are NOT settable remotely (a hostile config could
+//     otherwise steer the agent, e.g. to exfiltrate page content);
+//   - privacy settings may only be tightened: `restrictBackgroundToLocal` is
+//     accepted only as `true` (false→true or a no-op), never loosened;
+//   - no endpoint/base URL of any kind. There is no admin-pinned origin notion
+//     in this codebase, so there is nothing to pin against — every endpoint
+//     field is simply excluded;
+//   - each accepted value must have the field's expected type.
 
 import type { Settings } from './types';
 
@@ -19,8 +31,6 @@ export const REMOTE_CONFIG_ALLOWED_KEYS = [
   'graphAssistedSearch',
   'maxSteps',
   'model',
-  'systemPrompt',
-  'promptOverrides',
   'retryOnRateLimit',
   'summarizeObservations',
   'verifyAnswers',
@@ -30,18 +40,48 @@ export const REMOTE_CONFIG_ALLOWED_KEYS = [
 
 export type RemoteConfigKey = (typeof REMOTE_CONFIG_ALLOWED_KEYS)[number];
 
+const finiteNumber = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v);
+const boolean = (v: unknown): boolean => typeof v === 'boolean';
+const shortString = (v: unknown): boolean => typeof v === 'string' && v.length <= 200;
+
+/**
+ * Per-field acceptance rule. A value that fails is dropped (and reported).
+ * `restrictBackgroundToLocal` accepts only `true`: remote config may turn the
+ * privacy gate on, never off.
+ */
+const FIELD_RULES: Record<RemoteConfigKey, (v: unknown) => boolean> = {
+  temperature: finiteNumber,
+  maxTokens: finiteNumber,
+  repoSearchK: finiteNumber,
+  hybridSearch: boolean,
+  graphAssistedSearch: boolean,
+  maxSteps: finiteNumber,
+  model: shortString,
+  retryOnRateLimit: boolean,
+  summarizeObservations: boolean,
+  verifyAnswers: boolean,
+  restrictBackgroundToLocal: (v) => v === true,
+  localEmbedModel: shortString,
+};
+
+function isAccepted(key: string, value: unknown): key is RemoteConfigKey {
+  return Object.prototype.hasOwnProperty.call(FIELD_RULES, key) && FIELD_RULES[key as RemoteConfigKey](value);
+}
+
 /**
  * Filter an arbitrary parsed JSON payload down to only the allowlisted
- * Settings fields. Anything else present in the payload — including
- * baseUrl/apiKey/modelProfiles and any unrecognized key — is dropped, never
- * applied. Tolerant of malformed input (non-object, null, primitives).
+ * Settings fields with acceptable values. Anything else present in the
+ * payload — including baseUrl/apiKey/modelProfiles, systemPrompt/
+ * promptOverrides, restrictBackgroundToLocal:false, a wrongly-typed value, and
+ * any unrecognized key — is dropped, never applied. Tolerant of malformed input
+ * (non-object, null, primitives).
  */
 export function pickAllowedRemoteConfigFields(json: unknown): Partial<Settings> {
   if (!json || typeof json !== 'object' || Array.isArray(json)) return {};
   const out: Partial<Settings> = {};
   const src = json as Record<string, unknown>;
   for (const key of REMOTE_CONFIG_ALLOWED_KEYS) {
-    if (key in src) (out as Record<string, unknown>)[key] = src[key];
+    if (key in src && isAccepted(key, src[key])) (out as Record<string, unknown>)[key] = src[key];
   }
   return out;
 }
@@ -49,8 +89,8 @@ export function pickAllowedRemoteConfigFields(json: unknown): Partial<Settings> 
 /** Keys present in the raw payload that were NOT applied (for a transparency note in the UI). */
 export function droppedRemoteConfigKeys(json: unknown): string[] {
   if (!json || typeof json !== 'object' || Array.isArray(json)) return [];
-  const allowed = new Set<string>(REMOTE_CONFIG_ALLOWED_KEYS);
-  return Object.keys(json as Record<string, unknown>).filter((k) => !allowed.has(k));
+  const src = json as Record<string, unknown>;
+  return Object.keys(src).filter((k) => !isAccepted(k, src[k]));
 }
 
 export interface ConfigDiffEntry {

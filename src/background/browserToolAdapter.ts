@@ -924,7 +924,7 @@ function videoTranscriptRunner(lang: string | undefined, maxChars: number): Prom
             .split('\n')
             .filter((l) => l && !l.includes('-->') && !/^\d+$/.test(l) && l !== 'WEBVTT')
             .join(' ')
-            .replace(/<[^>]+>/g, '');
+            .replace(/<[^<>]+>/g, '');
           if (text.trim()) out.push({ t, text });
         }
         return out;
@@ -979,7 +979,7 @@ function cleanSummary(raw: string): string {
   return raw
     .replace(/<ddd\/>/g, '…')
     .replace(/<\/?c\d+>/g, '') // keep the highlighted term text
-    .replace(/<[^>]+>/g, '')
+    .replace(/<[^<>]+>/g, '')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')

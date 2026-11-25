@@ -73,12 +73,14 @@ const EN: Dict = {
   'chat.loadEarlier': 'Load earlier messages ({n} hidden)',
   // approval card
   'approval.title': 'Approve action?',
-  'approval.tech': 'Technical detail',
   'approval.allow': 'Allow for this session',
   'approval.approve': 'Approve',
   'approval.deny': 'Deny',
   'approval.site': 'Site: {site}',
   'approval.url.label': 'Full address that will be sent:',
+  'approval.action': 'What it will do:',
+  'approval.otherTab': 'Tab not shared with this conversation: {tab}',
+  'approval.allowScoped': 'Allow this on {scope} for the rest of this session',
   'approval.script.title': 'Run JavaScript on {site}',
   'approval.script.noSite': 'this page',
   'approval.script.scope.active_tab': 'Your active tab',
@@ -376,6 +378,7 @@ const EN: Dict = {
   'modelProfiles.updateProfile': 'Update profile',
   'modelProfiles.edit': 'Edit',
   'modelProfiles.delete': 'Delete',
+  'modelProfiles.vaultLocked': '🔒 The encryption vault is locked. Unlock it in the Vault section to view or change model profiles.',
   // workspace console — nav
   'workspace.nav.chat': 'Chat',
   'workspace.nav.projects': 'Projects',
@@ -538,6 +541,11 @@ const EN: Dict = {
   'backup.includeConversations': 'Include saved conversations',
   'backup.includeConversationsNote':
     'Conversations can contain page content and screenshots. Off by default — only export them if you intend to.',
+  'backup.includeSecrets': 'Include API keys and tokens in the backup',
+  'backup.includeSecretsWarn':
+    'The file will contain your API keys (main, model profiles, embedding, transcription, image, decision model), AWS session token and MCP server tokens in plain text — store it securely.',
+  'backup.secretsExcludedNote':
+    'Without this, every API key, AWS key ID and session token, and MCP token is removed from the file. Sign-in tokens (Microsoft 365, AWS IAM Identity Center, provider accounts) and the encryption vault are never included.',
 };
 
 const FR: Dict = {
@@ -589,12 +597,14 @@ const FR: Dict = {
   'chat.loadEarlier': 'Charger les messages précédents ({n} masqué(s))',
   // carte d’approbation
   'approval.title': 'Approuver l’action?',
-  'approval.tech': 'Détail technique',
   'approval.allow': 'Autoriser pour cette session',
   'approval.approve': 'Approuver',
   'approval.deny': 'Refuser',
   'approval.site': 'Site : {site}',
   'approval.url.label': 'Adresse complète qui sera envoyée :',
+  'approval.action': 'Ce qu’elle fera :',
+  'approval.otherTab': 'Onglet non partagé avec cette conversation : {tab}',
+  'approval.allowScoped': 'Autoriser ceci sur {scope} pour le reste de la session',
   'approval.script.title': 'Exécuter du JavaScript sur {site}',
   'approval.script.noSite': 'cette page',
   'approval.script.scope.active_tab': 'Votre onglet actif',
@@ -893,6 +903,7 @@ const FR: Dict = {
   'modelProfiles.updateProfile': 'Mettre à jour le profil',
   'modelProfiles.edit': 'Modifier',
   'modelProfiles.delete': 'Supprimer',
+  'modelProfiles.vaultLocked': '🔒 Le coffre de chiffrement est verrouillé. Déverrouillez-le dans la section Coffre pour voir ou modifier les profils de modèle.',
   // workspace console — nav
   'workspace.nav.chat': 'Discussion',
   'workspace.nav.projects': 'Projets',
@@ -1059,6 +1070,11 @@ const FR: Dict = {
   'backup.includeConversations': 'Inclure les conversations enregistrées',
   'backup.includeConversationsNote':
     'Les conversations peuvent contenir le contenu de pages et des captures d’écran. Désactivé par défaut — ne les exportez que si vous le souhaitez.',
+  'backup.includeSecrets': 'Inclure les clés d’API et les jetons dans la sauvegarde',
+  'backup.includeSecretsWarn':
+    'Le fichier contiendra vos clés d’API (principale, profils de modèle, plongements, transcription, image, modèle de décision), le jeton de session AWS et les jetons de serveur MCP en texte clair — conservez-le en lieu sûr.',
+  'backup.secretsExcludedNote':
+    'Sinon, toutes les clés d’API, les ID de clé et jetons de session AWS et les jetons MCP sont retirés du fichier. Les jetons de connexion (Microsoft 365, AWS IAM Identity Center, comptes de fournisseur) et le coffre de chiffrement ne sont jamais inclus.',
 };
 
 export const MESSAGES: Record<Lang, Dict> = { en: EN, fr: FR };

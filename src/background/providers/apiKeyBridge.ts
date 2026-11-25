@@ -11,12 +11,15 @@
 // =============================================================================
 
 import type { ModelProfile, Settings } from '../../shared/types';
+import { unsealSettings } from '../secretSealing';
 
 const SETTINGS_KEY = 'ba_settings';
 
+/** Settings with vault-sealed keys decrypted; a key the locked vault can't open reads as blank. */
 async function rawSettings(): Promise<Settings> {
   const r = await chrome.storage.local.get(SETTINGS_KEY);
-  return (r[SETTINGS_KEY] as Settings | undefined) ?? { baseUrl: '', apiKey: '', model: '' };
+  const stored = (r[SETTINGS_KEY] as Settings | undefined) ?? { baseUrl: '', apiKey: '', model: '' };
+  return (await unsealSettings(stored)).value;
 }
 
 export interface ResolvedConnection {

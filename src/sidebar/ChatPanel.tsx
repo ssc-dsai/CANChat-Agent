@@ -258,6 +258,9 @@ export const ChatPanel = memo(function ChatPanel({
   const [dropItems, setDropItems] = useState<DroppedItem[] | null>(null);
   const [uploadBanner, setUploadBanner] = useState<string | null>(null);
   const [rememberSession, setRememberSession] = useState(false);
+  // Each approval card starts unticked: a tick on one card must not carry
+  // over to the next, different request.
+  useEffect(() => setRememberSession(false), [approval?.requestId]);
   const attachInputRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -707,32 +710,52 @@ export const ChatPanel = memo(function ChatPanel({
                   {approval.approvalContext?.target?.origin && (
                     <div class="approval-site">{tr('approval.site', { site: approval.approvalContext.target.origin })}</div>
                   )}
+                  {approval.approvalContext?.otherTab && (
+                    <div class="approval-site" data-testid="approval-other-tab">
+                      {tr('approval.otherTab', {
+                        tab: approval.approvalContext.otherTab.title || approval.approvalContext.otherTab.url || '?',
+                      })}
+                    </div>
+                  )}
                   {approval.approvalContext?.destinationUrl && (
                     <>
                       <div class="script-approval-label">{tr('approval.url.label')}</div>
                       <pre class="script-approval-code" data-testid="approval-url">{approval.approvalContext.destinationUrl}</pre>
                     </>
                   )}
-                  <div class="prompt-reason">{approval.description}</div>
-                  <details class="prompt-tech">
-                    <summary>{tr('approval.tech')}</summary>
-                    <div class="prompt-detail">{approval.detail}</div>
-                  </details>
+                  {/* The concrete action comes first and in full; the model's own
+                      account of it is labelled as such, since an injected model
+                      can describe anything as harmless. */}
+                  <div class="script-approval-label">{tr('approval.action')}</div>
+                  <pre class="script-approval-code" data-testid="approval-action">{approval.detail}</pre>
+                  {approval.approvalContext?.destinationUrl || approval.approvalContext?.otherTab ? (
+                    <div class="prompt-reason">{approval.description}</div>
+                  ) : (
+                    <>
+                      <div class="script-approval-label">{tr('approval.script.reason')}</div>
+                      <div class="prompt-reason">{approval.description}</div>
+                    </>
+                  )}
                 </>
               )}
             </div>
             <div class="prompt-actions-col">
-              {/* Scripts and composed URLs are each their own decision, so don't offer it. */}
-              {!approval.approvalContext?.script && !approval.approvalContext?.destinationUrl && (
+              {/* Offered only when the runtime scoped it to one site or MCP server;
+                  scripts, composed URLs and unshared tabs are each their own decision. */}
+              {approval.approvalContext?.sessionKey && (
                 <label class="approval-remember">
                   <input type="checkbox" checked={rememberSession} onChange={() => setRememberSession(!rememberSession)} />
-                  <span>{tr('approval.allow')}</span>
+                  <span>
+                    {approval.approvalContext.sessionScope
+                      ? tr('approval.allowScoped', { scope: approval.approvalContext.sessionScope })
+                      : tr('approval.allow')}
+                  </span>
                 </label>
               )}
               <div class="prompt-btn-row">
                 <button
                   class="btn btn-primary"
-                  onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: true, rememberForSession: rememberSession && !approval.approvalContext?.script && !approval.approvalContext?.destinationUrl })}
+                  onClick={() => send({ type: 'approval_response', requestId: approval.requestId, approved: true, rememberForSession: rememberSession && !!approval.approvalContext?.sessionKey })}
                 >
                   {tr('approval.approve')}
                 </button>
