@@ -111,6 +111,22 @@ describe('geminiNativeAdapter.buildRequest', () => {
       { functionDeclarations: [{ name: 'f', description: 'd', parameters: { type: 'object', properties: {} } }] },
     ]);
   });
+
+  it('merges a user message after tool results into their user turn', async () => {
+    const messages: LlmMessage[] = [
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'list_tabs', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 'c1', content: 'ok' },
+      { role: 'user', content: 'status' },
+    ];
+    const req = await geminiNativeAdapter.buildRequest(settings, messages);
+    const contents = (req.body as { contents: Array<{ role: string; parts: unknown[] }> }).contents;
+    expect(contents.map((c) => c.role)).toEqual(['user', 'model', 'user']);
+    expect(contents[2].parts).toEqual([
+      { functionResponse: { name: 'list_tabs', response: { result: 'ok' } } },
+      { text: 'status' },
+    ]);
+  });
 });
 
 describe('geminiNativeAdapter.parseResponse', () => {

@@ -56,13 +56,22 @@ test.describe('agent loop (mock LLM)', () => {
     const prefix = mainReqs[0].messages[0].content as string;
     // (a) the system prefix is identical on every step → the provider can cache it
     for (const r of mainReqs) expect(r.messages[0].content).toBe(prefix);
-    // (b) the volatile working-state is NOT inside that prefix anymore...
-    expect(prefix).not.toContain('=== Working state');
-    // (c) ...it now arrives as a trailing system status message each step.
+    // (b) the volatile working-state is NOT inside that prefix (the prompt only
+    // names its tags, so look for a line of the state itself)...
+    expect(prefix).not.toContain('Current local time:');
+    // (c) ...it arrives at the end of a trailing user turn each step.
     for (const r of mainReqs) {
       const last = r.messages[r.messages.length - 1];
-      expect(last.role).toBe('system');
-      expect(typeof last.content === 'string' ? last.content : '').toContain('=== Working state');
+      expect(last.role).toBe('user');
+      const text = typeof last.content === 'string' ? last.content : JSON.stringify(last.content);
+      expect(text).toContain('<working_state>');
+      expect(text).toContain('Current local time:');
+    }
+    // (d) every earlier message of a step is unchanged in the next step.
+    for (let i = 1; i < mainReqs.length; i++) {
+      const prev = mainReqs[i - 1].messages;
+      const cur = mainReqs[i].messages;
+      expect(cur.slice(0, prev.length - 1)).toEqual(prev.slice(0, -1));
     }
   });
 

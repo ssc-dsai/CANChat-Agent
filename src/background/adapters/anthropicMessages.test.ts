@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Settings } from '../../shared/types';
 import type { LlmMessage } from '../llmTypes';
+import { withTrailingState } from '../workingState';
 import { anthropicMessagesAdapter } from './anthropicMessages';
 
 const settings: Settings = { baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant-test', model: 'claude-opus-5' };
@@ -97,6 +98,66 @@ describe('anthropicMessagesAdapter.buildRequest', () => {
     const tools = [{ type: 'function' as const, function: { name: 'f', description: 'd', parameters: { type: 'object' } } }];
     const req = await anthropicMessagesAdapter.buildRequest(settings, [{ role: 'user', content: 'hi' }], tools);
     expect((req.body as { tools: unknown }).tools).toEqual([{ name: 'f', description: 'd', input_schema: { type: 'object' } }]);
+  });
+});
+
+describe('anthropicMessagesAdapter prompt caching', () => {
+  type Block = { type: string; text?: string; cache_control?: unknown };
+  type Body = { system: unknown; messages: Array<{ role: string; content: Block[] }> };
+  const toolTurn: LlmMessage[] = [
+    { role: 'system', content: 'be helpful' },
+    { role: 'user', content: 'go' },
+    { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'list_tabs', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'c1', content: 'ok' },
+  ];
+
+  it('puts the state after tool results in the same user turn, with a breakpoint just before it', async () => {
+    const req = await anthropicMessagesAdapter.buildRequest(settings, withTrailingState(toolTurn, 'Steps: 1/20'));
+    const body = req.body as Body;
+    expect(body.system).toEqual([{ type: 'text', text: 'be helpful', cache_control: { type: 'ephemeral' } }]);
+    expect(body.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+    const last = body.messages[2].content;
+    expect(last.map((b) => b.type)).toEqual(['tool_result', 'text']);
+    expect(last[0].cache_control).toEqual({ type: 'ephemeral' });
+    expect(last[1].text).toContain('Steps: 1/20');
+    expect(last[1].cache_control).toBeUndefined();
+  });
+
+  it('splits the state off a plain user message and marks the text before it', async () => {
+    const msgs = withTrailingState([{ role: 'system', content: 'be helpful' }, { role: 'user', content: 'go' }], 'S');
+    const body = (await anthropicMessagesAdapter.buildRequest(settings, msgs)).body as Body;
+    const content = body.messages[0].content;
+    expect(content).toHaveLength(2);
+    expect(content[0]).toEqual({ type: 'text', text: 'go', cache_control: { type: 'ephemeral' } });
+    expect(content[1].text?.startsWith('<working_state>')).toBe(true);
+  });
+
+  it('sends the same bytes before the breakpoint on consecutive steps', async () => {
+    const step1 = (await anthropicMessagesAdapter.buildRequest(settings, withTrailingState(toolTurn.slice(0, 2), 'Steps: 0/20'))).body as Body;
+    const step2 = (await anthropicMessagesAdapter.buildRequest(settings, withTrailingState(toolTurn, 'Steps: 1/20'))).body as Body;
+    expect(step2.system).toEqual(step1.system);
+    // Step 1's first user block (marked there) is the same block in step 2, unmarked.
+    const { cache_control: _marker, ...first } = step1.messages[0].content[0];
+    expect(step2.messages[0].content[0]).toEqual(first);
+  });
+
+  it('caches on Bedrock Mantle hosts', async () => {
+    const mantle = { ...settings, baseUrl: 'https://bedrock-mantle.us-east-1.api.aws/anthropic' };
+    const body = (await anthropicMessagesAdapter.buildRequest(mantle, withTrailingState(toolTurn, 'S'))).body as Body;
+    expect(Array.isArray(body.system)).toBe(true);
+  });
+
+  it('adds no markers on other Messages-compatible servers', async () => {
+    const other = { ...settings, baseUrl: 'https://opencode.ai/zen/v1' };
+    const body = (await anthropicMessagesAdapter.buildRequest(other, withTrailingState(toolTurn, 'S'))).body as Body;
+    expect(body.system).toBe('be helpful');
+    expect(JSON.stringify(body)).not.toContain('cache_control');
+  });
+
+  it('adds no markers to requests without a working-state block', async () => {
+    const body = (await anthropicMessagesAdapter.buildRequest(settings, toolTurn)).body as Body;
+    expect(body.system).toBe('be helpful');
+    expect(JSON.stringify(body)).not.toContain('cache_control');
   });
 });
 

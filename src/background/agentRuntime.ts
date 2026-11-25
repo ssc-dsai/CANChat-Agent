@@ -102,7 +102,8 @@ import { complete, embedChunks, embedderId, LlmError, LLM_TIMEOUT_MS, messagesCo
 import { extractJsonObject, runScopedSubtask, type ScopedSubtaskInput } from './scopedSubtask';
 import { startJob } from './jobEngine';
 import { DEFAULT_RESEARCH_LIMITS } from '../shared/jobs';
-import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing, withMergedSystemState } from './loopHelpers';
+import { deriveStepBudget, findSimilarLesson, parseLesson, parseReflectionVerdict, parseSummaryArray, relevantLessons, repairToolPairing } from './loopHelpers';
+import { withTrailingState } from './workingState';
 import { generateDocument, generatePresentation, graphGet as repoGraphGet, productSave, repoDeleteDoc, repoDocs, repoList, repoSearch } from './offscreenClient';
 import { selectSubgraph, renderSubgraphForModel, type DocGraph } from '../shared/docGraph';
 import { rankCommunities, renderCommunitiesForModel } from '../shared/graphCommunities';
@@ -375,7 +376,7 @@ Planning multi-step tasks:
 - Once you set a plan, EXECUTE it — do not give a final answer while it still has pending or in_progress steps. If a step turns out to be unnecessary, mark it done or skipped with update_plan first; only then answer.
 - Size the plan to the actual work: use as few or as many steps as the task genuinely needs — a 2-step plan for something small, 8+ for something involved. Do NOT pad to a fixed number, and skip planning entirely for trivial one-shot tasks.
 - As you discover important intermediate results, call record_finding to save them. Do not rely on scrolling back through history — older tool output gets compacted away, but findings and the plan stay in view in the working-state block.
-- A live working-state block (active tab, plan, findings, step budget) is provided as a status update at the END of the conversation and refreshed every step — always read the latest one. Watch the remaining step budget and pace yourself; when it runs low, record what matters and produce your best answer.
+- A live working-state block (active tab, plan, findings, step budget) is provided inside <working_state> tags at the END of the latest user turn and refreshed every step — always read the latest one. The runtime writes it, not the user. Watch the remaining step budget and pace yourself; when it runs low, record what matters and produce your best answer.
 - You can issue several independent read-only tool calls in one turn — they run in parallel (e.g. get_tab_content on several tabs at once).
 - Before giving your final answer, verify the goal is actually met (re-read the page or re-check the result) rather than assuming an action worked.
 - When the task is to collect structured information (one row per item, often across several pages), gather it as you go and call export_data with columns and rows — the user gets a downloadable CSV/JSON table.
@@ -665,7 +666,7 @@ export class AgentRuntime {
   // reflection, and persisted back to storage after each mutation).
   private memoryGraph: MemoryGraph = emptyMemoryGraph();
   // Working-state (relevant-subgraph) tier: computed once per user turn (not
-  // per agent step) and appended to the mutable trailing message, never the
+  // per agent step) and carried in the trailing working-state block, never the
   // byte-stable systemBase — see runLoop and buildStateBlock.
   private relevantMemoryBlock = '';
   // Per-conversation tab group (reset only on clearConversation).
@@ -2309,7 +2310,7 @@ export class AgentRuntime {
       // No active tab (or restricted); playbooks just won't auto-activate.
     }
     // The base system prompt is fixed for the task; the live state block is
-    // merged into it only for outgoing model calls (see withWorkingState).
+    // added at the end of each outgoing request only (see withWorkingState).
     const capabilities = this.scopedCapabilities(await getCapabilities());
     this.knownSiteNames = capabilities.map((c) => c.name);
     this.memoryGraph = memoryEnabled ? await getMemoryGraph() : emptyMemoryGraph();
@@ -2326,7 +2327,7 @@ export class AgentRuntime {
     // Last, so custom instructions (user- or remote-config-supplied) can't displace it.
     this.systemBase += `\n\n${UNTRUSTED_CONTENT_RULE}`;
     // Keep conversation[0] = the byte-stable system base (no volatile state).
-    // The live working-state is folded into that system message only at call time
+    // The live working-state is appended after the last turn only at call time
     // (see withWorkingState), so history remains free of volatile state.
     if (this.conversation.length === 0) {
       this.conversation.push({ role: 'system', content: this.systemBase });
@@ -4112,26 +4113,27 @@ export class AgentRuntime {
   // ----- working state (plan, findings, budget) -----
 
   // Build the outgoing message array for a model call: the persisted conversation
-  // plus live working state folded into the initial system message. Built fresh
+  // plus live working state at the very end (see workingState.ts). Built fresh
   // per call and never stored, so volatile state never lands in history,
-  // compaction, or persistence. Folding avoids system/user/system role sequences
-  // that stricter local chat templates reject.
+  // compaction, or persistence — and everything before it stays byte-identical
+  // between steps, so providers can reuse the cached prompt prefix.
   private withWorkingState(): LlmMessage[] {
-    return withMergedSystemState(repairToolPairing(this.conversation), this.buildStateBlock());
+    return withTrailingState(repairToolPairing(this.conversation), this.buildStateBlock());
   }
 
   private buildStateBlock(): string {
     const remaining = Math.max(0, this.stepBudget - this.stepsUsed);
-    const lines: string[] = ['\n\n=== Working state (updated each step) ==='];
+    const lines: string[] = [];
     // The model has no innate clock — give it the current LOCAL time every call so
     // relative ("in two minutes") and fixed times resolve correctly. All times you
-    // reason about or schedule are in this local timezone.
+    // reason about or schedule are in this local timezone. Minute precision is
+    // enough: relative scheduling goes through runInMinutes.
     const now = new Date();
     const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'local'; } })();
     const offsetMin = -now.getTimezoneOffset();
     const offset = `UTC${offsetMin >= 0 ? '+' : '-'}${String(Math.floor(Math.abs(offsetMin) / 60)).padStart(2, '0')}:${String(Math.abs(offsetMin) % 60).padStart(2, '0')}`;
     lines.push(
-      `Current local time: ${now.toLocaleString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })} (${tz}, ${offset}). ` +
+      `Current local time: ${now.toLocaleString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} (${tz}, ${offset}). ` +
         `All times are LOCAL. For scheduling relative to now (e.g. "in 2 minutes"), prefer schedule_task's runInMinutes; for a fixed local time use runAt or a recurrence timeOfDay.`,
     );
     if (this.activeTabLabel)

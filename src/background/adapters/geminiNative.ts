@@ -101,7 +101,12 @@ function buildContents(messages: LlmMessage[]): { systemInstruction: GeminiConte
         ...(tc.thoughtSignature ? { thoughtSignature: tc.thoughtSignature } : {}),
       });
     }
-    if (parts.length > 0) contents.push({ role: m.role === 'assistant' ? 'model' : 'user', parts });
+    if (parts.length === 0) continue;
+    const role = m.role === 'assistant' ? 'model' : 'user';
+    const last = contents[contents.length - 1];
+    // Text after tool results (the agent loop's working-state block) joins their user turn.
+    if (role === 'user' && last?.role === 'user') last.parts.push(...parts);
+    else contents.push({ role, parts });
   }
 
   return {
