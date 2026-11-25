@@ -119,6 +119,7 @@ Notes:
 
 - The key is stored in `chrome.storage.local` **on this device only**; it is never synced to other machines, and never sent anywhere except the endpoint you configured.
 - Multi-protocol support translates canonical tool definitions into provider-native tool schemas across OpenAI, Anthropic, Gemini, and AWS Bedrock (Mantle) endpoints.
+- AWS Bedrock (Mantle) connections authenticate with a Bedrock API key, AWS access keys, or an AWS IAM Identity Center (SSO) sign-in: the user signs in once with their organization account and each request is signed with their own temporary credentials, so no key is stored and CloudTrail attributes calls to the person.
 - Every model request times out after **120 seconds**, so a hung endpoint can never freeze a task permanently.
 
 <p align="center">

@@ -3,8 +3,8 @@
 // (no aws-sdk dependency — this service worker has no subprocess/Node runtime
 // to run the SDK's credential provider chain anyway). The only caller is
 // adapters/bedrockMantle.ts, for Bedrock Mantle connections configured with
-// AWS credentials rather than a Bedrock API key. Only static (or STS-issued, via an optional session token)
-// credentials are supported — there is no IAM Identity Center/SSO flow here.
+// AWS credentials (static, STS-issued, or minted from an IAM Identity Center
+// sign-in by awsSso.ts) rather than a Bedrock API key.
 // See https://docs.aws.amazon.com/general/latest/gr/sigv4-signing.html.
 // =============================================================================
 

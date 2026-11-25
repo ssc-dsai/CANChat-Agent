@@ -98,23 +98,10 @@ export function NotebooksWorkspace() {
       setRepos(repoList);
       
       if (repoList.length > 0) {
-        const stored = await chrome.storage.local.get('ba_active_repo');
-        const persisted = typeof stored.ba_active_repo === 'string' ? stored.ba_active_repo : '';
-        if (persisted && repoList.some((r) => r.name === persisted)) {
-          setSelectedRepoName(persisted);
-        } else {
-          setSelectedRepoName((current) => {
-            if (current && repoList.some((r) => r.name === current)) {
-              void chrome.storage.local.set({ ba_active_repo: current });
-              return current;
-            }
-            void chrome.storage.local.set({ ba_active_repo: repoList[0].name });
-            return repoList[0].name;
-          });
-        }
+        // Viewing a notebook here is not a chat scope; nothing is persisted.
+        setSelectedRepoName((current) => (current && repoList.some((r) => r.name === current) ? current : repoList[0].name));
       } else {
         setSelectedRepoName(null);
-        void chrome.storage.local.remove('ba_active_repo');
       }
     } catch {
       setRepos([]);
@@ -148,9 +135,6 @@ export function NotebooksWorkspace() {
 
   const selectRepo = (name: string) => {
     setSelectedRepoName(name);
-    // Persist the user's knowledge-base selection so the next chat turn
-    // prioritizes searching this repository even without an explicit #mention.
-    void chrome.storage.local.set({ ba_active_repo: name });
   };
 
   const removeRepo = async (name: string) => {
@@ -159,7 +143,6 @@ export function NotebooksWorkspace() {
     if (selectedRepoName === name) {
       setSelectedRepoName(null);
       setDocs([]);
-      void chrome.storage.local.remove('ba_active_repo');
     }
     void load();
   };
