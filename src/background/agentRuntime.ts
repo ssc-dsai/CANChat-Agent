@@ -26,7 +26,7 @@ import type { PolicyDecision } from '../shared/policy';
 import { mapWithConcurrency } from '../shared/asyncPool';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import { resolveAuth } from '../shared/capabilities';
-import { classifyTool, evaluatePolicy, isApprovalStillValid } from '../shared/policy';
+import { classifyTool, evaluatePolicy, isApprovalStillValid, sessionApprovalKey } from '../shared/policy';
 import { MAX_SCRIPT_CHARS, scriptRiskWarnings, scriptTargetScope, urlOrigin } from '../shared/scriptRisk';
 import { UNTRUSTED_CONTENT_RULE, UNTRUSTED_OUTPUT_TOOLS, unwrapUntrusted, wrapUntrusted } from '../shared/untrustedContent';
 import { extractUrlsFromText, KnownUrls, normalizeNavUrl, URL_FETCH_TOOLS, URL_HARVEST_TOOLS } from '../shared/urlProvenance';
@@ -145,6 +145,7 @@ import {
 } from './storage';
 import { deriveSummary, deriveTitle, derivePreview, parseConversationMeta } from '../shared/conversationMeta';
 import * as tabContext from './tabContextManager';
+import { mimeTypeForTextFile, safeTextFilename } from '../shared/textFileSafety';
 import {
   cancelScheduledTask,
   createScheduledTask,
@@ -238,44 +239,25 @@ interface PlanStep {
   status: PlanStepStatus;
 }
 
-function sanitizeTextFilename(filename: string): string {
-  return filename
-    .replace(/[\\/]/g, '_')
-    .replace(/[<>:"|?*\x00-\x1F]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+/**
+ * Tools that act on one browser tab (they take a tabId). On a tab the user
+ * hasn't shared with this conversation they need the user's OK — otherwise
+ * list_tabs + get_tab_content would read every tab one by one, around the
+ * get_all_tab_contents gate. run_javascript has its own, stricter scope check.
+ */
+const TAB_SCOPED_TOOLS: ReadonlySet<string> = new Set(
+  [...TOOL_DEFINITIONS, ...MEMORY_TOOL_DEFINITIONS]
+    .filter((t) => {
+      const props = (t.function.parameters as { properties?: Record<string, unknown> } | undefined)?.properties;
+      return !!props && 'tabId' in props;
+    })
+    .map((t) => t.function.name)
+    .filter((n) => n !== 'run_javascript' && n !== 'run_subtasks'),
+);
 
-function fileExtension(filename: string): string {
-  const base = filename.split(/[\\/]/).pop() ?? filename;
-  const dot = base.lastIndexOf('.');
-  if (dot <= 0 || dot === base.length - 1) return '';
-  return base.slice(dot + 1).toLowerCase();
-}
-
-function mimeTypeForTextFile(filename: string): string {
-  switch (fileExtension(filename)) {
-    case 'md':
-    case 'markdown':
-      return 'text/markdown';
-    case 'txt':
-    case 'log':
-      return 'text/plain';
-    case 'csv':
-      return 'text/csv';
-    case 'json':
-      return 'application/json';
-    case 'yaml':
-    case 'yml':
-      return 'text/yaml';
-    case 'html':
-    case 'htm':
-      return 'text/html';
-    case 'xml':
-      return 'application/xml';
-    default:
-      return 'text/plain';
-  }
+/** Shorten for the approval card, saying how much was cut so nothing is silently hidden. */
+function clip(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max)}… [${text.length - max} more characters not shown]`;
 }
 
 function imageExtensionForMimeType(mimeType: string): string {
@@ -587,6 +569,8 @@ export class AgentRuntime {
   // loading or clearing a conversation rebuilds it. See shared/urlProvenance.
   private knownUrls = new KnownUrls();
   private knownUrlsFor: LlmMessage[] | null = null;
+  /** `${conversationId}:${tabId}` for unshared tabs the user approved the agent using. */
+  private approvedOtherTabs = new Set<string>();
   private messages: ChatMessageView[] = [];
   private activities: ToolActivity[] = [];
   private status: AgentStatus = 'idle';
@@ -2210,8 +2194,10 @@ export class AgentRuntime {
       if (approved && !stillValid) {
         this.notice('That approval expired before it was granted — the agent will need to ask again.');
       }
-      if (effective && rememberForSession && pending.approvalContext?.toolName) {
-        void addSessionApproval(pending.approvalContext.toolName);
+      // Remember only the scoped key the runtime computed (one tool on one site
+      // or MCP server) — never the bare tool name.
+      if (effective && rememberForSession && pending.approvalContext?.sessionKey) {
+        void addSessionApproval(pending.approvalContext.sessionKey);
       }
       pending.resolve(effective);
     }
@@ -2567,6 +2553,8 @@ export class AgentRuntime {
   // (with a single-word name) on first use. Non-fatal on failure.
   private async addToConversationGroup(tabId: number): Promise<void> {
     if (tabId < 0) return;
+    // The agent opened this tab, so it may keep using it even if grouping fails.
+    this.approvedOtherTabs.add(`${this.currentConversationId}:${tabId}`);
     if (!this.groupName) {
       const shuffled = [...GROUP_NAMES].sort(() => Math.random() - 0.5);
       let chosen = shuffled[0];
@@ -3094,7 +3082,8 @@ export class AgentRuntime {
 
     // ----- Policy decision (single source of truth for allow/deny/approval).
     // Page content never reaches evaluatePolicy — pages only ever feed name/args.
-    const target = await this.resolveTarget(args);
+    const target =
+      (await this.resolveTarget(args)) ?? (TAB_SCOPED_TOOLS.has(name) ? await this.activeTarget() : undefined);
     if (stopped()) return stoppedResult();
 
     // run_javascript runs with the target page's full authority, so it is
@@ -3119,6 +3108,17 @@ export class AgentRuntime {
     if (stopped()) return stoppedResult();
     const sessionApprovedTools = await getSessionApprovals();
     if (stopped()) return stoppedResult();
+    const isMcp = name === 'call_mcp_tool' || name === 'list_mcp_tools';
+    let sessionKey =
+      name === 'run_javascript'
+        ? undefined
+        : isMcp
+          ? sessionApprovalKey(name, {
+              mcpServer: approvalContext?.capabilityName ?? String(args.server ?? ''),
+              mcpMethod: name === 'call_mcp_tool' ? String(args.name ?? '') : undefined,
+            })
+          : sessionApprovalKey(name, { origin: target?.origin, tabScoped: TAB_SCOPED_TOOLS.has(name) });
+    if (sessionKey && name === 'call_webmcp_tool') sessionKey += `#${String(args.name ?? '')}`;
     let decision: PolicyDecision = evaluatePolicy({
       tool: name,
       actionClass: classifyTool(name, READ_ONLY_TOOLS),
@@ -3126,6 +3126,7 @@ export class AgentRuntime {
       trustLevel: approvalContext?.trustLevel,
       capabilityKind: approvalContext?.capabilityKind,
       sessionApprovedTools,
+      sessionApprovalKey: sessionKey,
       unattendedBlockedTools: UNATTENDED_BLOCKED_TOOLS,
     });
     // Opening a URL is an outbound request. A URL the model composed itself (not
@@ -3147,6 +3148,30 @@ export class AgentRuntime {
         };
       }
     }
+    // A tab the user hasn't shared with this conversation (not the active tab,
+    // not in its tab group, not in the shared tab context) needs the user's OK
+    // before the agent reads or acts on it — or is refused when nobody watches.
+    let otherTab: { tabId: number; title?: string; url?: string } | undefined;
+    if (decision.kind !== 'deny' && TAB_SCOPED_TOOLS.has(name) && target?.tabId !== undefined) {
+      const tab = await this.unsharedTab(target.tabId);
+      if (stopped()) return stoppedResult();
+      if (tab) {
+        otherTab = tab;
+        sessionKey = undefined;
+        if (this.unattended) {
+          decision = { kind: 'deny', rule: 'unattended_unshared_tab' };
+        } else if (decision.kind === 'allow') {
+          decision = { kind: 'needs_approval', reasonClass: 'read' };
+        }
+        approvalContext = {
+          ...approvalContext,
+          toolName: name,
+          authConfigured: approvalContext?.authConfigured ?? false,
+          otherTab: { title: tab.title, url: tab.url },
+        };
+      }
+    }
+    if (unseenUrl) sessionKey = undefined;
     void this.audit({
       eventType: 'POLICY_DECISION', tool: name, target, inputDigest,
       policyDecision: decision.kind === 'allow' ? 'allow' : decision.kind === 'deny' ? 'deny' : 'needs_approval',
@@ -3174,6 +3199,9 @@ export class AgentRuntime {
       const reason = unseenUrl
         ? 'The agent wants to open a web address it wrote itself — not one from your messages or from a page it read. ' +
           'Opening it sends the whole address to that site, so check it holds nothing you would not share with them.'
+        : otherTab
+          ? `The agent wants to use a tab you haven't shared with this conversation${otherTab.title ? `: "${otherTab.title}"` : ''}. ` +
+            'What it reads there is sent to the AI model. Approving lets it use this tab for the rest of the conversation.'
         : typeof args.reason === 'string' && args.reason.trim()
           ? args.reason.trim()
           : 'The agent wants to perform this action.';
@@ -3189,6 +3217,12 @@ export class AgentRuntime {
         target: unseenUrl ? approvalContext?.target : target,
         params: redactArgs(args),
         expiresAt: Date.now() + APPROVAL_TIMEOUT_MS,
+        sessionKey,
+        sessionScope: sessionKey
+          ? isMcp
+            ? approvalContext?.capabilityName ?? String(args.server ?? '')
+            : target?.origin
+          : undefined,
       };
       void this.audit({ eventType: 'APPROVAL_REQUESTED', tool: name, target, inputDigest, approvalId, unattended: false });
       const approved = await this.requestApproval(reason, this.describeAction(name, args), boundContext);
@@ -3200,6 +3234,7 @@ export class AgentRuntime {
       }
       void this.audit({ eventType: 'APPROVAL_GRANTED', tool: name, target, inputDigest, approvalId, unattended: false });
       if (unseenUrl) this.urlLedger().add(unseenUrl);
+      if (otherTab) this.approvedOtherTabs.add(`${this.currentConversationId}:${otherTab.tabId}`);
     }
 
     if (stopped()) return stoppedResult();
@@ -3289,6 +3324,35 @@ export class AgentRuntime {
   }
 
   /** Best-effort resolve of a tool's target tab origin, for audit + approval binding. */
+  /** The active tab as an approval/audit target, for tab tools called without a tabId. */
+  private async activeTarget(): Promise<{ tabId?: number; origin?: string } | undefined> {
+    const active = await browser.queryActiveTab();
+    if (active?.id === undefined) return undefined;
+    return { tabId: active.id, origin: urlOrigin(active.url) };
+  }
+
+  /**
+   * The tab, if the user hasn't shared it with this conversation: it isn't the
+   * active tab, isn't in this conversation's tab group (which holds the tabs
+   * the agent opened), isn't in the shared tab context, and the user hasn't
+   * already approved it. Undefined means it's in scope — including a tab that
+   * no longer exists, which the tool itself reports.
+   */
+  private async unsharedTab(tabId: number): Promise<{ tabId: number; title?: string; url?: string } | undefined> {
+    const active = await browser.queryActiveTab();
+    if (active?.id === tabId) return undefined;
+    let tab: chrome.tabs.Tab;
+    try {
+      tab = await chrome.tabs.get(tabId);
+    } catch {
+      return undefined;
+    }
+    if (this.groupId !== null && this.groupId !== -1 && tab.groupId === this.groupId) return undefined;
+    if (tabContext.getSnapshot()?.tabs.some((t) => t.tabId === tabId)) return undefined;
+    if (this.approvedOtherTabs.has(`${this.currentConversationId}:${tabId}`)) return undefined;
+    return { tabId, title: tab.title, url: tab.url };
+  }
+
   private async resolveTarget(args: Record<string, unknown>): Promise<{ tabId?: number; origin?: string } | undefined> {
     const tabId = Number(args.tabId);
     if (!Number.isFinite(tabId)) return undefined;
@@ -4344,7 +4408,7 @@ export class AgentRuntime {
   }
 
   private createFile(args: Record<string, unknown>): string {
-    const filename = sanitizeTextFilename(String(args.filename ?? '').trim());
+    const filename = safeTextFilename(String(args.filename ?? ''));
     const content = String(args.content ?? '');
     if (!filename) {
       return 'Error: create_file needs a filename.';
@@ -4644,7 +4708,7 @@ export class AgentRuntime {
       case 'click_element':
         return `Click element "${args.selectorOrRef}" on tab ${args.tabId}`;
       case 'fill_input':
-        return `Type into element "${args.selectorOrRef}" on tab ${args.tabId}: "${String(args.value).slice(0, 80)}"`;
+        return `Type into element "${args.selectorOrRef}" on tab ${args.tabId}: "${clip(String(args.value), 2000)}"`;
       case 'submit_form':
         return `Submit the form at "${args.selectorOrRef}" on tab ${args.tabId}`;
       case 'run_javascript':
@@ -4656,13 +4720,13 @@ export class AgentRuntime {
       case 'drag':
         return `Drag (${args.fromX}, ${args.fromY}) → (${args.toX}, ${args.toY}) on tab ${args.tabId}`;
       case 'save_app_playbook':
-        return `Save app playbook "${args.name}" for ${normalizeHost(String(args.origin))}:\n${String(args.body).slice(0, 200)}`;
+        return `Save app playbook "${args.name}" for ${normalizeHost(String(args.origin))}:\n${clip(String(args.body), 4000)}`;
       case 'save_as_skill':
         return 'Save this task as a reusable skill (generalized instructions the agent can reuse for similar tasks).';
       case 'call_mcp_tool':
-        return `Call MCP method "${args.name}" on server "${args.server}" with ${JSON.stringify(args.arguments ?? {}).slice(0, 200)}`;
+        return `Call MCP method "${args.name}" on server "${args.server}" with ${clip(JSON.stringify(args.arguments ?? {}, null, 2), 4000)}`;
       case 'call_webmcp_tool':
-        return `Call the page's in-page tool "${args.name}" with ${JSON.stringify(args.arguments ?? {}).slice(0, 200)}`;
+        return `Call the page's in-page tool "${args.name}" with ${clip(JSON.stringify(args.arguments ?? {}, null, 2), 4000)}`;
       case 'request_web_fallback':
         return `Allow external web sources for this repository-grounded request: ${String(args.reason ?? '').slice(0, 240)}`;
       case 'draft_email':
@@ -4672,7 +4736,7 @@ export class AgentRuntime {
       case 'cancel_scheduled_task':
         return `Cancel scheduled task ${String(args.id ?? '')}.`;
       default:
-        return `${name} ${JSON.stringify(args).slice(0, 120)}`;
+        return `${name} ${clip(JSON.stringify(args), 2000)}`;
     }
   }
 

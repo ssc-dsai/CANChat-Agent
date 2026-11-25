@@ -3,6 +3,7 @@
 // (endpoint, key, model), with Test connection, and an "Advanced setup" escape
 // hatch to the full Settings overlay. Once saved, the app proceeds.
 
+import { sealSecretsAtRest } from '../background/storage';
 import { useState } from 'preact/hooks';
 import type { TestConnectionResponse } from '../shared/messages';
 import type { Settings } from '../shared/types';
@@ -51,6 +52,7 @@ export function OnboardingScreen({ onClose, onOpenAdvanced }: Props) {
 
   const save = async () => {
     await chrome.storage.local.set({ ba_settings: settings() });
+    await sealSecretsAtRest().catch(() => {}); // encrypt the new key if a vault is unlocked
     onClose(true);
   };
 

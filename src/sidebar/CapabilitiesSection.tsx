@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { getCapabilitiesForEdit, saveCapabilities } from '../background/storage';
 import type { CapabilityRegistryEntry, CapabilityKind, AuthMethod, TrustLevel } from '../shared/capabilities';
 import type { Project } from '../shared/types';
 
@@ -6,13 +7,14 @@ function newId(): string {
   return `cap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// MCP tokens are sealed by the encryption vault when it is unlocked; these go
+// through the storage layer so the editor sees plaintext and saves ciphertext.
 async function loadCapabilities(): Promise<CapabilityRegistryEntry[]> {
-  const r = await chrome.storage.local.get('ba_capabilities');
-  return Array.isArray(r.ba_capabilities) ? (r.ba_capabilities as CapabilityRegistryEntry[]) : [];
+  return (await getCapabilitiesForEdit()).capabilities;
 }
 
 async function persistCapabilities(entries: CapabilityRegistryEntry[]): Promise<void> {
-  await chrome.storage.local.set({ ba_capabilities: entries });
+  await saveCapabilities(entries); // refuses while the vault is locked
 }
 
 async function loadProjects(): Promise<Project[]> {
@@ -40,7 +42,7 @@ export function CapabilitiesSection({ defaultOpen = false }: { defaultOpen?: boo
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [feedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
 
   useEffect(() => {
@@ -49,8 +51,13 @@ export function CapabilitiesSection({ defaultOpen = false }: { defaultOpen?: boo
   }, []);
 
   const save = async (next: CapabilityRegistryEntry[]) => {
-    setEntries(next);
-    await persistCapabilities(next);
+    try {
+      await persistCapabilities(next);
+      setEntries(next);
+      setFeedback(null);
+    } catch (e) {
+      setFeedback({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    }
   };
 
   const formValid =

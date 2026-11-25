@@ -10,8 +10,8 @@ import {
 import type { Settings } from '../shared/types';
 
 // Centrally configure the extension from a URL. Fetches JSON, keeps only a
-// fixed allowlist of non-secret fields (never baseUrl/apiKey/modelProfiles —
-// see remoteConfig.ts), shows exactly what would change, and applies only on
+// fixed allowlist of non-secret tuning fields (never baseUrl/apiKey/
+// modelProfiles/systemPrompt/promptOverrides — see remoteConfig.ts), shows exactly what would change, and applies only on
 // explicit confirmation. A field-level merge onto the current settings, never
 // a wholesale replace, so untouched secrets round-trip unchanged.
 
@@ -83,9 +83,10 @@ export function RemoteConfigSection() {
         <strong>Central configuration</strong>
       </summary>
       <p class="settings-note">
-        Fetch a JSON configuration from a URL and apply it. Only tuning/behavior fields can be set this way (model,
-        temperature, token limits, prompt overrides, etc.) — the endpoint, API key, and model profiles can never be
-        set from a remote URL and must be entered manually.
+        Fetch a JSON configuration from a URL and apply it. Only tuning fields can be set this way (model,
+        temperature, token limits, search options, etc.), and "Keep background work on local models" can only be
+        turned on, never off. Endpoints, API keys, model profiles, the system prompt and prompt overrides can never
+        be set from a remote URL and must be entered manually.
       </p>
       <label class="field">
         <span>Config URL</span>

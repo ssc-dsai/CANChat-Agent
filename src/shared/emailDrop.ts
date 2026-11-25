@@ -10,6 +10,8 @@
 // Free of DOM/chrome.* so it unit-tests in Node; the browser glue that reads a
 // DataTransfer and wraps the result in a File lives in sidebar/dropCapture.ts.
 
+import { EMAIL_DROP_HTML, htmlToText } from './htmlToText';
+
 export interface ParsedEmail {
   subject?: string;
   from?: string;
@@ -20,38 +22,14 @@ export interface ParsedEmail {
   snippet: string;
 }
 
-const NAMED_ENTITIES: Record<string, string> = {
-  '&nbsp;': ' ',
-  '&amp;': '&',
-  '&lt;': '<',
-  '&gt;': '>',
-  '&quot;': '"',
-  '&#39;': "'",
-  '&apos;': "'",
-};
-
 /**
  * Convert an HTML fragment to readable plain text — no DOM, so it's pure and
  * safe (the markup is never inserted into a live document). Good enough for
- * search/ingest and a preview; not a full renderer.
+ * search/ingest and a preview; not a full renderer. Linear-time on hostile
+ * input (see htmlToText.ts).
  */
 export function stripHtml(html: string): string {
-  if (!html) return '';
-  let s = html;
-  s = s.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' '); // drop scripts/styles
-  s = s.replace(/<\/(p|div|tr|li|h[1-6]|table|blockquote)>/gi, '\n'); // block ends → newline
-  s = s.replace(/<br\s*\/?>/gi, '\n');
-  s = s.replace(/<[^>]+>/g, ''); // remaining tags
-  s = s.replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)));
-  s = s.replace(/&[a-z#0-9]+;/gi, (m) => NAMED_ENTITIES[m.toLowerCase()] ?? ' ');
-  s = s.replace(/\r/g, '');
-  s = s.replace(/[ \t ]+/g, ' ');
-  s = s
-    .split('\n')
-    .map((l) => l.trim())
-    .join('\n');
-  s = s.replace(/\n{3,}/g, '\n\n');
-  return s.trim();
+  return htmlToText(html, EMAIL_DROP_HTML);
 }
 
 /** First matching `Label: value` line (EN + FR labels), searched case-insensitively. */

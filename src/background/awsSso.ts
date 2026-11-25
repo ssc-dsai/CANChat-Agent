@@ -22,15 +22,19 @@
 // Storage: the client registration and OIDC access/refresh tokens live in
 // chrome.storage.local, keyed by start URL (one token serves every permission
 // set in an Identity Center instance) — same trust level as the provider tokens
-// in providers/tokenStore.ts, and likewise not run through the vault. The role
+// in providers/tokenStore.ts. When the encryption vault is unlocked the client
+// secret and OIDC tokens are sealed at rest (shared/secretFields.ts); while it
+// is locked a sealed session reads as "not signed in". The role
 // credentials (~hours) live in chrome.storage.session: in memory only, survive
 // service-worker eviction, gone when the browser closes. None of it is logged
 // or sent anywhere but AWS.
 // =============================================================================
 
 import type { AwsSsoConfig } from '../shared/awsSso';
+import { AWS_SSO_SESSION_KEY_PREFIX } from '../shared/secretFields';
 import type { SigV4Credentials } from './awsSigv4';
 import { LlmError } from './llmTypes';
+import { sealTokenRecord, unsealTokenRecord } from './secretSealing';
 import { withSwKeepalive } from './swKeepalive';
 
 const CLIENT_NAME = 'canchat-agent';
@@ -77,7 +81,7 @@ export type AwsSsoStatus =
 const isFresh = (expiresAt: number | undefined): boolean =>
   typeof expiresAt === 'number' && expiresAt - CLOCK_SKEW_MS > Date.now();
 
-const sessionKey = (startUrl: string) => `ba_aws_sso_${startUrl}`;
+const sessionKey = (startUrl: string) => `${AWS_SSO_SESSION_KEY_PREFIX}${startUrl}`;
 const CREDS_PREFIX = 'ba_aws_sso_creds_';
 const credsKey = (cfg: AwsSsoConfig) => `${CREDS_PREFIX}${cfg.accountId}_${cfg.roleName}_${cfg.startUrl}`;
 
@@ -86,12 +90,14 @@ const NOT_SIGNED_IN = 'Not signed in to AWS IAM Identity Center. Sign in from Se
 async function loadSession(startUrl: string): Promise<StoredSsoSession | null> {
   const k = sessionKey(startUrl);
   const r = await chrome.storage.local.get(k);
-  const v = r[k] as StoredSsoSession | undefined;
-  return v && typeof v.clientId === 'string' && typeof v.clientSecret === 'string' ? v : null;
+  const stored = r[k] as StoredSsoSession | undefined;
+  if (!stored || typeof stored.clientId !== 'string' || typeof stored.clientSecret !== 'string') return null;
+  return unsealTokenRecord('awsSso', stored); // null while the vault is locked
 }
 
 async function saveSession(startUrl: string, session: Omit<StoredSsoSession, 'schemaVersion'>): Promise<void> {
-  await chrome.storage.local.set({ [sessionKey(startUrl)]: { ...session, schemaVersion: 1 } });
+  const record: StoredSsoSession = { ...session, schemaVersion: 1 };
+  await chrome.storage.local.set({ [sessionKey(startUrl)]: await sealTokenRecord('awsSso', record) });
 }
 
 /** Drop every cached role credential minted from this start URL's sign-in. */

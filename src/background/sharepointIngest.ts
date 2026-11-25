@@ -32,7 +32,7 @@ const MAX_FILES = 1000;
 const TEXT_MAX_CHARS = 5_000_000;
 
 function cleanSummary(raw: string): string {
-  return raw.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  return raw.replace(/<[^<>]+>/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function fileName(url: string): string {

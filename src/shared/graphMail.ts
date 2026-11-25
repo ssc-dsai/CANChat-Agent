@@ -4,6 +4,7 @@
 // (draft_email). No chrome.* / network here — the authenticated fetches live in
 // background/mailIngest.ts and background/browserToolAdapter.ts.
 
+import { GRAPH_HTML, htmlToText as sharedHtmlToText } from './htmlToText';
 import { clampTop, type M365SearchFilters } from './microsoftSearch';
 
 /** The single repo that holds the indexed Office 365 mailbox. */
@@ -63,23 +64,9 @@ export function buildMessagesUrl(opts: { top?: number; since?: string } = {}): s
   return u.toString();
 }
 
-/** Best-effort HTML → text for messages whose body is HTML. */
+/** Best-effort HTML → text for messages whose body is HTML (linear-time; see htmlToText.ts). */
 export function htmlToText(html: string): string {
-  return html
-    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/ *\n */g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return sharedHtmlToText(html, GRAPH_HTML);
 }
 
 export interface MailDoc {

@@ -59,6 +59,15 @@ import {
 import { productDelete, productExportAll, productGet, productImportAll, productList, productSave } from './productStore';
 import { initVectorSimd, simdDotBatch } from './vectorSimd';
 import { setSimdBackend } from '../shared/vectorSearch';
+import { isExtensionBackgroundSender } from '../shared/senderTrust';
+
+// Every request this document serves comes from the service worker
+// (offscreenClient.ts). Ignore anything else — in particular content scripts,
+// whose broadcasts also reach this document — so a web page can never read,
+// export or delete repositories/products here.
+function fromExtensionBackground(sender: chrome.runtime.MessageSender): boolean {
+  return isExtensionBackgroundSender(sender, { id: chrome.runtime.id, root: chrome.runtime.getURL('') });
+}
 
 // Load the WASM dot-product kernel in the background; scoreVectors keeps using
 // its JS fallback until (and unless) this resolves true. Never blocks offscreen
@@ -141,7 +150,8 @@ async function extractPdf(url: string, maxChars?: number): Promise<ExtractPdfRes
   }
 }
 
-chrome.runtime.onMessage.addListener((message: ExtractPdfRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: ExtractPdfRequest, sender, sendResponse) => {
+  if (!fromExtensionBackground(sender)) return undefined;
   if (message?.target !== 'offscreen' || message.type !== 'extract_pdf') return undefined;
   extractPdf(message.url, message.maxChars).then(sendResponse);
   return true; // async response
@@ -149,7 +159,8 @@ chrome.runtime.onMessage.addListener((message: ExtractPdfRequest, _sender, sendR
 
 // ----- Document generation: markdown → .docx (create_word_document tool). -----
 
-chrome.runtime.onMessage.addListener((message: GenerateDocumentRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: GenerateDocumentRequest, sender, sendResponse) => {
+  if (!fromExtensionBackground(sender)) return undefined;
   if (message?.target !== 'offscreen' || message.type !== 'generate_document') return undefined;
   (async () => {
     try {
@@ -170,7 +181,8 @@ chrome.runtime.onMessage.addListener((message: GenerateDocumentRequest, _sender,
 
 // ----- Presentation generation: slide spec → .pptx (create_powerpoint tool). -----
 
-chrome.runtime.onMessage.addListener((message: GeneratePresentationRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: GeneratePresentationRequest, sender, sendResponse) => {
+  if (!fromExtensionBackground(sender)) return undefined;
   if (message?.target !== 'offscreen' || message.type !== 'generate_presentation') return undefined;
   (async () => {
     try {
@@ -208,7 +220,8 @@ async function extractOffice(url: string, maxChars?: number): Promise<ExtractOff
   }
 }
 
-chrome.runtime.onMessage.addListener((message: ExtractOfficeRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: ExtractOfficeRequest, sender, sendResponse) => {
+  if (!fromExtensionBackground(sender)) return undefined;
   if (message?.target !== 'offscreen' || message.type !== 'extract_office') return undefined;
   extractOffice(message.url, message.maxChars).then(sendResponse);
   return true; // async response
@@ -290,7 +303,8 @@ async function handleRepo(req: RepoRequest): Promise<RepoResponse> {
   }
 }
 
-chrome.runtime.onMessage.addListener((message: RepoRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: RepoRequest, sender, sendResponse) => {
+  if (!fromExtensionBackground(sender)) return undefined;
   if (message?.target !== 'offscreen-repo') return undefined;
   handleRepo(message).then(sendResponse);
   return true; // async response
@@ -317,7 +331,8 @@ async function handleProduct(req: ProductRequest): Promise<ProductResponse> {
   }
 }
 
-chrome.runtime.onMessage.addListener((message: ProductRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: ProductRequest, sender, sendResponse) => {
+  if (!fromExtensionBackground(sender)) return undefined;
   if (message?.target !== 'offscreen-product') return undefined;
   handleProduct(message).then(sendResponse);
   return true; // async response
@@ -325,7 +340,8 @@ chrome.runtime.onMessage.addListener((message: ProductRequest, _sender, sendResp
 
 // On-device embeddings (transformers.js). Dynamic import keeps the model runtime
 // out of the offscreen bundle's startup path — it only loads when first used.
-chrome.runtime.onMessage.addListener((message: EmbedLocalRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: EmbedLocalRequest, sender, sendResponse) => {
+  if (!fromExtensionBackground(sender)) return undefined;
   if (message?.target !== 'offscreen' || message.type !== 'embed_local') return undefined;
   (async () => {
     try {
@@ -341,7 +357,8 @@ chrome.runtime.onMessage.addListener((message: EmbedLocalRequest, _sender, sendR
 
 // On-device named entity recognition (transformers.js), for the graph
 // builder's fast tier. Same dynamic-import pattern as embed_local above.
-chrome.runtime.onMessage.addListener((message: NerLocalRequest, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: NerLocalRequest, sender, sendResponse) => {
+  if (!fromExtensionBackground(sender)) return undefined;
   if (message?.target !== 'offscreen' || message.type !== 'ner_local') return undefined;
   (async () => {
     try {

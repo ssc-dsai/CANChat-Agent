@@ -101,9 +101,14 @@ import {
 import { probeEnvironment } from './envProbe';
 import { applyDecay, MEMORY_NODE_CAP, pruneGraph } from '../shared/memoryGraph';
 import { memoryIndexRemove, memoryIndexUpsert } from './memoryIndex';
-import { getVaultState, vaultDecrypt, vaultEncrypt } from './vault';
+import { getVaultState, registerVaultAutoLock, vaultDecrypt, vaultEncrypt } from './vault';
 import { withSwKeepalive } from './swKeepalive';
 import { isTrustedExtensionSender } from '../shared/messageValidation';
+import { authorizePort, authorizeRuntimeMessage, senderHostMatches, type ExtensionIdentity } from '../shared/senderTrust';
+
+function extensionIdentity(): ExtensionIdentity {
+  return { id: chrome.runtime.id, root: chrome.runtime.getURL('') };
+}
 
 // ----- Mailbox auto-refresh (chrome.alarms, opt-in) -----
 //
@@ -180,6 +185,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.ba_settings) void syncMailAlarm();
   if (changes.ba_memory_enabled) void syncMemoryDecayAlarm();
 });
+
+// Lock the vault after its idle timeout even while nothing reads it.
+// Registered synchronously at top level so the alarm wakes the worker.
+registerVaultAutoLock();
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === MAILBOX_ALARM) void runAutoMailboxRefresh();
@@ -307,7 +316,18 @@ void runtimeReady.then(() => {
 // runtime has finished restoring (so a reconnect after eviction repaints the
 // transcript instead of an empty pane), then translate commands.
 chrome.runtime.onConnect.addListener((port) => {
+  // Only extension pages (side panel, workspace tab) may hold the sidebar port:
+  // it can drive the agent, answer approvals and read the full transcript.
+  // Content scripts open no ports.
   if (port.name !== 'sidebar') return;
+  if (!authorizePort(port.name, port.sender, extensionIdentity())) {
+    try {
+      port.disconnect();
+    } catch {
+      // Already gone.
+    }
+    return;
+  }
   ports.add(port);
   void runtimeReady.then(() => {
     try {
@@ -421,6 +441,21 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.runtime.onMessage.addListener((request: RuntimeRequest, sender, sendResponse) => {
   if (!request || typeof request !== 'object' || typeof request.type !== 'string') {
     sendResponse({ ok: false, error: 'Invalid extension request.' });
+    return false;
+  }
+  // Sender gate: everything except the content-script allowlist
+  // (CONTENT_SCRIPT_MESSAGE_TYPES) must come from one of our extension pages.
+  const auth = authorizeRuntimeMessage(request.type, sender, extensionIdentity());
+  if (!auth.ok) {
+    sendResponse({ ok: false, error: auth.error });
+    return false;
+  }
+  if (
+    auth.kind === 'content_script' &&
+    request.type === 'learn_record_event' &&
+    !senderHostMatches(sender, request.event?.page?.host ?? '')
+  ) {
+    sendResponse({ ok: false, error: 'Learn event page does not match the sending tab.' });
     return false;
   }
   const isProviderRequest = request.type.startsWith('provider_');

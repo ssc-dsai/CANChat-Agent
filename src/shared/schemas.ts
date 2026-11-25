@@ -823,7 +823,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'create_file',
       description:
-        'Generate a downloadable plain-text file such as .txt or .md. Use when the user wants a text note, markdown document, config file, or other text-based file they can save. The user gets a download card.',
+        'Generate a downloadable plain-text file such as .txt or .md. Use when the user wants a text note, markdown document, config file, or other text-based file they can save. The user gets a download card. Only plain-text data formats (.txt, .md, .csv, .tsv, .json, .yaml, .toml, .ini, .sql, .css, .log) keep their extension; any other extension, including scripts, executables and .html/.svg, gets .txt appended.',
       parameters: {
         type: 'object',
         properties: {

@@ -13,6 +13,8 @@
 // fetch so `start`/`end` come back UTC-normalized (Graph's `dateTime` field
 // carries no offset of its own — it's local to the paired `timeZone` field).
 
+import { GRAPH_HTML, htmlToText as sharedHtmlToText } from './htmlToText';
+
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 
 /** A generous single-page cap — calendar windows are days/weeks, not thousands of events. */
@@ -60,22 +62,9 @@ export function buildCalendarViewUrl(start: string, end: string, includeBody = t
   return u.toString();
 }
 
+/** Best-effort HTML → text for event bodies (linear-time; see htmlToText.ts). */
 export function htmlToText(html: string): string {
-  return html
-    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/ *\n */g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return sharedHtmlToText(html, GRAPH_HTML);
 }
 
 function bodyToText(body: unknown): string | undefined {

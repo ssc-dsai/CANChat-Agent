@@ -1,15 +1,15 @@
 import { useState } from 'preact/hooks';
 import type { ExportedProduct, ExportedRepo } from '../shared/messages';
-import type { Settings } from '../shared/types';
 import {
   conversationBackupKeys,
   exportConversationsForBackup,
-  getSettingsForEdit,
   importConversationsFromBackup,
   sealSecretsAtRest,
+  unsealBackupSnapshot,
 } from '../background/storage';
 import { getVaultState } from '../background/vault';
 import { BACKUP_STORAGE_KEYS, describeRestore, planRestore } from '../shared/backupRestore';
+import { dropVaultCiphertext, stripSecretsForBackup } from '../shared/secretFields';
 import { saveFile } from './download';
 import { useT } from './i18n';
 
@@ -46,33 +46,18 @@ export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: bo
       if ((includeKey || includeConversations) && (await getVaultState()) === 'locked') {
         throw new Error('Unlock the encryption vault before exporting encrypted content.');
       }
-      const storage = (await chrome.storage.local.get(STORAGE_KEYS)) as Record<string, unknown>;
+      let storage = (await chrome.storage.local.get(STORAGE_KEYS)) as Record<string, unknown>;
       if (includeConversations) {
         // Decrypted index + bodies (portable), via the storage layer.
         Object.assign(storage, await exportConversationsForBackup());
       }
-      if (storage.ba_settings && typeof storage.ba_settings === 'object') {
-        if (includeKey) {
-          // getSettingsForEdit decrypts every secret field at rest (apiKey +
-          // ideogram/embedding/transcription overrides) so the backup is portable.
-          storage.ba_settings = (await getSettingsForEdit()).settings;
-        } else {
-          // Scrub every secret field.
-          storage.ba_settings = {
-            ...(storage.ba_settings as Settings),
-            apiKey: '',
-            ideogramApiKey: '',
-            embeddingApiKey: '',
-            transcriptionApiKey: '',
-          };
-        }
-      }
-      if (!includeKey && Array.isArray(storage.ba_sites)) {
-        // MCP server tokens live in the hints directory — scrub them too.
-        storage.ba_sites = (storage.ba_sites as Array<Record<string, unknown>>).map((s) =>
-          s && s.mcpToken ? { ...s, mcpToken: '' } : s,
-        );
-      }
+      // Secrets: either decrypt every vault-sealed one so the file is portable,
+      // or remove every known secret field (shared/secretFields.ts is the single
+      // list). Either way no vault ciphertext is written — it is useless
+      // off-device and would otherwise leak which fields were set.
+      storage = includeKey
+        ? dropVaultCiphertext(await unsealBackupSnapshot(storage))
+        : stripSecretsForBackup(storage);
       const repos = (await chrome.runtime.sendMessage({ type: 'repo_export' })) as ExportedRepo[];
       const products = (await chrome.runtime.sendMessage({ type: 'products_export' })) as ExportedProduct[];
       const backup: Backup = {
@@ -132,7 +117,7 @@ export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: bo
         throw new Error('Unlock the encryption vault before restoring a backup.');
       }
       if (Object.keys(plan.bulk).length > 0) await chrome.storage.local.set(plan.bulk);
-      await sealSecretsAtRest(); // encrypt the restored API key when a vault is unlocked
+      await sealSecretsAtRest(); // seal the restored keys/tokens when a vault is unlocked
       await importConversationsFromBackup(storage);
       if (Array.isArray(data.repos) && data.repos.length) {
         await chrome.runtime.sendMessage({ type: 'repo_import', repos: data.repos });
@@ -164,10 +149,12 @@ export function BackupRestoreSection({ defaultOpen = false }: { defaultOpen?: bo
           checked={includeKey}
           onChange={(e) => setIncludeKey((e.target as HTMLInputElement).checked)}
         />
-        Include API key in the backup
+        {t('backup.includeSecrets')}
       </label>
-      {includeKey && (
-        <p class="settings-note warn">⚠ The file will contain your API key in plain text — store it securely.</p>
+      {includeKey ? (
+        <p class="settings-note warn">⚠ {t('backup.includeSecretsWarn')}</p>
+      ) : (
+        <p class="settings-note">{t('backup.secretsExcludedNote')}</p>
       )}
       <label class="backup-check">
         <input

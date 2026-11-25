@@ -5,7 +5,7 @@
 // device-local and never synced; the API key in particular never leaves here.
 // =============================================================================
 
-import { isConnectionConfigured } from '../shared/awsSso';
+import { isConnectionConfigured, ssoConfigFromSettings } from '../shared/awsSso';
 import { pruneIndex } from '../shared/conversationMeta';
 import type { CapabilityRegistryEntry } from '../shared/capabilities';
 import { migrateSitesToCapabilities } from '../shared/capabilities';
@@ -23,6 +23,25 @@ import type {
   Skill,
 } from '../shared/types';
 import type { LlmMessage } from './llmProvider';
+import { isEncrypted } from '../shared/crypto';
+import { PROVIDER_IDS } from '../shared/providerIds';
+import {
+  AWS_SSO_SESSION_KEY_PREFIX,
+  GRAPH_TOKENS_STORAGE_KEY,
+  PROVIDER_TOKENS_KEY_PREFIX,
+  SETTINGS_SECRET_FIELDS,
+  tokenRecordKindForKey,
+} from '../shared/secretFields';
+import {
+  sealCapabilities,
+  sealSettings,
+  sealSite,
+  sealTokenRecord,
+  unsealCapabilities,
+  unsealSettings,
+  unsealSite,
+  unsealTokenRecord,
+} from './secretSealing';
 import { getVaultState, isVaultUnlocked, vaultDecrypt, vaultEncrypt } from './vault';
 
 const SETTINGS_KEY = 'ba_settings';
@@ -85,34 +104,30 @@ export interface StoredConversation {
 }
 
 // chrome.storage.local only — the API key must never sync across devices.
-// When an encryption vault is configured (see vault.ts), secret fields are
-// stored as `enc:v1:` envelopes; getSettings transparently decrypts them, and a
-// *locked* vault yields null so the agent stays inert until the user unlocks.
-// Optional per-service secret overrides, encrypted at rest alongside `apiKey`.
-// `apiKey` is handled separately because it is required and drives the
-// locked⇒null behavior.
-export const OPTIONAL_SECRET_FIELDS = ['ideogramApiKey', 'embeddingApiKey', 'transcriptionApiKey', 'awsSessionToken', 'decisionModelApiKey'] as const;
+// When an encryption vault is configured (see vault.ts), every secret field
+// listed in shared/secretFields.ts is stored as an `enc:v1:` envelope (top-level
+// keys AND each model profile's key/session token); getSettings transparently
+// decrypts them, and a *locked* vault yields null so the agent stays inert
+// until the user unlocks.
+/** Secret Settings fields other than `apiKey` (kept for existing importers). */
+export const OPTIONAL_SECRET_FIELDS = SETTINGS_SECRET_FIELDS.filter(
+  (f): f is Exclude<(typeof SETTINGS_SECRET_FIELDS)[number], 'apiKey'> => f !== 'apiKey',
+);
 
 export async function getSettings(): Promise<Settings | null> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
   const settings = result[SETTINGS_KEY] as Settings | undefined;
   if (!settings || !settings.model) return null;
   if (settings.subscriptionProvider) {
-    const out: Settings = { ...settings, apiKey: '' };
-    for (const f of OPTIONAL_SECRET_FIELDS) {
-      if (settings[f]) out[f] = (await vaultDecrypt(settings[f]!)) ?? undefined;
-    }
-    return out;
+    const { value } = await unsealSettings(settings);
+    return { ...value, apiKey: '' };
   }
   if (!isConnectionConfigured(settings)) return null;
-  // An IAM Identity Center connection has no key to decrypt.
-  const apiKey = settings.apiKey ? await vaultDecrypt(settings.apiKey) : '';
-  if (apiKey === null) return null; // encrypted but vault locked/erased
-  const out: Settings = { ...settings, apiKey };
-  for (const f of OPTIONAL_SECRET_FIELDS) {
-    if (settings[f]) out[f] = (await vaultDecrypt(settings[f]!)) ?? undefined;
-  }
-  return out;
+  const { value } = await unsealSettings(settings);
+  // The main key is encrypted but the vault is locked/erased: no usable connection.
+  // (An IAM Identity Center connection has no key to decrypt.)
+  if (settings.apiKey && isEncrypted(settings.apiKey) && !value.apiKey) return null;
+  return value;
 }
 
 /**
@@ -123,15 +138,8 @@ export async function getSettings(): Promise<Settings | null> {
 export async function getSettingsForEdit(): Promise<{ settings: Settings; locked: boolean }> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
   const settings = (result[SETTINGS_KEY] as Settings | undefined) ?? { baseUrl: '', apiKey: '', model: '' };
-  if (settings.apiKey) {
-    const dec = await vaultDecrypt(settings.apiKey);
-    if (dec === null) return { settings: { ...settings, apiKey: '' }, locked: true };
-    settings.apiKey = dec;
-  }
-  for (const f of OPTIONAL_SECRET_FIELDS) {
-    if (settings[f]) settings[f] = (await vaultDecrypt(settings[f]!)) ?? undefined;
-  }
-  return { settings, locked: false };
+  const { value, locked } = await unsealSettings(settings);
+  return { settings: value, locked };
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
@@ -140,35 +148,169 @@ export async function saveSettings(settings: Settings): Promise<void> {
   if ((await getVaultState()) === 'locked') {
     throw new Error('The encryption vault is locked. Unlock it before saving connection settings.');
   }
-  const toStore: Settings = { ...settings, apiKey: await vaultEncrypt(settings.apiKey) };
-  for (const f of OPTIONAL_SECRET_FIELDS) {
-    if (settings[f]) toStore[f] = await vaultEncrypt(settings[f]!);
-  }
-  await chrome.storage.local.set({ [SETTINGS_KEY]: toStore });
+  await chrome.storage.local.set({ [SETTINGS_KEY]: await sealSettings(settings) });
 }
 
 /**
- * Re-store the current settings so their secrets become ciphertext under a
- * newly-unlocked vault. Called right after a vault is created, to seal a key the
- * user had entered while still in plaintext.
+ * chrome.storage.local keys that may hold a Graph / provider / AWS SSO token
+ * record: the fixed ones, the per-start-URL SSO sessions named by the current
+ * settings and profiles, plus — where Chrome supports listing keys — any other
+ * key of those shapes (e.g. a start URL no longer in settings). Avoids reading
+ * all of local storage (conversations can be large).
  */
-export async function sealSecretsAtRest(): Promise<void> {
-  const { settings, locked } = await getSettingsForEdit();
-  if (locked || !settings.apiKey) return;
-  await saveSettings(settings);
+async function credentialRecordKeys(settings: Settings | undefined): Promise<string[]> {
+  const keys = new Set<string>([GRAPH_TOKENS_STORAGE_KEY, ...PROVIDER_IDS.map((id) => `${PROVIDER_TOKENS_KEY_PREFIX}${id}`)]);
+  for (const s of [settings, ...(settings?.modelProfiles ?? [])]) {
+    const cfg = s ? ssoConfigFromSettings(s) : null;
+    if (cfg) keys.add(`${AWS_SSO_SESSION_KEY_PREFIX}${cfg.startUrl}`);
+  }
+  try {
+    const listed = typeof chrome.storage.local.getKeys === 'function' ? await chrome.storage.local.getKeys() : [];
+    for (const k of listed) if (tokenRecordKindForKey(k)) keys.add(k);
+  } catch {
+    // getKeys unavailable (Chrome < 130) — the derived keys above still apply
+  }
+  return [...keys];
 }
 
+/**
+ * Every vault-covered record (Settings + model profiles, capabilities, legacy
+ * hints, Graph / provider / AWS SSO token records), decrypted and then either
+ * re-sealed or left as plaintext. Returns the chrome.storage.local updates; the
+ * caller writes them. In 'plaintext' mode, anything the vault can't open is an
+ * error (the caller is about to destroy the key, so it must not lose data).
+ */
+async function rewriteSecretRecords(mode: 'seal' | 'plaintext'): Promise<Record<string, unknown>> {
+  const base = await chrome.storage.local.get([SETTINGS_KEY, CAPABILITIES_KEY, SITES_KEY]);
+  const recordKeys = await credentialRecordKeys(base[SETTINGS_KEY] as Settings | undefined);
+  const all = { ...base, ...(recordKeys.length ? await chrome.storage.local.get(recordKeys) : {}) } as Record<string, unknown>;
+  const updates: Record<string, unknown> = {};
+  const fail = (what: string) => {
+    if (mode === 'plaintext') throw new Error(`Unlock the encryption vault first — ${what} could not be decrypted.`);
+  };
+
+  const rawSettings = all[SETTINGS_KEY] as Settings | undefined;
+  if (rawSettings) {
+    const { value, locked } = await unsealSettings(rawSettings);
+    if (locked) fail('settings');
+    else updates[SETTINGS_KEY] = mode === 'seal' ? await sealSettings(value) : value;
+  }
+  if (Array.isArray(all[CAPABILITIES_KEY])) {
+    const { value, locked } = await unsealCapabilities(all[CAPABILITIES_KEY] as CapabilityRegistryEntry[]);
+    if (locked) fail('capabilities');
+    else updates[CAPABILITIES_KEY] = mode === 'seal' ? await sealCapabilities(value) : value;
+  }
+  if (Array.isArray(all[SITES_KEY])) {
+    const sites: SiteEntry[] = [];
+    let locked = false;
+    for (const site of all[SITES_KEY] as SiteEntry[]) {
+      const r = await unsealSite(site);
+      locked ||= r.locked;
+      sites.push(mode === 'seal' ? await sealSite(r.value) : r.value);
+    }
+    if (locked) fail('hints');
+    else updates[SITES_KEY] = sites;
+  }
+  for (const [key, value] of Object.entries(all)) {
+    const kind = tokenRecordKindForKey(key);
+    if (!kind || !value || typeof value !== 'object') continue;
+    const plain = await unsealTokenRecord(kind, value);
+    if (!plain) fail(`sign-in tokens (${key})`);
+    else updates[key] = mode === 'seal' ? await sealTokenRecord(kind, plain) : plain;
+  }
+  return updates;
+}
+
+/**
+ * Re-store every secret the vault covers so it becomes ciphertext under a
+ * newly-created or just-unlocked vault: Settings (+ model profiles),
+ * capabilities and legacy hints (MCP tokens), and the Graph / provider /
+ * AWS SSO token records. Anything written in plaintext while the vault was
+ * locked (e.g. a sign-in) is sealed here on the next unlock. No-op unless the
+ * vault is unlocked.
+ */
+export async function sealSecretsAtRest(): Promise<void> {
+  if (!(await isVaultUnlocked())) return;
+  const updates = await rewriteSecretRecords('seal');
+  if (Object.keys(updates).length > 0) await chrome.storage.local.set(updates);
+}
+
+/**
+ * Before erasing the vault: every vault-covered secret, decrypted, as storage
+ * updates to write back once the key is destroyed (so erasing doesn't lock the
+ * user out of their own keys and sign-ins). Throws if anything can't be decrypted.
+ */
+export async function plaintextSecretRecordsForErase(): Promise<Record<string, unknown>> {
+  if ((await getVaultState()) === 'locked') throw new Error('Unlock the encryption vault before erasing it.');
+  return rewriteSecretRecords('plaintext');
+}
+
+/**
+ * Capabilities with their MCP tokens decrypted, for the agent. While the vault
+ * is locked a sealed token is simply absent, so the server is called without
+ * auth (and reports "not configured") instead of with ciphertext.
+ */
 export async function getCapabilities(): Promise<CapabilityRegistryEntry[]> {
   const result = await chrome.storage.local.get([CAPABILITIES_KEY, SITES_KEY]);
   const caps = result[CAPABILITIES_KEY];
-  if (Array.isArray(caps) && caps.length > 0) return caps as CapabilityRegistryEntry[];
+  if (Array.isArray(caps) && caps.length > 0) {
+    return (await unsealCapabilities(caps as CapabilityRegistryEntry[])).value;
+  }
   const sites = result[SITES_KEY];
   if (Array.isArray(sites) && sites.length > 0) {
     const migrated = migrateSitesToCapabilities(sites as SiteEntry[]);
-    await chrome.storage.local.set({ [CAPABILITIES_KEY]: migrated });
-    return migrated;
+    await chrome.storage.local.set({ [CAPABILITIES_KEY]: await sealCapabilities(migrated) });
+    return (await unsealCapabilities(migrated)).value;
   }
   return [];
+}
+
+/** The stored capability list decrypted for the editor, with whether the vault is locked. */
+export async function getCapabilitiesForEdit(): Promise<{ capabilities: CapabilityRegistryEntry[]; locked: boolean }> {
+  const result = await chrome.storage.local.get(CAPABILITIES_KEY);
+  const caps = result[CAPABILITIES_KEY];
+  if (!Array.isArray(caps)) return { capabilities: [], locked: false };
+  const { value, locked } = await unsealCapabilities(caps as CapabilityRegistryEntry[]);
+  return { capabilities: value, locked };
+}
+
+/** Store the capability list, sealing MCP tokens when the vault is unlocked. Refused while locked. */
+export async function saveCapabilities(entries: CapabilityRegistryEntry[]): Promise<void> {
+  if ((await getVaultState()) === 'locked') {
+    throw new Error('The encryption vault is locked. Unlock it before changing capabilities.');
+  }
+  await chrome.storage.local.set({ [CAPABILITIES_KEY]: await sealCapabilities(entries) });
+}
+
+/**
+ * Decrypt the vault-sealed secrets in a backup snapshot (settings, model
+ * profiles, capability and hint MCP tokens) so an "include secrets" backup is
+ * portable. Throws if the vault is locked and something sealed is present.
+ */
+export async function unsealBackupSnapshot(storage: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const out = { ...storage };
+  let locked = false;
+  if (out[SETTINGS_KEY] && typeof out[SETTINGS_KEY] === 'object') {
+    const r = await unsealSettings(out[SETTINGS_KEY] as Settings);
+    locked ||= r.locked;
+    out[SETTINGS_KEY] = r.value;
+  }
+  if (Array.isArray(out[CAPABILITIES_KEY])) {
+    const r = await unsealCapabilities(out[CAPABILITIES_KEY] as CapabilityRegistryEntry[]);
+    locked ||= r.locked;
+    out[CAPABILITIES_KEY] = r.value;
+  }
+  if (Array.isArray(out[SITES_KEY])) {
+    const sites: SiteEntry[] = [];
+    for (const site of out[SITES_KEY] as SiteEntry[]) {
+      const r = await unsealSite(site);
+      locked ||= r.locked;
+      sites.push(r.value);
+    }
+    out[SITES_KEY] = sites;
+  }
+  if (locked) throw new Error('Unlock the encryption vault before exporting secrets.');
+  return out;
 }
 
 export async function migrateLegacySites(): Promise<void> {
@@ -177,7 +319,7 @@ export async function migrateLegacySites(): Promise<void> {
   const sites = result[SITES_KEY];
   if (!Array.isArray(sites) || sites.length === 0) return;
   const migrated = migrateSitesToCapabilities(sites as SiteEntry[]);
-  await chrome.storage.local.set({ [CAPABILITIES_KEY]: migrated });
+  await chrome.storage.local.set({ [CAPABILITIES_KEY]: await sealCapabilities(migrated) });
 }
 
 // --- Auth token storage (session-scoped, cleared on SW restart) ---------------
